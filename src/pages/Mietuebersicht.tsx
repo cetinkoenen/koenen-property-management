@@ -821,6 +821,16 @@ function isHohenloherRentComponent(booking: FinanceEntry, objectId: string, obje
 
 function hasStrictRentText(booking: FinanceEntry): boolean {
   if (isClearlyExcludedFromRent(booking)) return false;
+  const category = normalizeReferenceText(booking.category);
+  // "Mietbestandteil-NK" enthaelt zwar sprachlich "Miete", ist aber eine
+  // eigene Nebenkosten-Komponente. Sie wird nur bei Hohenloher gezielt addiert.
+  if (
+    category.includes("mietbestandteil nk") ||
+    category.includes("nebenkosten") ||
+    category.includes("betriebskosten") ||
+    category.includes("hausgeld") ||
+    category === "nk"
+  ) return false;
   const text = normalizeReferenceText(`${booking.category ?? ""} ${booking.note ?? ""}`);
   return (
     text.includes("miete") ||
@@ -983,13 +993,13 @@ function isLilienthalerRentBookingForObject(
   booking: FinanceEntry,
   object: { id: string; code: string | null; label: string },
 ): boolean {
-  if (booking.entry_type !== "income" || booking.amount <= 0 || isClearlyExcludedFromRent(booking)) return false;
+  if (booking.entry_type !== "income" || booking.amount <= 0) return false;
 
-  // Lilienthaler hat historische Miet-/Nachzahlungsbuchungen, die nicht immer
-  // sauber als "Miete" kategorisiert sind. Fuer diese Jahresmatrix gilt:
-  // objektbezogene Einnahme aus Buchhaltung = Ist-Zahlung, solange sie nicht
-  // eindeutig als Nicht-Miete ausgeschlossen ist.
-  return directObjectMatch(booking, object.id, object.code) || bookingMatchesObject(booking, object.id, object.code, object.label);
+  // Fachregel fuer Lilienthaler: ausschliesslich direkt zugeordnete Buchungen
+  // aus der Hauptquelle Buchungen mit der Kategorie "Miete" verwenden.
+  // Dadurch koennen z. B. die 270-EUR-NK-Komponenten von Hohenloher weder ueber
+  // Text-Fallbacks noch ueber das Wort "Mietbestandteil" hier einfließen.
+  return normalizeReferenceText(booking.category) === "miete" && directObjectMatch(booking, object.id, object.code);
 }
 
 function lilienthalerBookingAllocation(

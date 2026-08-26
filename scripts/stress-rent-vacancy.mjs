@@ -84,6 +84,23 @@ function isExcludedFromRentReceipt(entry) {
   return text.includes("nebenkosten") || text.includes("nk");
 }
 
+function isStrictRentCategory(entry) {
+  const category = rentReferenceText({ category: entry.category, note: "", objekt_code: "" });
+  if (
+    category.includes("mietbestandteil nk") ||
+    category.includes("nebenkosten") ||
+    category.includes("betriebskosten") ||
+    category.includes("hausgeld") ||
+    category === "nk"
+  ) return false;
+  return category.includes("miete") || category.includes("pacht");
+}
+
+function isLilienthalerRentReceipt(entry, object) {
+  const directMatch = String(entry.object_id ?? "") === String(object.id) || entry.objekt_code === object.code;
+  return entry.entry_type === "income" && Number(entry.amount) > 0 && rentReferenceText({ category: entry.category, note: "", objekt_code: "" }) === "miete" && directMatch;
+}
+
 function manualNewTotal(adjustment) {
   return money((adjustment.new_cold_rent ?? 0) + (adjustment.new_operating_costs ?? 0));
 }
@@ -148,6 +165,33 @@ const tests = [
     assert.equal(effectiveVacancyStartDate(vacancy), "2026-06-01", "Manueller Kündigungs-Leerstand muss seinen Beginn behalten");
     assert.equal(isVacancyEffectivelyActiveInRange(vacancy, "2026-06-01", "2026-07-31"), true);
     assert.equal(isVacancyEffectivelyActiveInRange(vacancy, "2026-08-01", "2026-08-31"), false);
+  },
+  () => {
+    const lilienthaler = { id: "lilienthaler-id", code: "Objekt_1" };
+    assert.equal(
+      isLilienthalerRentReceipt({
+        object_id: "hohenloher-id",
+        objekt_code: "Objekt_5",
+        entry_type: "income",
+        amount: 270,
+        category: "Mietbestandteil-NK",
+      }, lilienthaler),
+      false,
+      "Hohenloher-NK duerfen nie als Lilienthaler-Miete erscheinen",
+    );
+    assert.equal(
+      isLilienthalerRentReceipt({
+        object_id: "lilienthaler-id",
+        objekt_code: "Objekt_1",
+        entry_type: "income",
+        amount: 1590,
+        category: "Miete",
+      }, lilienthaler),
+      true,
+      "Direkt zugeordnete Lilienthaler-Buchung der Kategorie Miete muss erscheinen",
+    );
+    assert.equal(isStrictRentCategory({ category: "Mietbestandteil-NK" }), false);
+    assert.equal(isStrictRentCategory({ category: "Miete" }), true);
   },
   () => {
     const vacancy = { vacancy_type: "contract_ended", status: "active", start_date: "2026-02-28", end_date: "2026-02-28" };
