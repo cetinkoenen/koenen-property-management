@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { listNkRelevantEntries, type NkRelevantEntry } from "../services/nkRelevantService";
+import { supabase } from "../lib/supabase";
 
 type AllocationKey = "Einheiten" | "Verbrauch/Direkt" | "Direktbetrag";
 
@@ -40,6 +41,9 @@ type StoredPayload = {
 };
 
 const STORAGE_KEY = "koenen:tiefgarage-nebenkosten:v1";
+const BILLING_TABLE = "apartment_billing_workspaces";
+const BILLING_OBJECT_ID = "rosenstein-str-25-tiefgarage";
+const BILLING_SCOPE = "all";
 
 const pageStyles: Record<string, CSSProperties> = {
   page: {
@@ -431,7 +435,7 @@ function buildDefaultYear(year: number): BillingYearData {
   };
 }
 
-function loadStoredYears(): BillingYearData[] {
+function loadLegacyStoredYears(): BillingYearData[] {
   if (typeof window === "undefined") {
     return [buildDefaultYear(new Date().getFullYear())];
   }
@@ -457,15 +461,15 @@ function loadStoredYears(): BillingYearData[] {
   }
 }
 
-function saveStoredYears(records: BillingYearData[]) {
-  if (typeof window === "undefined") return;
-
-  window.localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      records,
-    } satisfies StoredPayload),
-  );
+function normalizeStoredYears(value: unknown): BillingYearData[] {
+  const parsed = value as Partial<StoredPayload> | null;
+  if (!parsed || !Array.isArray(parsed.records) || parsed.records.length === 0) return [];
+  return parsed.records
+    .map((record) => ({
+      ...buildDefaultYear(toNumber(record.year, new Date().getFullYear())),
+      ...record,
+    }))
+    .sort((a, b) => a.year - b.year);
 }
 
 function deriveRowTotalCost(row: CostRow, yearData: BillingYearData) {
@@ -620,15 +624,75 @@ function SummaryValue(props: { label: string; value: string; tone?: "default" | 
 }
 
 export default function NebenkostenTiefgarage() {
-  const [records, setRecords] = useState<BillingYearData[]>(() => loadStoredYears());
-  const [activeYear, setActiveYear] = useState<number>(() => loadStoredYears()[0]?.year ?? new Date().getFullYear());
+  const [records, setRecords] = useState<BillingYearData[]>(() => [buildDefaultYear(new Date().getFullYear())]);
+  const [activeYear, setActiveYear] = useState<number>(new Date().getFullYear());
   const [newYearInput, setNewYearInput] = useState<string>(String(new Date().getFullYear() + 1));
   const [nkEntries, setNkEntries] = useState<NkRelevantEntry[]>([]);
   const [nkLoading, setNkLoading] = useState(false);
+  const [storageReady, setStorageReady] = useState(false);
+  const [storageError, setStorageError] = useState("");
 
   useEffect(() => {
-    saveStoredYears(records);
-  }, [records]);
+    let alive = true;
+
+    async function loadStoredYears() {
+      const { data, error } = await supabase
+        .from(BILLING_TABLE)
+        .select("data")
+        .eq("object_id", BILLING_OBJECT_ID)
+        .eq("year", BILLING_SCOPE)
+        .maybeSingle();
+      if (!alive) return;
+
+      if (error) {
+        setStorageError(`Zentrale Tiefgaragenabrechnung konnte nicht geladen werden: ${error.message}`);
+        setStorageReady(false);
+        return;
+      }
+
+      const remoteRecords = normalizeStoredYears(data?.data);
+      if (remoteRecords.length) {
+        setRecords(remoteRecords);
+        setActiveYear(remoteRecords[0].year);
+        setStorageReady(true);
+        return;
+      }
+
+      const legacyRecords = loadLegacyStoredYears();
+      setRecords(legacyRecords);
+      setActiveYear(legacyRecords[0]?.year ?? new Date().getFullYear());
+      const { error: migrationError } = await supabase.from(BILLING_TABLE).upsert({
+        object_id: BILLING_OBJECT_ID,
+        year: BILLING_SCOPE,
+        data: { records: legacyRecords } satisfies StoredPayload,
+      }, { onConflict: "object_id,year" });
+      if (!alive) return;
+      if (migrationError) {
+        setStorageError(`Lokale Altdaten konnten nicht zentral übernommen werden: ${migrationError.message}`);
+        setStorageReady(false);
+        return;
+      }
+      setStorageReady(true);
+    }
+
+    void loadStoredYears();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    const timeout = window.setTimeout(async () => {
+      const { error } = await supabase.from(BILLING_TABLE).upsert({
+        object_id: BILLING_OBJECT_ID,
+        year: BILLING_SCOPE,
+        data: { records } satisfies StoredPayload,
+      }, { onConflict: "object_id,year" });
+      setStorageError(error ? `Zentrale Speicherung fehlgeschlagen: ${error.message}` : "");
+    }, 650);
+    return () => window.clearTimeout(timeout);
+  }, [records, storageReady]);
 
   useEffect(() => {
     let alive = true;
@@ -809,7 +873,7 @@ export default function NebenkostenTiefgarage() {
             die Umlage wird automatisch berechnet und am Ende entsteht ein kompakter Onepager für den Mieter.
           </p>
           <ul style={pageStyles.subtleList}>
-            <li>Jahresbezogene Datensätze direkt im Browser pflegen.</li>
+            <li>Jahresbezogene Datensätze zentral in Supabase pflegen.</li>
             <li>Umlagefähige und nicht umlagefähige Kosten getrennt erfassen.</li>
             <li>Onepager für Mieter als Druck/PDF direkt aus der Seite öffnen.</li>
           </ul>
@@ -830,6 +894,12 @@ export default function NebenkostenTiefgarage() {
           </div>
         </aside>
       </div>
+
+      {storageError ? (
+        <div style={{ ...pageStyles.section, borderColor: "#fecaca", background: "#fff1f2", color: "#9f1239", fontWeight: 800 }}>
+          {storageError}
+        </div>
+      ) : null}
 
       <section style={pageStyles.section}>
         <div style={pageStyles.sectionHeader}>

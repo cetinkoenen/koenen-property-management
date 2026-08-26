@@ -7,7 +7,10 @@ dist
 .tmp_access_token
 *.bak
 backups/
+output/
+tmp/
 *.zip
 .env*.local
 .DS_Store
 .DS_Store
+.env*

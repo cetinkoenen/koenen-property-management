@@ -22,7 +22,15 @@ import { isAdminEmail } from "@/auth/accessControl";
 import { portfolioGalleryItems, type PortfolioGalleryItem } from "@/data/portfolioGallery";
 import { useAppData, type FinanceEntry, type PortfolioLoanRow } from "@/state/AppDataContext";
 import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
+import { buildRepairCapexSummary, type RepairCapexSummary } from "@/lib/repairCapex";
 import { loadAllPropertyExtras, savePropertyExtra, emptyPropertyExtra, type PropertyExtraInfo } from "@/services/propertyExtraService";
+import { yearlyCapexService } from "@/services/yearlyCapexService";
+import {
+  isVacancyEffectivelyActiveInRange,
+  listVacancies,
+  type UnitVacancy,
+} from "@/services/vacancyService";
+import { listTenantProfilesWithContracts, type TenantContract, type TenantProfileWithContracts } from "@/services/tenantService";
 import type { MasterFinanceSnapshot } from "@/services/masterDataService";
 
 type WealthDraft = Record<string, string>;
@@ -64,6 +72,8 @@ type WealthFinance = {
   netYield: number;
 };
 
+type ModernizationSummaryByCardId = Record<string, RepairCapexSummary>;
+
 type ParkingUnitStatus = "rented" | "vacant";
 
 type ParkingUnit = {
@@ -74,6 +84,7 @@ type ParkingUnit = {
   status: ParkingUnitStatus;
   tenantName: string;
   monthlyRent: number;
+  vacancy?: UnitVacancy;
 };
 
 type FieldConfig = {
@@ -94,18 +105,18 @@ const ROSENSTEIN_PARKING_UNITS: ParkingUnit[] = [
     title: "TG-Stellplatz 1",
     shortLabel: "P250",
     reference: "P250 - E008440000121",
-    status: "rented",
-    tenantName: "Steffen Aicher",
-    monthlyRent: 85,
+    status: "vacant",
+    tenantName: "Nicht zugeordnet",
+    monthlyRent: 0,
   },
   {
     key: "p253",
     title: "TG-Stellplatz 2",
     shortLabel: "P253",
     reference: "P253 - E008440000122",
-    status: "rented",
-    tenantName: "Lena Huhn",
-    monthlyRent: 85,
+    status: "vacant",
+    tenantName: "Nicht zugeordnet",
+    monthlyRent: 0,
   },
   {
     key: "p254",
@@ -113,8 +124,8 @@ const ROSENSTEIN_PARKING_UNITS: ParkingUnit[] = [
     shortLabel: "P254",
     reference: "P254 - E008440000123",
     status: "vacant",
-    tenantName: "Leerstand",
-    monthlyRent: 85,
+    tenantName: "Nicht zugeordnet",
+    monthlyRent: 0,
   },
 ];
 
@@ -130,7 +141,11 @@ const EMPTY_DRAFT: WealthDraft = {
   inhabitants: "",
   surroundings: "",
   purchasePrice: "",
+  purchaseDate: "",
   purchaseYear: "",
+  buildingPurchasePrice: "",
+  landPurchasePrice: "",
+  parkingPurchasePrice: "",
   usageType: "",
   unitCount: "",
   totalArea: "",
@@ -278,6 +293,13 @@ const WEALTH_TEMPLATES: WealthTemplate[] = [
       estimatedMarketValue: "530000",
       remainingDebt: "400000",
       currentMonthlyRate: "1690",
+      purchasePrice: "400000",
+      purchaseDate: "2025-02-20",
+      purchaseYear: "2025",
+      buildingPurchasePrice: "340000",
+      landPurchasePrice: "45000",
+      parkingPurchasePrice: "15000",
+      notes: "Kaufpreis-Aufteilung: Gebäude 340.000 EUR, Grund und Boden 45.000 EUR, Stellplatz 15.000 EUR. Erwerbsnebenkosten separat in Buchhaltung dokumentiert.",
     },
   },
   {
@@ -291,8 +313,15 @@ const WEALTH_TEMPLATES: WealthTemplate[] = [
       propertyType: "Tiefgaragestellplätze",
       usageType: "Vermietete TG-Stellplätze",
       unitCount: "3",
+      marketValue: "60000",
+      estimatedMarketValue: "60000",
+      purchasePrice: "57000",
+      purchaseDate: "2025-09-01",
+      purchaseYear: "2025",
+      originalLoanAmount: "60000",
+      remainingDebt: "60000",
       parkingSpaces: "P250 - E008440000121\nP253 - E008440000122\nP254 - E008440000123",
-      notes: "Hauptobjekt für drei separat dokumentierte TG-Stellplätze. P250 und P253 sind vermietet; P254 ist als Leerstand geführt.",
+      notes: "Hauptobjekt für drei separat dokumentierte TG-Stellplätze. Kaufpreis je Stellplatz 19.000 EUR, zusammen 57.000 EUR; Darlehenssumme 60.000 EUR. Erwerbsnebenkosten aus Buchungen 632, 1289 und 1291 werden steuerlich als Anschaffungsnebenkosten dokumentiert und rechnerisch durch 3 geteilt. Der aktuelle Vermietungsstatus wird aus Mieterregister und Leerstandsverwaltung geladen.",
     },
   },
 ];
@@ -314,7 +343,11 @@ const SECTION_FIELDS: Array<{ title: string; description: string; icon: typeof H
       { key: "inhabitants", label: "Anzahl Einwohner im Ort", type: "select", options: ["", "unter 10.000", "10.000 - 50.000", "50.000 - 250.000", "über 250.000"] },
       { key: "surroundings", label: "Umgebung", type: "select", options: ["", "Wohngebiet", "Mischgebiet", "Innenstadt", "Gewerbegebiet", "Randlage"] },
       { key: "purchasePrice", label: "Ursprünglich bezahlter Kaufpreis / Baukosten (€)", type: "number" },
+      { key: "purchaseDate", label: "Kaufdatum", type: "date" },
       { key: "purchaseYear", label: "Jahr des Kaufs / der Fertigstellung", type: "number" },
+      { key: "buildingPurchasePrice", label: "Kaufpreis Anteil Gebäude (€)", type: "number" },
+      { key: "landPurchasePrice", label: "Kaufpreis Anteil Grund/Boden (€)", type: "number" },
+      { key: "parkingPurchasePrice", label: "Kaufpreis Anteil Stellplatz (€)", type: "number" },
     ],
   },
   {
@@ -410,7 +443,7 @@ const DETAIL_TEMPLATE_SECTIONS: Array<{
     columns: [
       { title: "Vorhaben", fields: ["financingReason", "propertyType", "name"] },
       { title: "Adresse und Kontaktdaten", fields: ["street", "houseNumber", "postalCode", "city", "state", "inhabitants", "surroundings"] },
-      { title: "Kostenaufstellung", fields: ["purchasePrice", "purchaseYear"] },
+      { title: "Kostenaufstellung", fields: ["purchasePrice", "purchaseDate", "purchaseYear", "buildingPurchasePrice", "landPurchasePrice", "parkingPurchasePrice"] },
     ],
   },
   {
@@ -472,6 +505,14 @@ function normalize(value: string) {
     .trim();
 }
 
+function compactReference(value: string | null | undefined) {
+  return normalize(String(value ?? "")).replace(/\s+/g, "");
+}
+
+function parkingCode(value: string | null | undefined): string | null {
+  return compactReference(value).match(/p25[034]/)?.[0] ?? null;
+}
+
 function formatCurrency(value: string | number | null | undefined): string {
   const parsed = typeof value === "number" ? value : Number(String(value ?? "").replace(/\./g, "").replace(",", "."));
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(Number.isFinite(parsed) ? parsed : 0);
@@ -492,6 +533,33 @@ function parseAmount(value: string | number | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function formatAmountForDraft(value: number): string {
+  return value > 0 ? value.toFixed(2) : "";
+}
+
+function buildModernizationAutoBlock(summary: RepairCapexSummary): string {
+  if (summary.lines.length === 0) return "";
+  return ["Automatisch aus Reparatur-/Capex-Buchungen:", ...summary.lines].join("\n");
+}
+
+function removeModernizationAutoBlock(value: string): string {
+  return value.replace(/Automatisch aus Reparatur-\/Capex-Buchungen:[\s\S]*$/m, "").trim();
+}
+
+function mergeModernizationDraft(draft: WealthDraft, summary?: RepairCapexSummary): WealthDraft {
+  if (!summary || summary.entries.length === 0) return draft;
+
+  const manualModernizations = removeModernizationAutoBlock(String(draft.modernizations ?? ""));
+  const autoModernizations = buildModernizationAutoBlock(summary);
+
+  return {
+    ...draft,
+    modernizations: [manualModernizations, autoModernizations].filter(Boolean).join("\n\n"),
+    lastModernizationYear: summary.latestYear ? String(summary.latestYear) : draft.lastModernizationYear,
+    modernizationCosts: formatAmountForDraft(summary.totalAmount) || draft.modernizationCosts,
+  };
+}
+
 function toNumber(value: number | string | null | undefined): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -501,6 +569,11 @@ function currentYear() {
   return new Date().getFullYear();
 }
 
+function todayIso() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function safeRatio(value: number, base: number) {
   if (!base) return 0;
   return (value / base) * 100;
@@ -508,6 +581,111 @@ function safeRatio(value: number, base: number) {
 
 function isRosensteinCard(card: WealthCard) {
   return normalize(`${card.draft.name} ${card.row?.property_name ?? ""}`).includes("rosenstein");
+}
+
+function vacancyMatchesWealthCard(vacancy: UnitVacancy, card: WealthCard): boolean {
+  const row = card.row;
+  const vacancyLabel = normalize([vacancy.property_id, vacancy.object_code, vacancy.object_label].filter(Boolean).join(" "));
+  const cardLabel = normalize([card.id, card.draft.name, row?.property_id, row?.portfolio_property_id, row?.property_name].filter(Boolean).join(" "));
+
+  return Boolean(
+    (row?.property_id && vacancy.property_id === row.property_id) ||
+      (row?.portfolio_property_id && vacancy.property_id === row.portfolio_property_id) ||
+      (vacancyLabel && cardLabel && (vacancyLabel.includes(cardLabel) || cardLabel.includes(vacancyLabel))) ||
+      (isRosensteinCard(card) && vacancyLabel.includes("rosenstein")),
+  );
+}
+
+function vacancyMatchesParkingUnit(vacancy: UnitVacancy, card: WealthCard, unit: ParkingUnit): boolean {
+  if (!vacancyMatchesWealthCard(vacancy, card)) return false;
+
+  const vacancyParkingCode = parkingCode([vacancy.unit_label, vacancy.object_code, vacancy.object_label].filter(Boolean).join(" "));
+  const unitParkingCode = parkingCode(`${unit.shortLabel} ${unit.reference}`);
+
+  if (vacancyParkingCode || unitParkingCode) {
+    return Boolean(vacancyParkingCode && unitParkingCode && vacancyParkingCode === unitParkingCode);
+  }
+
+  const vacancyUnit = compactReference(vacancy.unit_label);
+  if (!vacancyUnit) return true;
+
+  const unitLabel = compactReference(`${unit.shortLabel} ${unit.title} ${unit.reference}`);
+  return Boolean(unitLabel && (unitLabel.includes(vacancyUnit) || vacancyUnit.includes(unitLabel)));
+}
+
+function contractMatchesWealthCard(contract: TenantContract, card: WealthCard): boolean {
+  const row = card.row;
+  if (contract.property_id && (contract.property_id === row?.property_id || contract.property_id === row?.portfolio_property_id || contract.property_id === card.id)) return true;
+  const contractLabel = normalize(`${contract.object_code ?? ""} ${contract.unit_label ?? ""}`);
+  const cardLabel = normalize(`${card.draft.name} ${row?.property_name ?? ""}`);
+  return Boolean(contractLabel && cardLabel && contractLabel.includes("rosenstein") && cardLabel.includes("rosenstein"));
+}
+
+function contractMatchesParkingUnit(contract: TenantContract, unit: ParkingUnit): boolean {
+  const contractLabel = compactReference(`${contract.unit_label ?? ""} ${contract.rent_type ?? ""} ${contract.notes ?? ""}`);
+  const unitCodes = [unit.shortLabel, unit.reference, unit.reference.split(" - ")[1] ?? ""]
+    .map(compactReference)
+    .filter(Boolean);
+  return unitCodes.some((code) => contractLabel.includes(code));
+}
+
+function isContractActiveOn(contract: TenantContract, date: string): boolean {
+  if (contract.status === "vacant" || contract.status === "ended") return false;
+  if (contract.start_date && contract.start_date > date) return false;
+  return !contract.end_date || contract.end_date >= date;
+}
+
+function tenantDisplayName(profile: TenantProfileWithContracts): string {
+  return profile.company_name || [profile.first_name, profile.last_name].filter(Boolean).join(" ").trim() || profile.tenant_number || "Mieter nicht benannt";
+}
+
+function contractMonthlyRent(contract: TenantContract): number {
+  const total = toNumber(contract.total_rent);
+  return total > 0 ? total : toNumber(contract.cold_rent) + toNumber(contract.operating_costs);
+}
+
+function buildRosensteinParkingUnits(
+  card: WealthCard,
+  vacancies: UnitVacancy[],
+  tenants: TenantProfileWithContracts[],
+  entries: FinanceEntry[],
+  year: number,
+): ParkingUnit[] {
+  const today = todayIso();
+
+  return ROSENSTEIN_PARKING_UNITS.map((unit) => {
+    const vacancy = vacancies.find(
+      (candidate) =>
+        vacancyMatchesParkingUnit(candidate, card, unit) &&
+        isVacancyEffectivelyActiveInRange(candidate, today, today),
+    );
+
+    const tenantContract = tenants.flatMap((tenant) =>
+      (tenant.tenant_contracts ?? []).map((contract) => ({ tenant, contract })),
+    ).find(({ contract }) =>
+      contractMatchesWealthCard(contract, card) &&
+      contractMatchesParkingUnit(contract, unit) &&
+      isContractActiveOn(contract, today),
+    );
+    const payment = getRosensteinUnitPayment(entries, unit, year);
+
+    if (!vacancy && tenantContract) {
+      return {
+        ...unit,
+        status: "rented",
+        tenantName: tenantDisplayName(tenantContract.tenant),
+        monthlyRent: contractMonthlyRent(tenantContract.contract) || payment.lastAmount,
+      };
+    }
+
+    return {
+      ...unit,
+      status: "vacant",
+      tenantName: vacancy ? "Leerstand" : "Kein aktiver Mietvertrag",
+      monthlyRent: payment.lastAmount,
+      vacancy,
+    };
+  });
 }
 
 function getPropertyImage(name: string): PortfolioGalleryItem | undefined {
@@ -548,7 +726,7 @@ function getRosensteinUnitPayment(entries: FinanceEntry[], unit: ParkingUnit, ye
   const lastEntry = unitEntries
     .filter((entry) => entry.booking_date)
     .sort((left, right) => String(right.booking_date).localeCompare(String(left.booking_date)))[0];
-  return { total, lastBookingDate: lastEntry?.booking_date ?? null };
+  return { total, lastBookingDate: lastEntry?.booking_date ?? null, lastAmount: lastEntry?.amount ?? 0 };
 }
 
 function loadExposes(): Record<string, ExposeInfo> {
@@ -574,6 +752,12 @@ function findTemplate(rowName: string): WealthTemplate | undefined {
   return WEALTH_TEMPLATES.find((template) => template.match.some((term) => normalized.includes(normalize(term))));
 }
 
+function withoutEmptyValues(draft: WealthDraft | undefined): WealthDraft {
+  return Object.fromEntries(
+    Object.entries(draft ?? {}).filter(([, value]) => String(value ?? "").trim() !== ""),
+  ) as WealthDraft;
+}
+
 function mergeDraft(row: PortfolioLoanRow | undefined, template: WealthTemplate, stored: Record<string, WealthDraft>): WealthDraft {
   const legacyId = row?.portfolio_property_id ?? row?.property_id;
   const liveFallback: WealthDraft = row ? { name: template.defaults.name || row.property_name } : {};
@@ -581,8 +765,8 @@ function mergeDraft(row: PortfolioLoanRow | undefined, template: WealthTemplate,
   return {
     ...template.defaults,
     ...liveFallback,
-    ...(legacyId ? (stored[legacyId] ?? {}) : {}),
-    ...(stored[template.key] ?? {}),
+    ...(legacyId ? withoutEmptyValues(stored[legacyId]) : {}),
+    ...withoutEmptyValues(stored[template.key]),
   };
 }
 
@@ -658,6 +842,21 @@ function DetailField({
           className="h-5 w-5 accent-teal-700"
         />
         {field.label}
+      </label>
+    );
+  }
+
+  if (field.key === "modernizations") {
+    return (
+      <label className="grid gap-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+        {field.label}
+        <textarea
+          className={`${commonClass} min-h-36 resize-y leading-6`}
+          value={value}
+          disabled={disabled}
+          placeholder={field.placeholder}
+          onChange={(event) => onChange(event.target.value)}
+        />
       </label>
     );
   }
@@ -855,8 +1054,8 @@ function PropertyEconomicOverview({ finance, year }: { finance: WealthFinance; y
   );
 }
 
-function RosensteinUnitOverview({ entries, year }: { entries: FinanceEntry[]; year: number }) {
-  const units = ROSENSTEIN_PARKING_UNITS.map((unit) => ({
+function RosensteinUnitOverview({ entries, year, parkingUnits }: { entries: FinanceEntry[]; year: number; parkingUnits: ParkingUnit[] }) {
+  const units = parkingUnits.map((unit) => ({
     ...unit,
     payment: getRosensteinUnitPayment(entries, unit, year),
   }));
@@ -915,7 +1114,11 @@ function RosensteinUnitOverview({ entries, year }: { entries: FinanceEntry[]; ye
                 <td className="px-5 py-4 text-sm font-bold text-slate-700">{unit.tenantName}</td>
                 <td className="px-5 py-4 text-sm font-black text-slate-950">
                   {formatCurrencyExact(unit.monthlyRent)}
-                  {unit.status === "vacant" ? <span className="mt-1 block text-xs font-bold text-slate-500">Zielmiete bei Neuvermietung</span> : null}
+                  {unit.status === "vacant" ? (
+                    <span className="mt-1 block text-xs font-bold text-slate-500">
+                      {unit.vacancy?.start_date ? `Leerstand seit ${new Date(`${unit.vacancy.start_date}T00:00:00`).toLocaleDateString("de-DE")}` : "Zielmiete bei Neuvermietung"}
+                    </span>
+                  ) : null}
                 </td>
                 <td className="px-5 py-4 text-sm font-black text-emerald-700">{formatCurrencyExact(unit.payment.total)}</td>
                 <td className="px-5 py-4 text-sm font-bold text-slate-600">{unit.payment.lastBookingDate ? new Date(unit.payment.lastBookingDate).toLocaleDateString("de-DE") : "—"}</td>
@@ -1052,8 +1255,8 @@ function StandardRentInfoPanel({
   );
 }
 
-function RosensteinRentInfoPanel({ entries, year }: { entries: FinanceEntry[]; year: number }) {
-  const units = ROSENSTEIN_PARKING_UNITS.map((unit) => ({
+function RosensteinRentInfoPanel({ entries, year, parkingUnits }: { entries: FinanceEntry[]; year: number; parkingUnits: ParkingUnit[] }) {
+  const units = parkingUnits.map((unit) => ({
     ...unit,
     payment: getRosensteinUnitPayment(entries, unit, year),
   }));
@@ -1087,7 +1290,9 @@ function RosensteinRentInfoPanel({ entries, year }: { entries: FinanceEntry[]; y
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
               <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Mieterinformationen</p>
               <b className="mt-2 block text-sm font-black text-slate-950">{unit.tenantName}</b>
-              <p className="mt-1 text-xs font-bold text-slate-500">Telefon — · E-Mail —</p>
+              <p className="mt-1 text-xs font-bold text-slate-500">
+                {unit.vacancy ? `Leerstand: ${unit.vacancy.start_date}${unit.vacancy.end_date ? ` bis ${unit.vacancy.end_date}` : " bis offen"}` : "Telefon — · E-Mail —"}
+              </p>
             </div>
 
             <div className="mt-3 grid gap-2">
@@ -1124,6 +1329,7 @@ function DetailPage({
   entries,
   year,
   image,
+  parkingUnits,
   uploadedExpose,
   onUpdate,
   onSave,
@@ -1144,6 +1350,7 @@ function DetailPage({
   entries: FinanceEntry[];
   year: number;
   image?: PortfolioGalleryItem;
+  parkingUnits: ParkingUnit[];
   uploadedExpose?: ExposeInfo;
   onUpdate: (id: string, key: string, value: string) => void;
   onSave: (id: string) => void;
@@ -1161,7 +1368,7 @@ function DetailPage({
   const navigate = useNavigate();
   const propertyId = card.row?.property_id ?? card.id;
   const appendValue = (key: string, value: string) => {
-    const current = card.draft[key]?.trim();
+    const current = key === "modernizations" ? removeModernizationAutoBlock(card.draft[key] ?? "") : card.draft[key]?.trim();
     onUpdate(card.id, key, current ? `${current}\n${value}` : value);
   };
   const renderAction = (action?: "parking" | "modernization" | "borrower") => {
@@ -1218,7 +1425,7 @@ function DetailPage({
               </div>
             </article>
             <PropertyEconomicOverview finance={finance} year={year} />
-            {isRosensteinCard(card) ? <RosensteinUnitOverview entries={entries} year={year} /> : null}
+            {isRosensteinCard(card) ? <RosensteinUnitOverview entries={entries} year={year} parkingUnits={parkingUnits} /> : null}
 
             <article className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1249,7 +1456,7 @@ function DetailPage({
             </article>
 
             {isRosensteinCard(card) ? (
-              <RosensteinRentInfoPanel entries={entries} year={year} />
+              <RosensteinRentInfoPanel entries={entries} year={year} parkingUnits={parkingUnits} />
             ) : (
               <StandardRentInfoPanel
                 extra={extra}
@@ -1395,6 +1602,7 @@ export default function ImmobilienVermoegen() {
   const year = currentYear();
   const backendFinance = useBackendFinanceMaster(year);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const capexSyncSignatureRef = useRef("");
   const [storedDrafts, setStoredDrafts] = useState<Record<string, WealthDraft>>(() => loadStoredDrafts());
   const [saveStatus, setSaveStatus] = useState<Record<string, string>>({});
   const [extraInfo, setExtraInfo] = useState<Record<string, PropertyExtraInfo>>({});
@@ -1404,16 +1612,86 @@ export default function ImmobilienVermoegen() {
   const [uploadTarget, setUploadTarget] = useState<string | null>(null);
   const [exposePreview, setExposePreview] = useState<ExposePreview | null>(null);
   const [selectedImage, setSelectedImage] = useState<PortfolioGalleryItem | null>(null);
+  const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
+  const [tenantProfiles, setTenantProfiles] = useState<TenantProfileWithContracts[]>([]);
 
   const cards = useMemo(() => buildCards(appData.portfolioRows, storedDrafts), [appData.portfolioRows, storedDrafts]);
+  const modernizationSummaries = useMemo<ModernizationSummaryByCardId>(() => {
+    return cards.reduce<ModernizationSummaryByCardId>((acc, card) => {
+      const propertyId = card.row?.property_id ?? card.id;
+      const propertyEntries = card.row
+        ? appData.getExpenseEntriesForProperty(propertyId)
+        : appData.entries.filter((entry) => {
+            const entryLabel = getEntryLabel(entry);
+            const cardLabel = normalize(`${card.id} ${card.draft.name} ${card.row?.property_name ?? ""}`);
+            return cardLabel && entryLabel.includes(cardLabel);
+          });
+      acc[card.id] = buildRepairCapexSummary(propertyEntries);
+      return acc;
+    }, {});
+  }, [appData, cards]);
+
+  const cardsWithAutoModernizations = useMemo<WealthCard[]>(() => {
+    return cards.map((card) => ({
+      ...card,
+      draft: mergeModernizationDraft(card.draft, modernizationSummaries[card.id]),
+    }));
+  }, [cards, modernizationSummaries]);
+
   const selectedCard = useMemo(() => {
     if (!params.propertyId) return undefined;
     const routeId = decodeURIComponent(params.propertyId);
-    return cards.find((card) => {
+    return cardsWithAutoModernizations.find((card) => {
       const row = card.row;
       return card.id === routeId || row?.property_id === routeId || row?.portfolio_property_id === routeId;
     });
-  }, [cards, params.propertyId]);
+  }, [cardsWithAutoModernizations, params.propertyId]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const syncItems = cards
+      .flatMap((card) => {
+        const propertyId = card.row?.property_id;
+        const summary = modernizationSummaries[card.id];
+        if (!propertyId || !summary?.entries.length) return [];
+
+        const amountByYear = new Map<number, number>();
+        for (const entry of summary.entries) {
+          const yearForEntry = getEntryYear(entry as FinanceEntry);
+          if (!yearForEntry) continue;
+          amountByYear.set(yearForEntry, (amountByYear.get(yearForEntry) ?? 0) + Math.abs(toNumber(entry.amount)));
+        }
+
+        return Array.from(amountByYear.entries()).map(([capexYear, amount]) => ({
+          propertyId,
+          year: capexYear,
+          amount: Number(amount.toFixed(2)),
+          note: summary.lines.filter((line) => line.startsWith(String(capexYear))).join("\n"),
+        }));
+      })
+      .filter((item) => item.amount > 0);
+
+    const signature = JSON.stringify(syncItems);
+    if (!signature || signature === "[]") return;
+    if (capexSyncSignatureRef.current === signature) return;
+    capexSyncSignatureRef.current = signature;
+
+    void Promise.all(
+      syncItems.map((item) =>
+        yearlyCapexService
+          .upsertByPropertyIdAndYear({
+            propertyId: item.propertyId,
+            year: item.year,
+            amount: item.amount,
+            category: "Capex",
+            note: item.note || "Automatisch aus Reparatur-Buchungen übernommen.",
+          })
+          .catch((error) => {
+            console.warn("Repair-Capex-Sync konnte nicht gespeichert werden", error);
+          }),
+      ),
+    );
+  }, [cards, isAdmin, modernizationSummaries]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1424,6 +1702,48 @@ export default function ImmobilienVermoegen() {
     void loadExtras();
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTenantRows() {
+      try {
+        const rows = await listTenantProfilesWithContracts();
+        if (!cancelled) setTenantProfiles(rows);
+      } catch (error) {
+        console.warn("Mietvertraege fuer Immobilienvermoegen konnten nicht geladen werden", error);
+        if (!cancelled) setTenantProfiles([]);
+      }
+    }
+
+    void loadTenantRows();
+    window.addEventListener("koenen:tenant-changed", loadTenantRows);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("koenen:tenant-changed", loadTenantRows);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadVacancyRows() {
+      try {
+        const rows = await listVacancies();
+        if (!cancelled) setVacancies(rows);
+      } catch (error) {
+        console.warn("Leerstandsstatus fuer Immobilienvermoegen konnte nicht geladen werden", error);
+        if (!cancelled) setVacancies([]);
+      }
+    }
+
+    void loadVacancyRows();
+    window.addEventListener("koenen:vacancy-changed", loadVacancyRows);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("koenen:vacancy-changed", loadVacancyRows);
     };
   }, []);
 
@@ -1578,6 +1898,7 @@ export default function ImmobilienVermoegen() {
     const extra = extraInfo[propertyId] ?? emptyPropertyExtra;
     const finance = getFinanceForCard(selectedCard);
     const image = getPropertyImage(selectedCard.draft.name || selectedCard.row?.property_name || "");
+    const parkingUnits = isRosensteinCard(selectedCard) ? buildRosensteinParkingUnits(selectedCard, vacancies, tenantProfiles, appData.entries, year) : [];
     return (
       <>
         <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleExposeUpload} />
@@ -1588,6 +1909,7 @@ export default function ImmobilienVermoegen() {
           entries={appData.entries}
           year={year}
           image={image}
+          parkingUnits={parkingUnits}
           uploadedExpose={exposes[propertyId]}
           onUpdate={updateDraft}
           onSave={saveDraft}
@@ -1639,7 +1961,14 @@ export default function ImmobilienVermoegen() {
 
       <section className="grid gap-4 md:grid-cols-2">
         {cards.map((card) => {
+          const finance = getFinanceForCard(card);
           const isRosenstein = isRosensteinCard(card);
+          const rosensteinUnits = isRosenstein ? buildRosensteinParkingUnits(card, vacancies, tenantProfiles, appData.entries, year) : [];
+          const rentedCount = rosensteinUnits.filter((unit) => unit.status === "rented").length;
+          const vacantUnits = rosensteinUnits.filter((unit) => unit.status === "vacant");
+          const monthlyTarget = rosensteinUnits
+            .filter((unit) => unit.status === "rented")
+            .reduce((sum, unit) => sum + unit.monthlyRent, 0);
           const image = getPropertyImage(card.draft.name || card.row?.property_name || "");
           return (
             <article
@@ -1664,8 +1993,12 @@ export default function ImmobilienVermoegen() {
                     {isRosenstein ? (
                       <div className="mt-3 flex flex-wrap gap-2">
                         <span className="rounded-full bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-blue-700">3 TG-Stellplätze</span>
-                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-700">2 vermietet</span>
-                        <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600">P254 leer</span>
+                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-700">{rentedCount} vermietet</span>
+                        {vacantUnits.length ? (
+                          <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600">
+                            {vacantUnits.map((unit) => unit.shortLabel).join(", ")} leer
+                          </span>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -1677,15 +2010,15 @@ export default function ImmobilienVermoegen() {
                 <div className="grid gap-2 text-sm">
                   <div className="flex items-center justify-between gap-4">
                     <span className="font-bold text-slate-500">Marktwert</span>
-                    <b>{formatCurrency(card.draft.marketValue || card.draft.estimatedMarketValue)}</b>
+                    <b>{formatCurrencyExact(finance.value)}</b>
                   </div>
                   <div className="flex items-center justify-between gap-4">
                     <span className="font-bold text-slate-500">Restschuld</span>
-                    <b>{formatCurrency(card.draft.remainingDebt)}</b>
+                    <b>{formatCurrencyExact(finance.lastBalance)}</b>
                   </div>
                   <div className="flex items-center justify-between gap-4">
                     <span className="font-bold text-slate-500">{isRosenstein ? "Soll TG mtl." : "mtl. Rate"}</span>
-                    <b>{isRosenstein ? formatCurrencyExact(170) : formatCurrency(card.draft.currentMonthlyRate)}</b>
+                    <b>{isRosenstein ? formatCurrencyExact(monthlyTarget) : formatCurrency(card.draft.currentMonthlyRate)}</b>
                   </div>
                 </div>
 

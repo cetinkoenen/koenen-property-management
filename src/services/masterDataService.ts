@@ -80,7 +80,7 @@ export function cleanMasterDisplayName(value: unknown, fallback = "Objekt"): str
 }
 
 export function toMasterNumber(value: unknown): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "number") return Number.isFinite(value) ? roundMasterCurrency(value) : 0;
   if (value === null || value === undefined) return 0;
   const rawValue = String(value).trim();
   if (!rawValue) return 0;
@@ -90,7 +90,16 @@ export function toMasterNumber(value: unknown): number {
   if (comma >= 0 && dot >= 0) raw = comma > dot ? raw.replace(/\./g, "").replace(",", ".") : raw.replace(/,/g, "");
   else if (comma >= 0) raw = raw.replace(/\./g, "").replace(",", ".");
   const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return Number.isFinite(parsed) ? roundMasterCurrency(parsed) : 0;
+}
+
+function roundMasterCurrency(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function sumMasterCurrency<T>(rows: T[], selector: (row: T) => number): number {
+  return roundMasterCurrency(rows.reduce((sum, row) => sum + selector(row), 0));
 }
 
 export function normalizeMasterText(value: unknown): string {
@@ -197,14 +206,14 @@ export function buildMasterFinanceSnapshots(input: MasterDataInput, year = new D
     const entryRows = input.entries.filter((entry) => matchesAlias(entry.object_id, aliases, names) || matchesAlias(entry.objekt_code, aliases, names));
     const yearEntries = entryRows.filter((entry) => entryYear(entry.booking_date) === year);
     const summaryRows = input.yearlyFinanceSummaries.filter((row) => row.jahr === year && (matchesAlias(row.object_id, aliases, names) || matchesAlias(row.objekt_code, aliases, names)));
-    const incomeFromEntries = yearEntries.filter((entry) => entry.entry_type === "income").reduce((sum, entry) => sum + toMasterNumber(entry.amount), 0);
-    const expensesFromEntries = yearEntries.filter((entry) => entry.entry_type === "expense").reduce((sum, entry) => sum + toMasterNumber(entry.amount), 0);
-    const incomeFromSummary = summaryRows.reduce((sum, row) => sum + toMasterNumber(row.einnahmen), 0);
-    const expensesFromSummary = summaryRows.reduce((sum, row) => sum + toMasterNumber(row.ausgaben), 0);
+    const incomeFromEntries = sumMasterCurrency(yearEntries.filter((entry) => entry.entry_type === "income"), (entry) => toMasterNumber(entry.amount));
+    const expensesFromEntries = sumMasterCurrency(yearEntries.filter((entry) => entry.entry_type === "expense"), (entry) => toMasterNumber(entry.amount));
+    const incomeFromSummary = sumMasterCurrency(summaryRows, (row) => toMasterNumber(row.einnahmen));
+    const expensesFromSummary = sumMasterCurrency(summaryRows, (row) => toMasterNumber(row.ausgaben));
     const income = incomeFromEntries;
     const expenses = expensesFromEntries;
-    const capex = yearEntries.filter(isCapexEntry).reduce((sum, entry) => sum + toMasterNumber(entry.amount), 0);
-    const rentIncome = yearEntries.filter(isRentEntry).reduce((sum, entry) => sum + toMasterNumber(entry.amount), 0);
+    const capex = sumMasterCurrency(yearEntries.filter(isCapexEntry), (entry) => toMasterNumber(entry.amount));
+    const rentIncome = sumMasterCurrency(yearEntries.filter(isRentEntry), (entry) => toMasterNumber(entry.amount));
 
     const portfolio = input.portfolioRows.find((row) => matchesAlias(row.property_id, aliases, names) || matchesAlias(row.portfolio_property_id, aliases, names) || masterNamesMatch(row.property_name, property.propertyName));
     const loan = input.loanRows.find((row) => matchesAlias(row.property_id, aliases, names) || masterNamesMatch(row.property_name, property.propertyName));
@@ -233,10 +242,10 @@ export function buildMasterFinanceSnapshots(input: MasterDataInput, year = new D
       income,
       expenses,
       capex,
-      operatingExpenses: Math.max(0, expenses - capex),
-      netCashflow: income - expenses,
+      operatingExpenses: roundMasterCurrency(Math.max(0, expenses - capex)),
+      netCashflow: roundMasterCurrency(income - expenses),
       rentIncome,
-      latestBalance,
+      latestBalance: latestBalance === null ? null : toMasterNumber(latestBalance),
       latestBalanceYear,
       interestTotal: toMasterNumber(portfolio?.interest_total ?? loan?.interest_total),
       principalTotal: toMasterNumber(portfolio?.principal_total ?? loan?.principal_total),
@@ -314,7 +323,7 @@ export function buildMasterFinanceSnapshotsFromBackend(rows: BackendMasterLikeRo
 }
 
 export function buildMasterTotals(snapshots: MasterFinanceSnapshot[]) {
-  return snapshots.reduce(
+  const totals = snapshots.reduce(
     (totals, row) => ({
       income: totals.income + row.income,
       expenses: totals.expenses + row.expenses,
@@ -326,4 +335,12 @@ export function buildMasterTotals(snapshots: MasterFinanceSnapshot[]) {
     }),
     { income: 0, expenses: 0, capex: 0, netCashflow: 0, latestBalance: 0, warnings: 0, critical: 0 },
   );
+  return {
+    ...totals,
+    income: roundMasterCurrency(totals.income),
+    expenses: roundMasterCurrency(totals.expenses),
+    capex: roundMasterCurrency(totals.capex),
+    netCashflow: roundMasterCurrency(totals.netCashflow),
+    latestBalance: roundMasterCurrency(totals.latestBalance),
+  };
 }

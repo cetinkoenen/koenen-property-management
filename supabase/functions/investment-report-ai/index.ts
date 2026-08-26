@@ -46,6 +46,20 @@ const reportChapters = [
   "Kaufempfehlung und Bankfazit",
 ];
 
+const INVESTMENT_ANALYSIS_BUCKET = "investment-analysis-files";
+const MAX_STORAGE_FILES = 24;
+
+function isStorageFileForUser(file: StorageFilePayload, userId: string) {
+  const path = String(file.path ?? "");
+  return (
+    file.bucket === INVESTMENT_ANALYSIS_BUCKET &&
+    path.startsWith(`${userId}/`) &&
+    !path.includes("..") &&
+    !path.includes("//") &&
+    path.length <= 512
+  );
+}
+
 const reportSchema = {
   type: "object",
   additionalProperties: false,
@@ -313,6 +327,12 @@ Deno.serve(async (req) => {
   const storageFiles: StorageFilePayload[] = Array.isArray(payload.storageFiles) ? payload.storageFiles : [];
   if (!storageFiles.length) {
     return jsonResponse(req, { error: "Keine Unterlagen übertragen." }, 400);
+  }
+  if (storageFiles.length > MAX_STORAGE_FILES) {
+    return jsonResponse(req, { error: `Maximal ${MAX_STORAGE_FILES} Unterlagen pro Analyse erlaubt.` }, 400);
+  }
+  if (!storageFiles.every((file) => isStorageFileForUser(file, user.id))) {
+    return jsonResponse(req, { error: "Unterlagenpfad ist nicht fuer diesen Nutzer freigegeben." }, 403);
   }
 
   const cleanupTargets = storageFiles.reduce<Record<string, string[]>>((groups, file) => {

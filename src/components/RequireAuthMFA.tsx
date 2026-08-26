@@ -4,6 +4,7 @@ import { Navigate, useLocation, type Location } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { isReadonlyApprovalEmail } from "../auth/accessControl";
+import { safeInternalPath } from "../lib/navigation";
 
 type Props = { children: ReactNode };
 type AAL = "aal1" | "aal2" | null;
@@ -68,12 +69,12 @@ function getFrom(location: Location): string {
   const raw = state?.from;
 
   // if previous code set from as string
-  if (typeof raw === "string" && raw.startsWith("/")) return raw;
+  if (typeof raw === "string") return safeInternalPath(raw, "/dashboard");
 
   // if previous code set from as { pathname: ... }
   if (typeof raw === "object" && raw !== null) {
     const p = raw.pathname;
-    if (typeof p === "string" && p.startsWith("/")) return p;
+    if (typeof p === "string") return safeInternalPath(p, "/dashboard");
   }
 
   return "/dashboard";

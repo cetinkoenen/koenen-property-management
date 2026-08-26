@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { inferNkRelevant } from "../lib/nkClassification";
 
 export type NkRelevantEntry = {
   id: number;
@@ -10,104 +11,6 @@ export type NkRelevantEntry = {
   entry_type: "income" | "expense";
   nk_relevant: boolean | null;
 };
-
-const NK_EXPENSE_WORDS = [
-  "grundsteuer",
-  "wasser",
-  "wasserversorgung",
-  "abwasser",
-  "entwaesserung",
-  "entwässerung",
-  "kanal",
-  "heizung",
-  "warmwasser",
-  "brennstoff",
-  "wartung heizung",
-  "aufzug",
-  "strassenreinigung",
-  "straßenreinigung",
-  "winterdienst",
-  "muell",
-  "müll",
-  "reinigung",
-  "gebaeudereinigung",
-  "gebäudereinigung",
-  "garten",
-  "gartenpflege",
-  "beleuchtung",
-  "hausstrom",
-  "allgemeinstrom",
-  "schornstein",
-  "versicherung",
-  "gebaeudeversicherung",
-  "gebäudeversicherung",
-  "haftpflicht",
-  "glas",
-  "hauswart",
-  "hausmeister",
-  "kabel",
-  "antenne",
-  "wascheinrichtung",
-  "rauchwarn",
-  "dachrinnenreinigung",
-  "betriebskosten",
-  "nebenkosten",
-  "kalo",
-  "techem",
-];
-
-const NK_INCOME_WORDS = [
-  "nebenkosten",
-  "betriebskosten",
-  "vorauszahlung",
-  "abschlag",
-  "nk",
-  "erstattung",
-  "guthaben",
-  "rueckzahlung",
-  "rückzahlung",
-];
-
-const NK_EXCLUDE_WORDS = [
-  "ruecklage",
-  "rücklage",
-  "instandhaltungsruecklage",
-  "instandhaltungsrücklage",
-  "erhaltungsruecklage",
-  "erhaltungsrücklage",
-  "reparatur",
-  "instandsetzung",
-  "sanierung",
-  "modernisierung",
-  "verwaltung",
-  "verwalter",
-  "bankgebuehr",
-  "bankgebühr",
-  "porto",
-  "tilgung",
-];
-
-function normalize(value: string | null | undefined): string {
-  return String(value ?? "")
-    .toLowerCase()
-    .replaceAll("ß", "ss")
-    .replace(/[ä]/g, "ae")
-    .replace(/[ö]/g, "oe")
-    .replace(/[ü]/g, "ue")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function hasAny(text: string, words: string[]): boolean {
-  return words.some((word) => text.includes(normalize(word)));
-}
-
-export function inferNkRelevant(entry: Pick<NkRelevantEntry, "entry_type" | "category" | "note">): boolean {
-  const text = normalize(`${entry.category ?? ""} ${entry.note ?? ""}`);
-  if (!text) return false;
-  if (hasAny(text, NK_EXCLUDE_WORDS)) return false;
-  return entry.entry_type === "income" ? hasAny(text, NK_INCOME_WORDS) : hasAny(text, NK_EXPENSE_WORDS);
-}
 
 export async function listNkRelevantEntries(year: number, objektCode?: string | null): Promise<NkRelevantEntry[]> {
   const from = `${year}-01-01`;
@@ -157,11 +60,22 @@ export async function classifyNkRelevantEntries(from = "2024-01-01", to = "2026-
     entry_type: row.entry_type === "expense" ? "expense" : "income",
     nk_relevant: row.nk_relevant === true,
   }));
-  const ids = rows.filter((row) => inferNkRelevant(row)).map((row) => row.id);
-  if (!ids.length) return { updated: 0, matched: 0 };
+  const mismatches = rows
+    .map((row) => ({ id: row.id, recommended: inferNkRelevant(row), current: row.nk_relevant === true }))
+    .filter((row) => row.recommended !== row.current);
+  const idsToSet = mismatches.filter((row) => row.recommended).map((row) => row.id);
+  const idsToUnset = mismatches.filter((row) => !row.recommended).map((row) => row.id);
+  if (!mismatches.length) return { updated: 0, matched: rows.filter((row) => inferNkRelevant(row)).length };
 
-  const { error: updateError } = await supabase.from("finance_entry").update({ nk_relevant: true }).in("id", ids);
-  if (updateError) throw updateError;
+  if (idsToSet.length > 0) {
+    const { error: updateError } = await supabase.from("finance_entry").update({ nk_relevant: true }).in("id", idsToSet);
+    if (updateError) throw updateError;
+  }
 
-  return { updated: ids.length, matched: ids.length };
+  if (idsToUnset.length > 0) {
+    const { error: updateError } = await supabase.from("finance_entry").update({ nk_relevant: false }).in("id", idsToUnset);
+    if (updateError) throw updateError;
+  }
+
+  return { updated: mismatches.length, matched: rows.filter((row) => inferNkRelevant(row)).length };
 }

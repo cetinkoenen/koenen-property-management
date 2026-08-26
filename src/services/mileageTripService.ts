@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabaseClient";
+import { calculateTravelTax, TRAVEL_RATE_EUR, type TravelTransportMode } from "../lib/travelTax";
 import { parseLocaleNumber } from "../utils/numberParser";
 
 export const MILEAGE_TRIP_REASONS = [
@@ -25,6 +26,15 @@ export type MileageTripRow = {
   zieladresse: string;
   distanz_km: number;
   hin_und_rueckfahrt: boolean;
+  verkehrsmittel: TravelTransportMode;
+  ticketpreis_brutto: number;
+  mehrtaegige_reise: boolean;
+  hotelkosten_brutto: number;
+  anzahl_uebernachtungen: number;
+  fruehstueck_inklusive: boolean;
+  vma_betrag: number;
+  fahrtkosten_betrag: number;
+  reisekosten_betrag: number;
   berechneter_betrag: number;
   beleg_url: string | null;
   steuerjahr: number;
@@ -45,6 +55,12 @@ export type MileageTripInput = {
   zieladresse: string;
   distanz_km: number | string;
   hin_und_rueckfahrt: boolean;
+  verkehrsmittel?: TravelTransportMode;
+  ticketpreis_brutto?: number | string | null;
+  mehrtaegige_reise?: boolean;
+  hotelkosten_brutto?: number | string | null;
+  anzahl_uebernachtungen?: number | string | null;
+  fruehstueck_inklusive?: boolean;
   beleg_url?: string | null;
 };
 
@@ -55,7 +71,7 @@ export type MileageTripFilters = {
 };
 
 export const MILEAGE_RECEIPT_BUCKET = "property-mileage-receipts";
-export const MILEAGE_RATE_EUR = 0.3;
+export const MILEAGE_RATE_EUR = TRAVEL_RATE_EUR;
 
 function toNumber(value: unknown, fallback = 0) {
   return parseLocaleNumber(value, fallback);
@@ -76,6 +92,15 @@ function normalizeRow(row: Record<string, unknown>): MileageTripRow {
     zieladresse: String(row.zieladresse ?? ""),
     distanz_km: toNumber(row.distanz_km),
     hin_und_rueckfahrt: row.hin_und_rueckfahrt !== false,
+    verkehrsmittel: row.verkehrsmittel === "public_transport" ? "public_transport" : "car",
+    ticketpreis_brutto: toNumber(row.ticketpreis_brutto),
+    mehrtaegige_reise: row.mehrtaegige_reise === true,
+    hotelkosten_brutto: toNumber(row.hotelkosten_brutto),
+    anzahl_uebernachtungen: Math.max(0, Math.round(toNumber(row.anzahl_uebernachtungen))),
+    fruehstueck_inklusive: row.fruehstueck_inklusive === true,
+    vma_betrag: toNumber(row.vma_betrag),
+    fahrtkosten_betrag: toNumber(row.fahrtkosten_betrag),
+    reisekosten_betrag: toNumber(row.reisekosten_betrag),
     berechneter_betrag: toNumber(row.berechneter_betrag),
     beleg_url: row.beleg_url ? String(row.beleg_url) : null,
     steuerjahr: Number(row.steuerjahr ?? 0),
@@ -95,8 +120,20 @@ function sanitizeFileName(fileName: string) {
 }
 
 export function calculateMileageAmount(distanceKm: number | string, roundTrip: boolean) {
-  const distance = Math.max(0, toNumber(distanceKm));
-  return Math.round(distance * (roundTrip ? 2 : 1) * MILEAGE_RATE_EUR * 100) / 100;
+  return calculateTravelTax({ transportMode: "car", distanceKm, roundTrip }).travelCosts;
+}
+
+export function calculateMileageTripAmount(input: Pick<MileageTripInput, "verkehrsmittel" | "distanz_km" | "hin_und_rueckfahrt" | "ticketpreis_brutto" | "mehrtaegige_reise" | "hotelkosten_brutto" | "anzahl_uebernachtungen" | "fruehstueck_inklusive">) {
+  return calculateTravelTax({
+    transportMode: input.verkehrsmittel ?? "car",
+    distanceKm: input.distanz_km,
+    roundTrip: input.hin_und_rueckfahrt,
+    ticketGross: input.ticketpreis_brutto,
+    multiDay: input.mehrtaegige_reise,
+    hotelGross: input.hotelkosten_brutto,
+    overnightCount: input.anzahl_uebernachtungen,
+    breakfastIncluded: input.fruehstueck_inklusive,
+  });
 }
 
 export function extractMileageTaxYear(date: string) {
@@ -122,6 +159,7 @@ export async function listMileageTrips(filters: MileageTripFilters = {}): Promis
 
 export async function saveMileageTrip(input: MileageTripInput): Promise<MileageTripRow> {
   const distance = Math.max(0, toNumber(input.distanz_km));
+  const breakdown = calculateMileageTripAmount(input);
   const payload = {
     property_id: input.property_id || null,
     portfolio_property_id: input.portfolio_property_id ?? null,
@@ -134,6 +172,15 @@ export async function saveMileageTrip(input: MileageTripInput): Promise<MileageT
     zieladresse: input.zieladresse.trim(),
     distanz_km: distance,
     hin_und_rueckfahrt: input.hin_und_rueckfahrt,
+    verkehrsmittel: input.verkehrsmittel ?? "car",
+    ticketpreis_brutto: breakdown.ticketCosts,
+    mehrtaegige_reise: input.mehrtaegige_reise === true,
+    hotelkosten_brutto: breakdown.hotelCosts,
+    anzahl_uebernachtungen: breakdown.overnightCount,
+    fruehstueck_inklusive: input.fruehstueck_inklusive === true,
+    vma_betrag: breakdown.vmaAmount,
+    fahrtkosten_betrag: breakdown.travelCosts,
+    reisekosten_betrag: breakdown.totalAmount,
     beleg_url: input.beleg_url?.trim() || null,
   };
 

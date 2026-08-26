@@ -5,7 +5,7 @@ import { isAdminEmail } from "@/auth/accessControl";
 import { useAuth } from "@/auth/AuthProvider";
 import { useAppData } from "@/state/AppDataContext";
 import {
-  calculateMileageAmount,
+  calculateMileageTripAmount,
   deleteMileageTrip,
   MILEAGE_TRIP_REASONS,
   openMileageReceipt,
@@ -14,6 +14,7 @@ import {
   type MileageTripReason,
   type MileageTripRow,
 } from "@/services/mileageTripService";
+import type { TravelTransportMode } from "@/lib/travelTax";
 import { parseLocaleNumber } from "@/utils/numberParser";
 
 type TripScope = "property" | "investment";
@@ -31,6 +32,12 @@ type TripForm = {
   zieladresse: string;
   distanz_km: string;
   hin_und_rueckfahrt: boolean;
+  verkehrsmittel: TravelTransportMode;
+  ticketpreis_brutto: string;
+  mehrtaegige_reise: boolean;
+  hotelkosten_brutto: string;
+  anzahl_uebernachtungen: string;
+  fruehstueck_inklusive: boolean;
   beleg_url: string;
 };
 
@@ -46,6 +53,12 @@ const emptyForm = (): TripForm => ({
   zieladresse: "",
   distanz_km: "",
   hin_und_rueckfahrt: true,
+  verkehrsmittel: "car",
+  ticketpreis_brutto: "",
+  mehrtaegige_reise: false,
+  hotelkosten_brutto: "",
+  anzahl_uebernachtungen: "1",
+  fruehstueck_inklusive: false,
   beleg_url: "",
 });
 
@@ -98,7 +111,16 @@ export default function Fahrtenbuch() {
   }, [appData.portfolioRows]);
 
   const selectedProperty = propertyOptions.find((property) => property.property_id === form.property_id);
-  const calculatedAmount = calculateMileageAmount(form.distanz_km, form.hin_und_rueckfahrt);
+  const travelBreakdown = calculateMileageTripAmount({
+    verkehrsmittel: form.verkehrsmittel,
+    distanz_km: form.distanz_km,
+    hin_und_rueckfahrt: form.hin_und_rueckfahrt,
+    ticketpreis_brutto: form.ticketpreis_brutto,
+    mehrtaegige_reise: form.mehrtaegige_reise,
+    hotelkosten_brutto: form.hotelkosten_brutto,
+    anzahl_uebernachtungen: form.anzahl_uebernachtungen,
+    fruehstueck_inklusive: form.fruehstueck_inklusive,
+  });
 
   const loadTrips = useCallback(async () => {
     setLoading(true);
@@ -136,10 +158,13 @@ export default function Fahrtenbuch() {
     return filteredTrips.reduce(
       (acc, trip) => {
         acc.amount += trip.berechneter_betrag;
-        acc.km += trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1);
+        acc.travel += trip.fahrtkosten_betrag || trip.berechneter_betrag;
+        acc.vma += trip.vma_betrag || 0;
+        acc.hotel += trip.hotelkosten_brutto || 0;
+        acc.km += trip.verkehrsmittel === "car" ? trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1) : 0;
         return acc;
       },
-      { amount: 0, km: 0 },
+      { amount: 0, travel: 0, vma: 0, hotel: 0, km: 0 },
     );
   }, [filteredTrips]);
 
@@ -172,6 +197,12 @@ export default function Fahrtenbuch() {
       zieladresse: trip.zieladresse,
       distanz_km: String(trip.distanz_km).replace(".", ","),
       hin_und_rueckfahrt: trip.hin_und_rueckfahrt,
+      verkehrsmittel: trip.verkehrsmittel,
+      ticketpreis_brutto: String(trip.ticketpreis_brutto || "").replace(".", ","),
+      mehrtaegige_reise: trip.mehrtaegige_reise,
+      hotelkosten_brutto: String(trip.hotelkosten_brutto || "").replace(".", ","),
+      anzahl_uebernachtungen: String(trip.anzahl_uebernachtungen || 1),
+      fruehstueck_inklusive: trip.fruehstueck_inklusive,
       beleg_url: trip.beleg_url ?? "",
     });
     setReceiptFile(null);
@@ -190,8 +221,16 @@ export default function Fahrtenbuch() {
     const distance = parseLocaleNumber(form.distanz_km, 0);
     const propertyLabel = form.trip_scope === "investment" ? form.property_label.trim() : selectedProperty?.label ?? form.property_label.trim();
     const destination = form.trip_scope === "investment" ? form.zieladresse.trim() || form.investment_address.trim() : form.zieladresse.trim();
-    if (!form.datum || !propertyLabel || !form.start_adresse.trim() || !destination || distance <= 0) {
-      setStatus("Bitte Datum, Objekt/Investment, Start, Ziel und Distanz vollständig erfassen.");
+    if (!form.datum || !propertyLabel || !form.start_adresse.trim() || !destination) {
+      setStatus("Bitte Datum, Objekt/Investment, Start und Ziel vollständig erfassen.");
+      return;
+    }
+    if (form.verkehrsmittel === "car" && distance <= 0) {
+      setStatus("Bitte bei eigenem Auto eine Distanz größer als 0 erfassen.");
+      return;
+    }
+    if (form.verkehrsmittel === "public_transport" && parseLocaleNumber(form.ticketpreis_brutto, 0) <= 0) {
+      setStatus("Bitte bei Bahn/ÖPNV einen Ticketpreis größer als 0 erfassen.");
       return;
     }
 
@@ -214,6 +253,12 @@ export default function Fahrtenbuch() {
         zieladresse: destination,
         distanz_km: distance,
         hin_und_rueckfahrt: form.hin_und_rueckfahrt,
+        verkehrsmittel: form.verkehrsmittel,
+        ticketpreis_brutto: form.ticketpreis_brutto,
+        mehrtaegige_reise: form.mehrtaegige_reise,
+        hotelkosten_brutto: form.hotelkosten_brutto,
+        anzahl_uebernachtungen: form.anzahl_uebernachtungen,
+        fruehstueck_inklusive: form.fruehstueck_inklusive,
         beleg_url: receiptPath,
       });
       resetForm();
@@ -322,16 +367,50 @@ export default function Fahrtenbuch() {
               </select>
             </label>
 
-            <label className="grid min-w-0 gap-1 text-xs font-black text-slate-700 lg:col-span-2">
-              Start-Adresse
-              <input value={form.start_adresse} disabled={!isAdmin} onChange={(event) => update("start_adresse", event.target.value)} placeholder="z. B. Zuhause / Büro" className="min-h-10 min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold" />
-            </label>
-            <label className="grid min-w-0 gap-1 text-xs font-black text-slate-700 lg:col-span-2">
-              Ziel-Adresse
-              <input value={form.zieladresse} disabled={!isAdmin} onChange={(event) => update("zieladresse", event.target.value)} placeholder="Objektadresse / Terminort" className="min-h-10 min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold" />
+            <div className="grid min-w-0 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 lg:col-span-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">Route</p>
+                <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.1em] text-slate-500 shadow-sm">Start → Ziel</span>
+              </div>
+              <div className="grid min-w-0 gap-3 md:grid-cols-2">
+                <label className="grid min-w-0 gap-1 text-xs font-black text-slate-700">
+                  Start-Adresse
+                  <input value={form.start_adresse} disabled={!isAdmin} onChange={(event) => update("start_adresse", event.target.value)} placeholder="z. B. Zuhause / Büro" className="min-h-10 min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold" />
+                </label>
+                <label className="grid min-w-0 gap-1 text-xs font-black text-slate-700">
+                  Ziel-Adresse
+                  <input value={form.zieladresse} disabled={!isAdmin} onChange={(event) => update("zieladresse", event.target.value)} placeholder="Objektadresse / Terminort" className="min-h-10 min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold" />
+                </label>
+              </div>
+            </div>
+
+            <label className="grid min-w-0 gap-1 text-xs font-black text-slate-700">
+              Verkehrsmittel
+              <select
+                value={form.verkehrsmittel}
+                disabled={!isAdmin}
+                onChange={(event) => update("verkehrsmittel", event.target.value as TravelTransportMode)}
+                className="min-h-10 min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold"
+              >
+                <option value="car">Eigenes Auto</option>
+                <option value="public_transport">Bahn/ÖPNV</option>
+              </select>
             </label>
 
-            <div className="grid min-w-0 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+            {form.verkehrsmittel === "public_transport" ? (
+              <label className="grid min-w-0 gap-1 text-xs font-black text-slate-700">
+                Ticketpreis brutto
+                <input
+                  inputMode="decimal"
+                  value={form.ticketpreis_brutto}
+                  disabled={!isAdmin}
+                  onChange={(event) => update("ticketpreis_brutto", event.target.value)}
+                  placeholder="z. B. 49,00"
+                  className="min-h-10 min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold"
+                />
+              </label>
+            ) : (
+              <div className="grid min-w-0 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
               <label className="grid min-w-0 gap-1 text-xs font-black text-slate-700">
                 Einfache Strecke in km
                 <input inputMode="decimal" value={form.distanz_km} disabled={!isAdmin} onChange={(event) => update("distanz_km", event.target.value)} placeholder="z. B. 24,5" className="min-h-10 min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold" />
@@ -340,6 +419,56 @@ export default function Fahrtenbuch() {
                 <input type="checkbox" checked={form.hin_und_rueckfahrt} disabled={!isAdmin} onChange={(event) => update("hin_und_rueckfahrt", event.target.checked)} className="h-4 w-4" />
                 Hin/Rück
               </label>
+            </div>
+            )}
+
+            <div className="grid min-w-0 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 lg:col-span-2">
+              <label className="inline-flex items-center gap-2 text-sm font-black text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={form.mehrtaegige_reise}
+                  disabled={!isAdmin}
+                  onChange={(event) => update("mehrtaegige_reise", event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Mehrtägige Reise mit Übernachtung?
+              </label>
+              {form.mehrtaegige_reise ? (
+                <div className="grid min-w-0 gap-3 sm:grid-cols-3">
+                  <label className="grid min-w-0 gap-1 text-xs font-black text-slate-700">
+                    Hotelkosten brutto
+                    <input
+                      inputMode="decimal"
+                      value={form.hotelkosten_brutto}
+                      disabled={!isAdmin}
+                      onChange={(event) => update("hotelkosten_brutto", event.target.value)}
+                      placeholder="z. B. 120,00"
+                      className="min-h-10 min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold"
+                    />
+                  </label>
+                  <label className="grid min-w-0 gap-1 text-xs font-black text-slate-700">
+                    Übernachtungen
+                    <input
+                      type="number"
+                      min={1}
+                      value={form.anzahl_uebernachtungen}
+                      disabled={!isAdmin}
+                      onChange={(event) => update("anzahl_uebernachtungen", event.target.value)}
+                      className="min-h-10 min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold"
+                    />
+                  </label>
+                  <label className="inline-flex min-h-10 items-center gap-2 self-end rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={form.fruehstueck_inklusive}
+                      disabled={!isAdmin}
+                      onChange={(event) => update("fruehstueck_inklusive", event.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Frühstück inklusive
+                  </label>
+                </div>
+              ) : null}
             </div>
 
             <label className="grid min-w-0 gap-1 text-xs font-black text-slate-700 lg:col-span-2">
@@ -352,8 +481,12 @@ export default function Fahrtenbuch() {
 
             <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 lg:col-span-1">
               <p className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-700">Automatisch berechnet</p>
-              <p className="mt-1 text-xl font-black text-blue-950">{eur(calculatedAmount)}</p>
-              <p className="mt-1 text-[11px] font-bold text-blue-700">einfache km x {form.hin_und_rueckfahrt ? "2 x" : ""} 0,30 EUR</p>
+              <p className="mt-1 text-xl font-black text-blue-950">{eur(travelBreakdown.totalAmount)}</p>
+              <div className="mt-2 grid gap-1 text-[11px] font-bold leading-4 text-blue-800">
+                <span>{form.verkehrsmittel === "car" ? "Fahrtkosten" : "Ticket"}: {eur(travelBreakdown.travelCosts)}</span>
+                <span>VMA: {eur(travelBreakdown.vmaAmount)}</span>
+                <span>Hotel: {eur(travelBreakdown.hotelCosts)}</span>
+              </div>
             </div>
 
             <button type="submit" disabled={!isAdmin || saving} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl bg-[#255f6f] px-4 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 lg:col-span-1 lg:self-end">
@@ -407,8 +540,8 @@ export default function Fahrtenbuch() {
                   <th className="w-[150px] px-2 py-3">Objekt / Investment</th>
                   <th className="w-[155px] px-2 py-3">Grund</th>
                   <th className="px-2 py-3">Strecke</th>
-                  <th className="w-[76px] px-2 py-3">km</th>
-                  <th className="w-[88px] px-2 py-3">Betrag</th>
+                  <th className="w-[92px] px-2 py-3">km / Typ</th>
+                  <th className="w-[112px] px-2 py-3">Betrag</th>
                   <th className="w-[54px] px-2 py-3">Beleg</th>
                   <th className="w-[82px] px-2 py-3 text-right">Aktion</th>
                 </tr>
@@ -428,10 +561,17 @@ export default function Fahrtenbuch() {
                       <span className="block">→ {trip.zieladresse}</span>
                     </td>
                     <td className="px-2 py-3 font-bold leading-5 text-slate-700">
-                      {(trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1)).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      <span className="block text-[11px] text-slate-500">{trip.hin_und_rueckfahrt ? "Hin/Rück" : "Einfach"}</span>
+                      {trip.verkehrsmittel === "public_transport"
+                        ? "Bahn/ÖPNV"
+                        : (trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1)).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <span className="block text-[11px] text-slate-500">{trip.verkehrsmittel === "public_transport" ? "Ticket" : trip.hin_und_rueckfahrt ? "Hin/Rück" : "Einfach"}</span>
                     </td>
-                    <td className="px-2 py-3 font-extrabold text-emerald-700">{eur(trip.berechneter_betrag)}</td>
+                    <td className="px-2 py-3">
+                      <strong className="block font-extrabold text-emerald-700">{eur(trip.berechneter_betrag)}</strong>
+                      <span className="mt-1 block text-[10px] font-bold leading-4 text-slate-500">
+                        Fahrt {eur(trip.fahrtkosten_betrag || trip.berechneter_betrag)} · VMA {eur(trip.vma_betrag || 0)} · Hotel {eur(trip.hotelkosten_brutto || 0)}
+                      </span>
+                    </td>
                     <td className="px-2 py-3">
                       {trip.beleg_url ? (
                         <button type="button" onClick={() => void openMileageReceipt(trip.beleg_url ?? "")} aria-label="Beleg öffnen" title="Beleg öffnen" className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700">
@@ -498,13 +638,18 @@ export default function Fahrtenbuch() {
                   <div className="rounded-xl bg-white px-3 py-2">
                     <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">km</p>
                     <p className="text-sm font-black text-slate-900">
-                      {(trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1)).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {trip.verkehrsmittel === "public_transport"
+                        ? "Bahn/ÖPNV"
+                        : (trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1)).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
-                    <p className="text-xs font-bold text-slate-500">{trip.hin_und_rueckfahrt ? "Hin/Rück" : "Einfach"}</p>
+                    <p className="text-xs font-bold text-slate-500">{trip.verkehrsmittel === "public_transport" ? "Ticket" : trip.hin_und_rueckfahrt ? "Hin/Rück" : "Einfach"}</p>
                   </div>
                   <div className="rounded-xl bg-white px-3 py-2">
                     <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">Betrag</p>
                     <p className="text-sm font-black text-emerald-700">{eur(trip.berechneter_betrag)}</p>
+                    <p className="mt-1 text-[11px] font-bold leading-4 text-slate-500">
+                      Fahrt {eur(trip.fahrtkosten_betrag || trip.berechneter_betrag)} · VMA {eur(trip.vma_betrag || 0)} · Hotel {eur(trip.hotelkosten_brutto || 0)}
+                    </p>
                   </div>
                 </div>
 

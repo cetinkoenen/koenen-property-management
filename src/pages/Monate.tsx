@@ -3,7 +3,21 @@ import { supabase } from "../lib/supabase";
 import { clearAppDataCache } from "../lib/appCache";
 import { canonicalizeFinanceCategory, getFinanceCategoryOptions } from "../lib/financeCategories";
 import { displayFinanceCategory } from "../lib/financeEntryLabels";
+import { NK_ABRECHNUNG_LABEL, buildNkMismatchMessage, classifyNkRelevance } from "../lib/nkClassification";
+import { isRepairCapexEntry } from "../lib/repairCapex";
 import { classifyTaxRelevance } from "../lib/taxClassification";
+import {
+  PORTFOLIO_GENERAL_LABEL,
+  PORTFOLIO_GENERAL_OBJECT_CODE,
+  PORTFOLIO_GENERAL_OBJECT_ID,
+  isPortfolioGeneralReference,
+} from "../lib/portfolioExpense";
+import {
+  buildTelecommunicationNote,
+  calculateTelecommunicationTax,
+  isTelecommunicationCategory,
+  parseTelecommunicationTaxDetails,
+} from "../lib/telecommunicationTax";
 import { emitFinanceEntryChanged } from "../state/AppDataContext";
 
 type EntryType = "income" | "expense";
@@ -13,6 +27,7 @@ type PeriodMode = "month" | "year";
 
 type EntryRow = {
   id: number;
+  object_id: string | null;
   objekt_code: string | null;
   booking_date: string;
   amount: number;
@@ -24,8 +39,19 @@ type EntryRow = {
 };
 
 type DropdownRow = {
+  value: string;
   objekt_code: string;
   label: string;
+  object_id?: string | null;
+  property_id?: string | null;
+};
+
+type ObjectDropdownResponse = {
+  value: string | null;
+  objekt_code: string | null;
+  label: string | null;
+  object_id?: string | null;
+  property_id?: string | null;
 };
 
 type SortKey = "booking_date" | "objekt_code" | "entry_type" | "category" | "amount";
@@ -93,6 +119,18 @@ function parseNumberInput(raw: string): number {
 
 function taxRuleForRow(row: EntryRow, objectLabel?: string | null) {
   return classifyTaxRelevance(row, objectLabel);
+}
+
+function nkRuleForRow(row: Pick<EntryRow, "entry_type" | "category" | "note">) {
+  return classifyNkRelevance(row);
+}
+
+function getCategoryFilterValues(row: EntryRow, objectLabel?: string | null): string[] {
+  const canonical = canonicalizeFinanceCategory(row.category, row.entry_type);
+  const display = displayFinanceCategory(row, objectLabel);
+  const values = [display, canonical, row.category ?? ""].filter(Boolean);
+  if (isRepairCapexEntry(row)) values.push("Capex", "Reparatur");
+  return Array.from(new Set(values));
 }
 
 function effectiveTaxRelevant(row: EntryRow, objectLabel?: string | null): boolean {
@@ -331,6 +369,10 @@ export default function Monate() {
   const [editNote, setEditNote] = useState("");
   const [editTaxRelevant, setEditTaxRelevant] = useState<boolean>(false);
   const [editNkRelevant, setEditNkRelevant] = useState<boolean>(false);
+  const [editObjectValue, setEditObjectValue] = useState("");
+  const [editTelecomSpouseA, setEditTelecomSpouseA] = useState("");
+  const [editTelecomSpouseB, setEditTelecomSpouseB] = useState("");
+  const [editTelecomLandlineInternet, setEditTelecomLandlineInternet] = useState("");
 
   const [editCategoryMode, setEditCategoryMode] = useState<"existing" | "new">("existing");
   const [editCategorySelect, setEditCategorySelect] = useState("");
@@ -343,7 +385,7 @@ export default function Monate() {
       try {
         const { data, error } = await supabase
           .from("v_object_dropdown")
-          .select("objekt_code,label")
+          .select("value,objekt_code,label,object_id,property_id")
           .order("label", { ascending: true });
 
         if (!alive) return;
@@ -354,9 +396,27 @@ export default function Monate() {
           return;
         }
 
-        const list = ((data ?? []).filter(
-          (x: any) => x?.objekt_code && x?.label
-        ) as DropdownRow[]).sort((a, b) => a.label.localeCompare(b.label, "de"));
+        const dbObjects = ((data ?? []) as ObjectDropdownResponse[])
+          .filter((x) => (x.object_id || x.value) && x.objekt_code && x.label)
+          .map((x) => ({
+            value: String(x.object_id ?? x.value),
+            objekt_code: String(x.objekt_code),
+            label: String(x.label),
+            object_id: x.object_id == null ? null : String(x.object_id),
+            property_id: x.property_id == null ? null : String(x.property_id),
+          }))
+          .sort((a, b) => a.label.localeCompare(b.label, "de"));
+
+        const list: DropdownRow[] = [
+          {
+            value: PORTFOLIO_GENERAL_OBJECT_ID,
+            objekt_code: PORTFOLIO_GENERAL_OBJECT_CODE,
+            label: PORTFOLIO_GENERAL_LABEL,
+            object_id: null,
+            property_id: null,
+          },
+          ...dbObjects,
+        ];
 
         setObjects(list);
       } catch (e) {
@@ -375,10 +435,14 @@ export default function Monate() {
     return new Map(objects.map((o) => [o.objekt_code, o.label]));
   }, [objects]);
 
+  const objectByValue = useMemo(() => {
+    return new Map(objects.map((o) => [o.value, o]));
+  }, [objects]);
+
   async function fetchEntriesForRange(from: string, to: string, code: string) {
     let query = supabase
       .from("finance_entry")
-      .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,nk_relevant,is_deleted")
+      .select("id,object_id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,nk_relevant,is_deleted")
       .eq("is_deleted", false)
       .gte("booking_date", from)
       .lt("booking_date", to)
@@ -394,6 +458,7 @@ export default function Monate() {
 
     const entries: EntryRow[] = (data ?? []).map((r: any) => ({
       id: Number(r.id),
+      object_id: r.object_id == null ? null : String(r.object_id),
       objekt_code: r.objekt_code ?? null,
       booking_date: r.booking_date,
       amount: Number(r.amount || 0),
@@ -464,20 +529,24 @@ export default function Monate() {
       const note = r.note?.trim() || "";
       const objectCode = r.objekt_code?.trim() || "";
       const objectLabel = objectLabelMap.get(objectCode)?.trim() || "";
-      const category = displayFinanceCategory(r, objectLabel || objectCode);
+      const categoryValues = getCategoryFilterValues(r, objectLabel || objectCode);
       const typeLabel = r.entry_type === "income" ? "einnahme" : "ausgabe";
+      const searchable = [
+        ...categoryValues,
+        note,
+        objectCode,
+        objectLabel,
+        typeLabel,
+        r.booking_date,
+      ].join(" ").toLowerCase();
+      const searchTokens = q.split(/\s+/).filter(Boolean);
 
       const matchesType = typeFilter === "all" ? true : r.entry_type === typeFilter;
-      const matchesCategory = categoryFilter === "ALL" ? true : category === categoryFilter;
+      const matchesCategory = categoryFilter === "ALL" ? true : categoryValues.includes(categoryFilter);
 
       const matchesSearch =
         !q ||
-        category.toLowerCase().includes(q) ||
-        note.toLowerCase().includes(q) ||
-        objectCode.toLowerCase().includes(q) ||
-        objectLabel.toLowerCase().includes(q) ||
-        typeLabel.includes(q) ||
-        r.booking_date.includes(q);
+        searchTokens.every((token) => searchable.includes(token));
 
       return matchesType && matchesCategory && matchesSearch;
     });
@@ -636,9 +705,10 @@ export default function Monate() {
 
     if (preset === "capex") {
       setTypeFilter("expense");
-      setSearch("sanierung reparatur modernisierung capex");
-      setCategoryFilter("ALL");
+      setSearch("");
+      setCategoryFilter("Capex");
       setGroupMode("category");
+      setPeriodMode("year");
       return;
     }
 
@@ -758,14 +828,29 @@ export default function Monate() {
   function openEdit(row: EntryRow) {
     const rawCategory = row.category?.trim() ?? "";
     const normalizedCategory = rawCategory || "Ohne Kategorie";
+    const matchingObject =
+      objects.find((object) => row.object_id && String(object.value) === String(row.object_id)) ??
+      objects.find((object) => row.objekt_code && object.objekt_code === row.objekt_code);
 
     setEditRow(row);
     setEditType(row.entry_type);
     setEditDate(row.booking_date);
     setEditAmount(String(row.amount));
     setEditNote(row.note ?? "");
+    setEditObjectValue(
+      isPortfolioGeneralReference(row.object_id) || isPortfolioGeneralReference(row.objekt_code)
+        ? PORTFOLIO_GENERAL_OBJECT_ID
+        : matchingObject?.value ?? "",
+    );
     setEditTaxRelevant(effectiveTaxRelevant(row, objectLabelMap.get(row.objekt_code ?? "") ?? row.objekt_code));
     setEditNkRelevant(Boolean(row.nk_relevant));
+
+    const telecommunicationDetails = parseTelecommunicationTaxDetails(row);
+    setEditTelecomSpouseA(telecommunicationDetails ? String(telecommunicationDetails.spouseA).replace(".", ",") : "");
+    setEditTelecomSpouseB(telecommunicationDetails ? String(telecommunicationDetails.spouseB).replace(".", ",") : "");
+    setEditTelecomLandlineInternet(
+      telecommunicationDetails ? String(telecommunicationDetails.landlineInternet).replace(".", ",") : "",
+    );
 
     if (!rawCategory) {
       setEditCategoryMode("existing");
@@ -787,10 +872,38 @@ export default function Monate() {
   async function saveEdit() {
     if (!editRow) return;
 
-    const n = parseNumberInput(editAmount);
+    const resolvedCategory =
+      editCategoryMode === "new"
+        ? canonicalizeFinanceCategory(editCategoryCustom.trim(), editType)
+        : editCategorySelect === "Ohne Kategorie"
+        ? ""
+        : canonicalizeFinanceCategory(editCategorySelect.trim(), editType);
+    const isTelecommunicationEdit = editType === "expense" && isTelecommunicationCategory(resolvedCategory);
+    const telecomSpouseA = parseNumberInput(editTelecomSpouseA || "0");
+    const telecomSpouseB = parseNumberInput(editTelecomSpouseB || "0");
+    const telecomLandlineInternet = parseNumberInput(editTelecomLandlineInternet || "0");
+    const telecommunicationDetails = calculateTelecommunicationTax({
+      spouseA: Number.isFinite(telecomSpouseA) ? telecomSpouseA : NaN,
+      spouseB: Number.isFinite(telecomSpouseB) ? telecomSpouseB : NaN,
+      landlineInternet: Number.isFinite(telecomLandlineInternet) ? telecomLandlineInternet : NaN,
+    });
+    const n = isTelecommunicationEdit ? telecommunicationDetails.totalAmount : parseNumberInput(editAmount);
 
     if (!Number.isFinite(n) || n <= 0) {
       alert("Bitte einen gültigen Betrag > 0 eingeben.");
+      return;
+    }
+
+    if (
+      isTelecommunicationEdit &&
+      (!Number.isFinite(telecomSpouseA) ||
+        telecomSpouseA < 0 ||
+        !Number.isFinite(telecomSpouseB) ||
+        telecomSpouseB < 0 ||
+        !Number.isFinite(telecomLandlineInternet) ||
+        telecomLandlineInternet < 0)
+    ) {
+      alert("Bitte die drei Handy-&-Internet-Beträge gültig und nicht negativ eingeben.");
       return;
     }
 
@@ -804,17 +917,49 @@ export default function Monate() {
       return;
     }
 
-    const resolvedCategory =
-      editCategoryMode === "new"
-        ? canonicalizeFinanceCategory(editCategoryCustom.trim(), editType)
-        : editCategorySelect === "Ohne Kategorie"
-        ? ""
-        : canonicalizeFinanceCategory(editCategorySelect.trim(), editType);
-    const objectLabel = objectLabelMap.get(editRow.objekt_code ?? "") ?? editRow.objekt_code;
+    const resolvedNote = isTelecommunicationEdit
+      ? buildTelecommunicationNote({
+          spouseA: telecommunicationDetails.spouseA,
+          spouseB: telecommunicationDetails.spouseB,
+          landlineInternet: telecommunicationDetails.landlineInternet,
+        })
+      : editNote.trim() || null;
+    const selectedObject = objectByValue.get(editObjectValue);
+    if (!selectedObject) {
+      alert("Bitte ein Objekt auswählen.");
+      return;
+    }
+
+    const isPortfolioGeneralEdit =
+      isPortfolioGeneralReference(selectedObject.value) ||
+      isPortfolioGeneralReference(selectedObject.objekt_code);
+    const nextObjectId = isPortfolioGeneralEdit ? null : selectedObject.value;
+    const nextObjectCode = selectedObject.objekt_code;
+    const objectLabel = selectedObject.label;
     const editTaxRule = classifyTaxRelevance(
-      { ...editRow, entry_type: editType, category: resolvedCategory, note: editNote },
+      {
+        ...editRow,
+        object_id: nextObjectId,
+        objekt_code: nextObjectCode,
+        entry_type: editType,
+        category: resolvedCategory,
+        note: resolvedNote,
+        amount: n,
+      },
       objectLabel,
     );
+    const editNkRule = classifyNkRelevance({
+      entry_type: editType,
+      category: resolvedCategory,
+      note: resolvedNote,
+    });
+    let nextNkRelevant = editNkRelevant;
+    if (editNkRule.nkRelevant !== editNkRelevant) {
+      const useRecommendation = window.confirm(
+        `${buildNkMismatchMessage(editNkRule, editNkRelevant)}\n\nOK = Empfehlung uebernehmen. Abbrechen = bewusst so speichern.`,
+      );
+      if (useRecommendation) nextNkRelevant = editNkRule.nkRelevant;
+    }
 
     setEditSaving(true);
 
@@ -825,6 +970,8 @@ export default function Monate() {
         amount: number;
         category: string | null;
         note: string | null;
+        object_id: string | null;
+        objekt_code: string | null;
         tax_relevant: boolean;
         nk_relevant: boolean;
       } = {
@@ -832,9 +979,11 @@ export default function Monate() {
         booking_date: editDate,
         amount: n,
         category: resolvedCategory || null,
-        note: editNote.trim() || null,
+        note: resolvedNote,
+        object_id: nextObjectId,
+        objekt_code: nextObjectCode,
         tax_relevant: editTaxRule.locked ? false : editTaxRelevant,
-        nk_relevant: editNkRelevant,
+        nk_relevant: nextNkRelevant,
       };
 
       const { error } = await supabase
@@ -884,11 +1033,20 @@ export default function Monate() {
   }
 
   async function updateNkRelevant(row: EntryRow, value: boolean) {
-    setRows((current) => current.map((item) => (item.id === row.id ? { ...item, nk_relevant: value } : item)));
+    const rule = nkRuleForRow(row);
+    let nextValue = value;
+    if (rule.nkRelevant !== value) {
+      const useRecommendation = window.confirm(
+        `${buildNkMismatchMessage(rule, value)}\n\nOK = Empfehlung uebernehmen. Abbrechen = bewusst so speichern.`,
+      );
+      if (useRecommendation) nextValue = rule.nkRelevant;
+    }
+
+    setRows((current) => current.map((item) => (item.id === row.id ? { ...item, nk_relevant: nextValue } : item)));
 
     const { error } = await supabase
       .from("finance_entry")
-      .update({ nk_relevant: value })
+      .update({ nk_relevant: nextValue })
       .eq("id", row.id);
 
     if (error) {
@@ -932,11 +1090,11 @@ export default function Monate() {
             }),
             Notiz: r.note?.trim() || "",
             St: effectiveTaxRelevant(r, objectLabel) ? "Ja" : "Nein",
-            NK: r.nk_relevant ? "Ja" : "Nein",
+            [NK_ABRECHNUNG_LABEL]: r.nk_relevant ? "Ja" : "Nein",
           };
         });
 
-      const headers = ["Datum", "Objekt", "Objektcode", "Typ", "Kategorie", "Betrag", "Notiz", "St", "NK"];
+      const headers = ["Datum", "Objekt", "Objektcode", "Typ", "Kategorie", "Betrag", "Notiz", "St", NK_ABRECHNUNG_LABEL];
       const csv = toCsv(exportRows, headers);
       const objectPart = code && code !== "ALL" ? `${sanitizeFilenamePart(code)}_` : "alle_objekte_";
       const filename = `jahresuebersicht_${objectPart}${year}.csv`;
@@ -966,11 +1124,11 @@ export default function Monate() {
         }),
         Notiz: r.note?.trim() || "",
         St: effectiveTaxRelevant(r, objectLabel) ? "Ja" : "Nein",
-        NK: r.nk_relevant ? "Ja" : "Nein",
+        [NK_ABRECHNUNG_LABEL]: r.nk_relevant ? "Ja" : "Nein",
       };
     });
 
-    const headers = ["Datum", "Objekt", "Objektcode", "Typ", "Kategorie", "Betrag", "Notiz", "St", "NK"];
+    const headers = ["Datum", "Objekt", "Objektcode", "Typ", "Kategorie", "Betrag", "Notiz", "St", NK_ABRECHNUNG_LABEL];
     const csv = toCsv(exportRows, headers);
 
     const monthPart = String(month).padStart(2, "0");
@@ -993,10 +1151,43 @@ export default function Monate() {
       : editCategorySelect === "Ohne Kategorie"
         ? ""
         : canonicalizeFinanceCategory(editCategorySelect.trim(), editType);
+  const editIsTelecommunication =
+    editType === "expense" && isTelecommunicationCategory(editResolvedCategory);
+  const editTelecomDetails = useMemo(() => {
+    const spouseA = parseNumberInput(editTelecomSpouseA || "0");
+    const spouseB = parseNumberInput(editTelecomSpouseB || "0");
+    const landlineInternet = parseNumberInput(editTelecomLandlineInternet || "0");
+
+    return calculateTelecommunicationTax({
+      spouseA: Number.isFinite(spouseA) ? spouseA : 0,
+      spouseB: Number.isFinite(spouseB) ? spouseB : 0,
+      landlineInternet: Number.isFinite(landlineInternet) ? landlineInternet : 0,
+    });
+  }, [editTelecomLandlineInternet, editTelecomSpouseA, editTelecomSpouseB]);
+  const editTelecomNote = editIsTelecommunication
+    ? buildTelecommunicationNote({
+        spouseA: editTelecomDetails.spouseA,
+        spouseB: editTelecomDetails.spouseB,
+        landlineInternet: editTelecomDetails.landlineInternet,
+      })
+    : editNote;
+  const editSelectedObject = objectByValue.get(editObjectValue);
   const editTaxRule = editRow
     ? classifyTaxRelevance(
-        { ...editRow, entry_type: editType, category: editResolvedCategory, note: editNote },
-        objectLabelMap.get(editRow.objekt_code ?? "") ?? editRow.objekt_code,
+        {
+          ...editRow,
+          object_id: editSelectedObject
+            ? isPortfolioGeneralReference(editSelectedObject.value)
+              ? null
+              : editSelectedObject.value
+            : editRow.object_id,
+          objekt_code: editSelectedObject?.objekt_code ?? editRow.objekt_code,
+          entry_type: editType,
+          category: editResolvedCategory,
+          note: editTelecomNote,
+          amount: editIsTelecommunication ? editTelecomDetails.totalAmount : editRow.amount,
+        },
+        editSelectedObject?.label ?? objectLabelMap.get(editRow.objekt_code ?? "") ?? editRow.objekt_code,
       )
     : null;
 
@@ -1559,7 +1750,7 @@ export default function Monate() {
                   St.
                 </th>
                 <th style={{ textAlign: "center", padding: 10, fontSize: 12, opacity: 0.75 }}>
-                  NK
+                  {NK_ABRECHNUNG_LABEL}
                 </th>
                 <th style={{ padding: 10, width: 140 }} />
               </tr>
@@ -1811,6 +2002,30 @@ export default function Monate() {
             </label>
 
             <label style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
+              Objekt / Zuordnung
+              <select
+                value={editObjectValue}
+                onChange={(e) => setEditObjectValue(e.target.value)}
+                style={{
+                  marginTop: 6,
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #e5e7eb",
+                  fontWeight: 800,
+                  background: "white",
+                }}
+              >
+                <option value="">Bitte auswählen</option>
+                {objects.map((object) => (
+                  <option key={`${object.value}-${object.objekt_code}`} value={object.value}>
+                    {object.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
               Datum
               <input
                 type="date"
@@ -1830,9 +2045,17 @@ export default function Monate() {
             <label style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
               Betrag
               <input
-                value={editAmount}
+                value={
+                  editIsTelecommunication
+                    ? editTelecomDetails.totalAmount.toLocaleString("de-DE", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    : editAmount
+                }
                 onChange={(e) => setEditAmount(e.target.value)}
-                placeholder="z. B. 123,45"
+                placeholder={editIsTelecommunication ? "Automatisch aus Einzelbeträgen" : "z. B. 123,45"}
+                readOnly={editIsTelecommunication}
                 style={{
                   marginTop: 6,
                   width: "100%",
@@ -1840,6 +2063,7 @@ export default function Monate() {
                   borderRadius: 12,
                   border: "1px solid #e5e7eb",
                   fontWeight: 800,
+                  background: editIsTelecommunication ? "#f8fafc" : "white",
                 }}
               />
             </label>
@@ -1904,11 +2128,138 @@ export default function Monate() {
             </div>
           </div>
 
+          {editIsTelecommunication ? (
+            <div
+              style={{
+                border: "1px solid #bfdbfe",
+                borderRadius: 14,
+                background: "#eff6ff",
+                padding: 12,
+                display: "grid",
+                gap: 12,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 950, color: "#1e3a8a" }}>
+                  Handy & Internet separat bearbeiten
+                </div>
+                <div style={{ marginTop: 4, fontSize: 12, fontWeight: 800, color: "#475569", lineHeight: 1.45 }}>
+                  Gesamtbetrag und steuerlicher Anteil werden aus diesen drei Feldern automatisch berechnet.
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: 10,
+                }}
+              >
+                <label style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>
+                  Mobilfunk Ehepartner A
+                  <input
+                    value={editTelecomSpouseA}
+                    onChange={(e) => setEditTelecomSpouseA(e.target.value)}
+                    placeholder="0,00"
+                    inputMode="decimal"
+                    style={{
+                      marginTop: 6,
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid #cbd5e1",
+                      fontWeight: 850,
+                      background: "white",
+                    }}
+                  />
+                </label>
+
+                <label style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>
+                  Mobilfunk Ehepartner B
+                  <input
+                    value={editTelecomSpouseB}
+                    onChange={(e) => setEditTelecomSpouseB(e.target.value)}
+                    placeholder="0,00"
+                    inputMode="decimal"
+                    style={{
+                      marginTop: 6,
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid #cbd5e1",
+                      fontWeight: 850,
+                      background: "white",
+                    }}
+                  />
+                </label>
+
+                <label style={{ fontSize: 12, fontWeight: 900, color: "#334155" }}>
+                  Festnetz & Internet
+                  <input
+                    value={editTelecomLandlineInternet}
+                    onChange={(e) => setEditTelecomLandlineInternet(e.target.value)}
+                    placeholder="0,00"
+                    inputMode="decimal"
+                    style={{
+                      marginTop: 6,
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid #cbd5e1",
+                      fontWeight: 850,
+                      background: "white",
+                    }}
+                  />
+                </label>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                  gap: 10,
+                }}
+              >
+                <div
+                  style={{
+                    border: "1px solid #dbeafe",
+                    borderRadius: 12,
+                    background: "white",
+                    padding: 10,
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: 1.5, color: "#64748b" }}>
+                    GESAMT
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 18, fontWeight: 950, color: "#0f172a" }}>
+                    {formatEUR(editTelecomDetails.totalAmount)}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    border: "1px solid #bbf7d0",
+                    borderRadius: 12,
+                    background: "#f0fdf4",
+                    padding: 10,
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: 1.5, color: "#166534" }}>
+                    STEUERLICH ABSETZBAR
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 18, fontWeight: 950, color: "#166534" }}>
+                    {formatEUR(editTelecomDetails.deductibleTotal)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <label style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
-            Notiz
+            {editIsTelecommunication ? "Automatische Steuer-Notiz" : "Notiz"}
             <input
-              value={editNote}
+              value={editIsTelecommunication ? editTelecomNote : editNote}
               onChange={(e) => setEditNote(e.target.value)}
+              readOnly={editIsTelecommunication}
               style={{
                 marginTop: 6,
                 width: "100%",
@@ -1916,6 +2267,7 @@ export default function Monate() {
                 borderRadius: 12,
                 border: "1px solid #e5e7eb",
                 fontWeight: 800,
+                background: editIsTelecommunication ? "#f8fafc" : "white",
               }}
             />
           </label>
@@ -1967,7 +2319,7 @@ export default function Monate() {
                 onChange={(event) => setEditNkRelevant(event.target.checked)}
                 style={{ width: 18, height: 18 }}
               />
-              NK
+              {NK_ABRECHNUNG_LABEL}
             </label>
           </div>
 

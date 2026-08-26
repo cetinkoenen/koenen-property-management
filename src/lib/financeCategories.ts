@@ -5,23 +5,31 @@ export type FinanceCategoryOption = {
   type: FinanceEntryType | "both";
 };
 
+export const MIETE_NACHZAHLUNG_CATEGORY = "Miete Nachzahlung";
+
 export const FINANCE_CATEGORY_OPTIONS: FinanceCategoryOption[] = [
   { value: "Miete", type: "income" },
   { value: "Miete Garage", type: "income" },
+  { value: MIETE_NACHZAHLUNG_CATEGORY, type: "income" },
   { value: "Kaution", type: "both" },
   { value: "Mietbestandteil-NK", type: "income" },
 
   { value: "Abfallgebühr", type: "expense" },
   { value: "Allgemein", type: "both" },
   { value: "Verwaltungskosten", type: "expense" },
+  { value: "Bewirtungskosten", type: "expense" },
+  { value: "Erwerbsnebenkosten / Anschaffungskosten", type: "expense" },
   { value: "Fahrtkosten", type: "expense" },
   { value: "Grundsteuer", type: "expense" },
+  { value: "Handy & Internet", type: "expense" },
   { value: "Kontoführungsgebühr", type: "expense" },
   { value: "Kreditrate", type: "expense" },
   { value: "Büro / Porto", type: "expense" },
   { value: "Schonsteinfeger", type: "expense" },
   { value: "Software", type: "expense" },
   { value: "Steuer", type: "expense" },
+  { value: "Steuerberater", type: "expense" },
+  { value: "Capex", type: "expense" },
   { value: "Reparatur", type: "expense" },
   { value: "Versicherung", type: "expense" },
   { value: "Wartung", type: "expense" },
@@ -37,11 +45,44 @@ const CATEGORY_ALIAS_PAIRS: Array<[string, string]> = [
   ["weg hausgeld", "Verwaltungskosten"],
   ["verwaltung", "Verwaltungskosten"],
   ["verwaltungskosten", "Verwaltungskosten"],
+  ["bewirtung", "Bewirtungskosten"],
+  ["bewirtungskosten", "Bewirtungskosten"],
+  ["geschaeftsessen", "Bewirtungskosten"],
+  ["geschäftsessen", "Bewirtungskosten"],
+  ["restaurant", "Bewirtungskosten"],
+  ["anschaffungskosten", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["anschaffungsnebenkosten", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["erwerbsnebenkosten", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["kaufnebenkosten", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["eigentrumumschreibung", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["eigentumsumschreibung", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["eigentrumsumschreibung", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["eigentumsueberschreibung", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["eigentumsuebertragung", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["eigentumsübertragung", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["notar", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["notarkosten", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["grundbuch", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["grundbuchamt", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["grundbuchkosten", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["grunderwerbsteuer", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["grunderwerbssteuer", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["makler", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["maklerkosten", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["kaufvertrag", "Erwerbsnebenkosten / Anschaffungskosten"],
+  ["handy", "Handy & Internet"],
+  ["internet", "Handy & Internet"],
+  ["telefon", "Handy & Internet"],
+  ["telefonkosten", "Handy & Internet"],
+  ["mobilfunk", "Handy & Internet"],
+  ["handy internet", "Handy & Internet"],
+  ["handy und internet", "Handy & Internet"],
   ["reparatur", "Reparatur"],
   ["handwerker", "Reparatur"],
   ["instandhaltung", "Reparatur"],
   ["sanierung", "Reparatur"],
   ["modernisierung", "Reparatur"],
+  ["capex", "Capex"],
   ["versicherung", "Versicherung"],
   ["wartung", "Wartung"],
   ["grundsteuer", "Grundsteuer"],
@@ -52,9 +93,14 @@ const CATEGORY_ALIAS_PAIRS: Array<[string, string]> = [
   ["müll", "Abfallgebühr"],
   ["müllgebühren", "Abfallgebühr"],
   ["kontofuehrungsgebuehr", "Kontoführungsgebühr"],
+  ["kontofuehrungsgebuehren", "Kontoführungsgebühr"],
   ["kontoführungsgebühr", "Kontoführungsgebühr"],
+  ["kontoführungsgebühren", "Kontoführungsgebühr"],
   ["kontofuehrung", "Kontoführungsgebühr"],
   ["kontoführung", "Kontoführungsgebühr"],
+  ["kontofuehrungskosten", "Kontoführungsgebühr"],
+  ["kontoführungskosten", "Kontoführungsgebühr"],
+  ["kontokosten", "Kontoführungsgebühr"],
   ["bankgebuehren", "Kontoführungsgebühr"],
   ["bankgebühren", "Kontoführungsgebühr"],
   ["monatsrate", "Kreditrate"],
@@ -71,11 +117,19 @@ const CATEGORY_ALIAS_PAIRS: Array<[string, string]> = [
   ["brief", "Büro / Porto"],
   ["post", "Büro / Porto"],
   ["steuer", "Steuer"],
-  ["steuerberater", "Steuer"],
+  ["steuerberater", "Steuerberater"],
+  ["steuerberatung", "Steuerberater"],
   ["steuerberatung", "Steuer"],
+  ["steuerberater rechnung", "Steuerberater"],
+  ["steuerberaterrechnung", "Steuerberater"],
   ["fahrtkosten", "Fahrtkosten"],
   ["fahrt", "Fahrtkosten"],
   ["kaution", "Kaution"],
+  ["miete nachzahlung", MIETE_NACHZAHLUNG_CATEGORY],
+  ["mietnachzahlung", MIETE_NACHZAHLUNG_CATEGORY],
+  ["miet nachzahlung", MIETE_NACHZAHLUNG_CATEGORY],
+  ["nachzahlung miete", MIETE_NACHZAHLUNG_CATEGORY],
+  ["nachzahlung miet", MIETE_NACHZAHLUNG_CATEGORY],
   ["miete", "Miete"],
   ["kaltmiete", "Miete"],
   ["warmmiete", "Miete"],
@@ -106,6 +160,33 @@ export function canonicalizeFinanceCategory(value: string | null | undefined, _e
 
   const alias = CATEGORY_ALIAS_PAIRS.find(([source]) => normalized === normalizeFinanceCategoryText(source));
   return alias?.[1] ?? raw;
+}
+
+export function isPureRentBackPayment(
+  category: string | null | undefined,
+  note?: string | null | undefined,
+): boolean {
+  const categoryText = normalizeFinanceCategoryText(category);
+  const noteText = normalizeFinanceCategoryText(note);
+  const backPaymentCategory = normalizeFinanceCategoryText(MIETE_NACHZAHLUNG_CATEGORY);
+
+  if (
+    categoryText === backPaymentCategory ||
+    categoryText.includes("mietnachzahlung") ||
+    (categoryText.includes("miet") && categoryText.includes("nachzahlung"))
+  ) {
+    return true;
+  }
+
+  const noteLooksBackPayment =
+    noteText.includes("mietnachzahlung") ||
+    (noteText.includes("nachzahlung") &&
+      (noteText.includes("miet") || categoryText === "miete" || categoryText === "miete garage"));
+
+  if (!noteLooksBackPayment) return false;
+
+  const combinedPaymentSignals = ["inkl", "inklusive", "incl", "zusammen", "plus", "zzgl", "und miete", "miete und"];
+  return !combinedPaymentSignals.some((signal) => noteText.includes(signal));
 }
 
 export function getFinanceCategoryOptions(entryType: FinanceEntryType, additionalCategories: string[] = []): string[] {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
+import { safeInternalPath } from "../lib/navigation";
 
 type TotpEnroll = {
   factorId: string;
@@ -24,17 +25,16 @@ function sleep(ms: number) {
 function getFromPath(locationState: unknown): string {
   const from = (locationState as { from?: FromState } | null)?.from;
 
-  if (typeof from === "string" && from.startsWith("/")) {
-    return from;
+  if (typeof from === "string") {
+    return safeInternalPath(from, "/immobilienvermoegen");
   }
 
   if (
     typeof from === "object" &&
     from !== null &&
-    typeof from.pathname === "string" &&
-    from.pathname.startsWith("/")
+    typeof from.pathname === "string"
   ) {
-    return from.pathname;
+    return safeInternalPath(from.pathname, "/immobilienvermoegen");
   }
 
   return "/immobilienvermoegen";

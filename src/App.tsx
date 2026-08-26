@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useState, type ErrorInfo, type FormEvent, type ReactNode } from "react";
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type FormEvent, type ReactNode, type SyntheticEvent } from "react";
 import {
   Link,
   NavLink,
@@ -31,6 +31,7 @@ import {
   LayoutDashboard,
   ListChecks,
   Menu,
+  PackageCheck,
   PlusCircle,
   ReceiptText,
   Settings2,
@@ -52,7 +53,15 @@ import { useAuth } from "./auth/AuthProvider";
 import { isAdminEmail, isReadonlyApprovalEmail } from "./auth/accessControl";
 import { supabase } from "./lib/supabaseClient";
 import { clearAppSessionStorage } from "./lib/security";
+import { createRentAccountPdf } from "./lib/rentAccountPdf";
 import { isVacancyInRange, listVacancies, type UnitVacancy } from "./services/vacancyService";
+import { listMileageTrips, type MileageTripRow } from "./services/mileageTripService";
+import {
+  buildAnlageVReportLines,
+  buildSection35aReportLines,
+  buildTaxAdvisorDashboard,
+  formatTaxCurrency,
+} from "./services/taxReportEngine";
 import {
   deletePropertyTask,
   listPropertyTasks,
@@ -65,6 +74,8 @@ import {
 import logo from "./assets/koenen-brand-logo.webp";
 import { AppDataProvider, useAppData, type FinanceEntry } from "./state/AppDataContext";
 import { EmptyState, InfoList, KpiCard, ModuleCard, PageHeader, SectionPanel } from "./components/ui/professional";
+import { isPortfolioGeneralEntry, PORTFOLIO_GENERAL_LABEL } from "./lib/portfolioExpense";
+import type { RentAnnualReportSnapshot } from "./pages/Mietuebersicht";
 import "./App.css";
 
 type AppErrorBoundaryProps = {
@@ -149,6 +160,7 @@ const Datenschutz = lazy(() => import("./pages/Datenschutz"));
 const Mietuebersicht = lazy(() => import("./pages/Mietuebersicht"));
 const Mietentwicklung = lazy(() => import("./pages/Mietentwicklung"));
 const MieterAnlegen = lazy(() => import("./pages/MieterAnlegen"));
+const MieterRegister = lazy(() => import("./pages/MieterRegister"));
 const Leerstand = lazy(() => import("./pages/Leerstand"));
 const Mahnwesen = lazy(() => import("./pages/Mahnwesen"));
 const Kautionen = lazy(() => import("./pages/Kautionen"));
@@ -183,12 +195,13 @@ const routePreloaders: Record<string, () => Promise<unknown>> = {
   "/dashboard/aktuelle-todos": async () => undefined,
   "/immobilienvermoegen": () => import("./pages/ImmobilienVermoegen"),
   "/immobilien/immobilie-anlegen": () => import("./pages/Administrator"),
-  "/immobilien/mietentwicklung": () => import("./pages/Mietentwicklung"),
+  "/mieter/mietentwicklung": () => import("./pages/Mietentwicklung"),
   "/immobilien/einheiten-verwaltung": async () => undefined,
   "/immobilien/zaehlerstaende-verbrauch": () => import("./pages/NebenkostenWohnungen"),
   "/immobilien/objekt-dokumente": async () => undefined,
   "/investment-bericht": () => import("./pages/InvestmentBericht"),
   "/mieter/stammdaten": () => import("./pages/MieterAnlegen"),
+  "/mieter/register": () => import("./pages/MieterRegister"),
   "/mieter/mieteingang": () => import("./pages/Mietuebersicht"),
   "/ein-auszug": () => import("./pages/EinAuszug"),
   "/buchhaltung/einnahmen-ausgaben": () => import("./pages/EntryAdd"),
@@ -361,10 +374,18 @@ const buchhaltungSubpages: WorkspaceSubpage[] = [
 const immobilienSubpages: WorkspaceSubpage[] = [
   { path: "/immobilienvermoegen", label: "Immobilienvermögen", icon: Landmark },
   { path: "/immobilien/immobilie-anlegen", label: "Immobilie anlegen", icon: PlusCircle, adminOnly: true },
-  { path: "/immobilien/mietentwicklung", label: "Mietentwicklung", icon: TrendingUp },
   { path: "/immobilien/einheiten-verwaltung", label: "Einheiten-Verwaltung", icon: FolderKanban },
   { path: "/immobilien/zaehlerstaende-verbrauch", label: "Zählerstände & Verbrauch", icon: ClipboardList },
   { path: "/immobilien/objekt-dokumente", label: "Objekt-Dokumente", icon: FileText },
+];
+
+const mieterSubpages: WorkspaceSubpage[] = [
+  { path: "/mieter/register", label: "Mieterregister", icon: Users },
+  { path: "/mieter/stammdaten", label: "Stammdaten", icon: Users },
+  { path: "/mieter/mietentwicklung", label: "Mietentwicklung", icon: TrendingUp },
+  { path: "/mieter/mieteingang", label: "Mieteingang", icon: CalendarCheck },
+  { path: "/ein-auszug", label: "Ein-/Auszug", icon: KeyRound },
+  { path: "/leerstand", label: "Leerstand", icon: DoorOpen },
 ];
 
 const workspaceConfigs: Record<string, WorkspaceConfig> = {
@@ -437,13 +458,13 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
       { label: "Gewerbeimmobilien", description: "Nutzflächen, Umsatzsteueroptionen sowie Stellplatz- und Logistik-Zuordnung." },
     ],
   },
-  immobilienMietentwicklung: {
-    eyebrow: "2. Modul | Immobilien & Einheiten",
+  mieterMietentwicklung: {
+    eyebrow: "Mieter | Mietentwicklung",
     title: "Mietentwicklung",
     description: "Zentrale Übersicht aller Sollmieten, Ist-Buchungen und Mieterhöhungen seit Januar 2024.",
-    basePath: "/immobilien",
-    source: "Portfolio > Vermietungszeiträume, Buchhaltung, Mieteingang",
-    subpages: immobilienSubpages,
+    basePath: "/mieter",
+    source: "Mietentwicklung/Mietanpassungen, Mieterregister, Buchungen, Mieteingang",
+    subpages: mieterSubpages,
     tabs: [
       { label: "Sollmieten", description: "Aktuelle Sollmiete pro Immobilie aus den gepflegten Vermietungszeiträumen." },
       { label: "Buchungsprüfung", description: "Tatsächliche Mietzahlungen und Mietbestandteil-NK aus der Buchhaltung." },
@@ -834,6 +855,166 @@ function LogoutButton({ showEmail = true, compact = false }: { showEmail?: boole
   );
 }
 
+const READONLY_MUTATION_RE =
+  /\b(speichern|bearbeiten|loeschen|löschen|archivieren|archiv|anlegen|hinzufuegen|hinzufügen|hochladen|upload|abschliessen|abschließen|freigeben|sperren|importieren|anwenden|generieren|erzeugen|erstelle|erstellen|neue zeile|auto-fortschreibung|als erledigt|erledigt markieren|aenderungen|änderungen|zuruecksetzen|zurücksetzen|auswahl loeschen|auswahl löschen)\b/i;
+
+const READONLY_ALLOW_RE =
+  /\b(suche|suchen|filter|alle|neu laden|aktualisieren|reload|drucken|print|pdf|csv|export|download|herunterladen|ansehen|anzeigen|oeffnen|öffnen|vorschau|schliessen|schließen|abbrechen|zurueck|zurück|weiter|vormonat|folgemonat|aktueller mietmonat|logout|cookie|detailmaske oeffnen|detailmaske öffnen|detail|diagramm|kopieren)\b/i;
+
+const READONLY_MUTATION_FORM_RE =
+  /\b(buchung erfassen|fahrt erfassen|leerstand bearbeiten|mieterdaten|hochladen|upload|speichern|bearbeiten|anlegen|eintragen|neue buchung|neue fahrt|neue aufgabe|neue mietanpassung|neue immobilie|neuer zeitraum|neue zeile)\b/i;
+
+function readonlyTextFor(element: Element): string {
+  const htmlElement = element as HTMLElement;
+  return [
+    htmlElement.innerText,
+    htmlElement.textContent,
+    htmlElement.getAttribute("aria-label"),
+    htmlElement.getAttribute("title"),
+    htmlElement.getAttribute("name"),
+    htmlElement.getAttribute("value"),
+    htmlElement.getAttribute("placeholder"),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isReadonlyAllowlisted(element: Element): boolean {
+  return Boolean(element.closest("[data-readonly-allow='true']"));
+}
+
+function isReadonlyMutationAction(element: Element): boolean {
+  if (isReadonlyAllowlisted(element)) return false;
+  const tagName = element.tagName.toLowerCase();
+  const inputType = (element as HTMLInputElement).type?.toLowerCase();
+  const text = readonlyTextFor(element);
+
+  if (tagName === "input" && inputType === "file") return true;
+  if (tagName === "button" && (element as HTMLButtonElement).type === "submit") return true;
+  if (READONLY_ALLOW_RE.test(text)) return false;
+  return READONLY_MUTATION_RE.test(text);
+}
+
+function setReadonlyMutationDisabled(element: Element, disabled: boolean) {
+  const control = element as HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+  if (disabled) {
+    if (!element.hasAttribute("data-readonly-original-title")) {
+      element.setAttribute("data-readonly-original-title", element.getAttribute("title") ?? "");
+    }
+    control.disabled = true;
+    element.setAttribute("aria-disabled", "true");
+    element.setAttribute("data-readonly-locked", "true");
+    element.setAttribute("title", "Nur-Lesen-Zugang: Änderungen sind dem Admin vorbehalten.");
+  } else if (element.getAttribute("data-readonly-locked") === "true") {
+    control.disabled = false;
+    element.removeAttribute("aria-disabled");
+    element.removeAttribute("data-readonly-locked");
+    const originalTitle = element.getAttribute("data-readonly-original-title") ?? "";
+    if (originalTitle) element.setAttribute("title", originalTitle);
+    else element.removeAttribute("title");
+    element.removeAttribute("data-readonly-original-title");
+  }
+}
+
+function formLooksMutating(form: HTMLFormElement): boolean {
+  if (isReadonlyAllowlisted(form)) return false;
+  const formText = readonlyTextFor(form).slice(0, 1800);
+  const hasMutationButton = Array.from(form.querySelectorAll("button,input[type='submit']")).some(isReadonlyMutationAction);
+  return hasMutationButton || READONLY_MUTATION_FORM_RE.test(formText);
+}
+
+function applyReadonlyDomState(root: HTMLElement, enabled: boolean) {
+  const mutationActions = root.querySelectorAll("button,a[role='button'],input[type='button'],input[type='submit'],input[type='file']");
+  mutationActions.forEach((element) => {
+    if (element instanceof HTMLAnchorElement) {
+      if (enabled && isReadonlyMutationAction(element)) {
+        element.setAttribute("aria-disabled", "true");
+        element.setAttribute("data-readonly-locked", "true");
+        element.setAttribute("title", "Nur-Lesen-Zugang: Änderungen sind dem Admin vorbehalten.");
+      } else if (!enabled && element.getAttribute("data-readonly-locked") === "true") {
+        element.removeAttribute("aria-disabled");
+        element.removeAttribute("data-readonly-locked");
+        element.removeAttribute("title");
+      }
+      return;
+    }
+    setReadonlyMutationDisabled(element, enabled && isReadonlyMutationAction(element));
+  });
+
+  root.querySelectorAll("form").forEach((formElement) => {
+    const form = formElement as HTMLFormElement;
+    const lockForm = enabled && formLooksMutating(form);
+    form.querySelectorAll("input,textarea,select").forEach((field) => {
+      const control = field as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+      const type = (control as HTMLInputElement).type?.toLowerCase();
+      if (type === "search" || control.closest("[data-readonly-allow='true']")) return;
+      if (lockForm) {
+        control.disabled = true;
+        field.setAttribute("aria-disabled", "true");
+        field.setAttribute("data-readonly-field", "true");
+      } else if (field.getAttribute("data-readonly-field") === "true") {
+        control.disabled = false;
+        field.removeAttribute("aria-disabled");
+        field.removeAttribute("data-readonly-field");
+      }
+    });
+  });
+}
+
+function ReadOnlyInteractionGuard({ enabled, children }: { enabled: boolean; children: ReactNode }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return undefined;
+    applyReadonlyDomState(root, enabled);
+    if (!enabled) return undefined;
+
+    let frameId = 0;
+    const observer = new MutationObserver(() => {
+      if (frameId) return;
+      frameId = window.requestAnimationFrame(() => {
+        frameId = 0;
+        applyReadonlyDomState(root, true);
+      });
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      if (frameId) window.cancelAnimationFrame(frameId);
+    };
+  }, [enabled]);
+
+  function blockReadonlyEvent(event: SyntheticEvent<HTMLElement>) {
+    if (!enabled) return;
+    const target = event.target as Element | null;
+    const action = target?.closest("button,a[role='button'],input[type='button'],input[type='submit'],input[type='file']");
+    if (action && isReadonlyMutationAction(action)) {
+      event.preventDefault();
+      event.stopPropagation();
+      window.alert("Nur-Lesen-Zugang: Diese Aktion ist dem Admin vorbehalten.");
+    }
+  }
+
+  function blockReadonlySubmit(event: React.FormEvent<HTMLElement>) {
+    if (!enabled) return;
+    const form = event.target as HTMLFormElement;
+    if (formLooksMutating(form)) {
+      event.preventDefault();
+      event.stopPropagation();
+      window.alert("Nur-Lesen-Zugang: Speichern und Änderungen sind dem Admin vorbehalten.");
+    }
+  }
+
+  return (
+    <div ref={rootRef} onClickCapture={blockReadonlyEvent} onSubmitCapture={blockReadonlySubmit}>
+      {children}
+    </div>
+  );
+}
+
 function ProtectedAppShell() {
   const location = useLocation();
   const { user } = useAuth();
@@ -1025,6 +1206,8 @@ function MieterHubPage() {
         { label: "Pflege", value: "Mieter anlegen" },
       ]}
       links={[
+        { to: "/mieter/register", label: "Mieterregister", description: "Aktive und archivierte Mieter mit Mietverträgen strukturiert prüfen.", icon: Users, badge: "Register" },
+        { to: "/mieter/mietentwicklung", label: "Mietentwicklung", description: "Mietanpassungen, Sollmieten und Historie je Objekt prüfen.", icon: TrendingUp, badge: "Sollmiete" },
         { to: "/mieter/mieteingang", label: "Zahlungen", description: "Mieteingänge aus Buchhaltung und Vermietungszeiträumen prüfen.", icon: WalletCards, badge: "Soll/Ist" },
         { to: "/mieter/stammdaten", label: "Stammdaten", description: "Mieter anlegen und vorhandene Mieterstammdaten pflegen.", icon: Users, badge: "Stamm" },
         { to: "/mieter/leerstand", label: "Leerstand", description: "Leerstände und nicht aktive Einheiten verwalten.", icon: DoorOpen, badge: "Status" },
@@ -1139,8 +1322,8 @@ function BuchhaltungHubPage() {
           />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
             <ModuleCard to="/buchhaltung/transaktionen" label="Transaktionen" description="Buchhaltungsübersicht mit Einnahmen und Ausgaben prüfen." icon={WalletCards} />
-            <ModuleCard to="/buchhaltung/einnahmen-ausgaben" label="Einnahmen & Ausgaben" description={isReadOnly ? "Nur Admins können Buchungen erfassen." : "Einnahmen und Ausgaben über das bestehende Erfassungsmodul anlegen."} icon={PlusCircle} disabled={isReadOnly} />
-            <ModuleCard to="/buchhaltung/regeln" label="Regeln" description={isReadOnly ? "Nur Admins können Regeln bearbeiten." : "Transaktionsregeln und Zuordnungen verwalten."} icon={Settings2} disabled={isReadOnly} />
+            <ModuleCard to="/buchhaltung/einnahmen-ausgaben" label="Einnahmen & Ausgaben" description={isReadOnly ? "Buchungen und Felder lesbar; Änderungen bleiben gesperrt." : "Einnahmen und Ausgaben über das bestehende Erfassungsmodul anlegen."} icon={PlusCircle} />
+            <ModuleCard to="/buchhaltung/regeln" label="Regeln" description={isReadOnly ? "Regeln lesbar; Bearbeitung bleibt dem Admin vorbehalten." : "Transaktionsregeln und Zuordnungen verwalten."} icon={Settings2} />
             <ModuleCard to="/berichte" label="Berichte" description="Reports und Auswertungen aus vorhandenen Datenquellen." icon={BarChart3} />
           </div>
         </div>
@@ -1238,8 +1421,8 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
   );
 }
 
-type ReportKind = "tax" | "advisor" | "rent-account" | "utilities" | "wealth" | "handover" | "vacancy";
-type ReportFormat = "pdf" | "csv" | "zip";
+type ReportKind = "tax" | "advisor" | "anlage-v-package" | "section35a" | "rent-account" | "utilities" | "wealth" | "handover" | "vacancy" | "tax-data-package";
+type ReportFormat = "pdf" | "csv" | "excel" | "zip";
 
 function slugifyReportPart(value: string): string {
   return value
@@ -1271,6 +1454,72 @@ function buildCsv(headers: string[], rows: Array<Array<unknown>>): string {
   return [headers, ...rows].map((row) => row.map(csvValue).join(";")).join("\n");
 }
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function parseCsvLine(line: string): string[] {
+  const values: string[] = [];
+  let current = "";
+  let quoted = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      index += 1;
+      continue;
+    }
+    if (char === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (char === ";" && !quoted) {
+      values.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+
+  values.push(current);
+  return values;
+}
+
+function csvToExcelHtml(title: string, csv: string): string {
+  const rows = csv.split(/\r?\n/).filter(Boolean).map(parseCsvLine);
+  const head = rows[0] ?? [];
+  const body = rows.slice(1);
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: Arial, sans-serif; color: #111827; }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    p { color: #64748b; font-size: 12px; margin: 0 0 18px; }
+    table { border-collapse: collapse; width: 100%; }
+    th { background: #eef7f4; color: #234e59; font-weight: 700; text-align: left; }
+    th, td { border: 1px solid #dbe4ee; padding: 8px; font-size: 12px; vertical-align: top; }
+    tr:nth-child(even) td { background: #f8fafc; }
+  </style>
+</head>
+<body>
+  <h1>${escapeHtml(title)}</h1>
+  <p>Exportiert am ${escapeHtml(new Date().toLocaleString("de-DE"))}</p>
+  <table>
+    <thead><tr>${head.map((cell) => `<th>${escapeHtml(cell)}</th>`).join("")}</tr></thead>
+    <tbody>${body.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}</tbody>
+  </table>
+</body>
+</html>`;
+}
+
 function wrapPdfLine(value: string, maxLength = 92): string[] {
   const words = value.replace(/\s+/g, " ").trim().split(" ");
   const lines: string[] = [];
@@ -1289,70 +1538,193 @@ function wrapPdfLine(value: string, maxLength = 92): string[] {
 
 function escapePdfText(value: string): string {
   return value
+    .replace(/Ä/g, "Ae")
+    .replace(/Ö/g, "Oe")
+    .replace(/Ü/g, "Ue")
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss")
+    .replace(/€/g, "EUR")
+    .replace(/§/g, "Paragraf ")
+    .replace(/–|—/g, "-")
+    .replace(/→/g, "->")
+    .replace(/•/g, "-")
     .replace(/\\/g, "\\\\")
     .replace(/\(/g, "\\(")
     .replace(/\)/g, "\\)")
-    .replace(/[^\x20-\x7EäöüÄÖÜß€]/g, " ");
+    .replace(/[^\x20-\x7E]/g, " ");
 }
 
 function createSimplePdf(title: string, lines: string[]): Blob {
-  const normalizedLines = [
-    title,
-    `Erstellt: ${new Date().toLocaleString("de-DE")}`,
-    "",
-    ...lines,
-  ].flatMap((line) => wrapPdfLine(line));
-  const contentLines = [
-    "0.267 0.447 0.769 rg",
-    "42 778 78 42 re f",
-    "0.267 0.447 0.769 RG",
-    "1.2 w",
-    "42 754 m 553 754 l S",
-    "0 0 0 rg",
-    "BT",
-    "/F2 8 Tf",
-    "50 804 Td",
-    "(KOENEN) Tj",
-    "0 -10 Td",
-    "(IMMOBILIEN) Tj",
-    "ET",
-    "0.267 0.447 0.769 rg",
-    "BT",
-    "/F1 9 Tf",
-    "205 32 Td",
-    "(Cetin Koenen  |  Hohenloher Str. 78/1, 74243 Langenbrettach  |  info.koenen@gmail.com) Tj",
-    "ET",
-    "0 0 0 rg",
-    "42 48 470 1 re f",
-    "0 0 0 rg",
-    "42 24 26 18 re f",
-    "1 1 1 rg",
-    "BT",
-    "/F2 10 Tf",
-    "51 29 Td",
-    "(1) Tj",
-    "ET",
-    "0 0 0 rg",
-    "BT",
-    "/F1 10 Tf",
-    "50 730 Td",
-    "14 TL",
-  ];
-  normalizedLines.slice(0, 46).forEach((line, index) => {
-    if (index === 0) contentLines.push("/F2 16 Tf");
-    if (index === 1) contentLines.push("/F1 9 Tf");
-    if (index === 3) contentLines.push("/F1 10 Tf");
-    contentLines.push(`(${escapePdfText(line)}) Tj`, "T*");
+  const pageWidth = 595;
+  const pageHeight = 842;
+  const marginX = 42;
+  const contentWidth = pageWidth - marginX * 2;
+  const minY = 72;
+  const generatedAt = new Date().toLocaleString("de-DE");
+  const pageStreams: string[] = [];
+  let current: string[] = [];
+  let y = 0;
+  let pageNumber = 0;
+
+  const color = {
+    navy: "0.055 0.075 0.13 rg",
+    slate: "0.39 0.45 0.56 rg",
+    muted: "0.84 0.88 0.93 rg",
+    soft: "0.96 0.98 1 rg",
+    teal: "0.18 0.39 0.45 rg",
+    mint: "0.9 0.97 0.94 rg",
+    white: "1 1 1 rg",
+  };
+
+  function rect(x: number, rectY: number, width: number, height: number, fill: string, stroke?: string) {
+    current.push(fill, `${x} ${rectY} ${width} ${height} re f`);
+    if (stroke) current.push(stroke.replace(" rg", " RG"), "0.8 w", `${x} ${rectY} ${width} ${height} re S`);
+  }
+
+  function text(value: string, x: number, textY: number, size = 10, font: "F1" | "F2" = "F1", fill = color.navy) {
+    current.push(fill, "BT", `/${font} ${size} Tf`, `${x} ${textY} Td`, `(${escapePdfText(value)}) Tj`, "ET");
+  }
+
+  function divider(lineY: number) {
+    current.push("0.88 0.91 0.95 RG", "0.8 w", `${marginX} ${lineY} m ${pageWidth - marginX} ${lineY} l S`);
+  }
+
+  function drawChrome() {
+    rect(0, pageHeight - 76, pageWidth, 76, color.soft);
+    rect(marginX, pageHeight - 56, 44, 34, color.teal);
+    text("KOENEN", marginX + 7, pageHeight - 37, 7, "F2", color.white);
+    text("INVESTMENT", marginX + 7, pageHeight - 47, 6, "F2", color.white);
+    text("Steuer- und Finanzreport", marginX + 58, pageHeight - 35, 10, "F2", color.slate);
+    text(`Erstellt: ${generatedAt}`, pageWidth - 206, pageHeight - 35, 9, "F1", color.slate);
+    divider(pageHeight - 82);
+    text("Cetin Koenen | Hohenloher Str. 78/1, 74243 Langenbrettach | info.koenen@gmail.com", marginX, 34, 8, "F1", color.slate);
+    text(`Seite ${pageNumber}`, pageWidth - 86, 34, 8, "F2", color.slate);
+  }
+
+  function startPage(continued = false) {
+    if (current.length) pageStreams.push(current.join("\n"));
+    pageNumber += 1;
+    current = [];
+    drawChrome();
+    y = pageHeight - 116;
+    if (continued) {
+      text(title, marginX, y, 16, "F2");
+      text("Fortsetzung", pageWidth - 122, y + 2, 9, "F2", color.teal);
+      y -= 28;
+      divider(y + 14);
+    }
+  }
+
+  function ensureSpace(required: number) {
+    if (y - required < minY) startPage(true);
+  }
+
+  function paragraph(value: string, options?: { bold?: boolean; size?: number; fill?: string; indent?: number; maxLength?: number }) {
+    const size = options?.size ?? 10;
+    const indent = options?.indent ?? 0;
+    const wrapped = wrapPdfLine(value, options?.maxLength ?? (indent ? 78 : 88));
+    ensureSpace(wrapped.length * (size + 4) + 4);
+    wrapped.forEach((line) => {
+      text(line, marginX + indent, y, size, options?.bold ? "F2" : "F1", options?.fill ?? color.navy);
+      y -= size + 4;
+    });
+  }
+
+  function sectionHeading(value: string) {
+    ensureSpace(42);
+    y -= 4;
+    text(value.replace(/:$/, ""), marginX, y, 13, "F2", color.teal);
+    y -= 10;
+    divider(y);
+    y -= 16;
+  }
+
+  function keyValueRow(label: string, value: string) {
+    const labelLines = wrapPdfLine(label, 36);
+    const valueLines = wrapPdfLine(value || "-", 52);
+    const rowHeight = Math.max(32, Math.max(labelLines.length * 10, valueLines.length * 13) + 16);
+    ensureSpace(rowHeight + 8);
+    rect(marginX, y - rowHeight + 8, contentWidth, rowHeight, color.soft, color.muted);
+    labelLines.forEach((line, index) => {
+      text(line, marginX + 12, y - 4 - index * 10, 8, "F2", color.slate);
+    });
+    valueLines.forEach((line, index) => {
+      text(line, marginX + 210, y - 4 - index * 13, 10, "F2", color.navy);
+    });
+    y -= rowHeight + 8;
+  }
+
+  function tableLikeRow(value: string) {
+    const parts = value.split("|").map((part) => part.trim()).filter(Boolean);
+    if (parts.length < 2) {
+      paragraph(value);
+      return;
+    }
+    const widths = parts.length <= 5 ? [78, 122, 112, 96, 138] : [76, 118, 58, 86, 82, 128];
+    const wrapLimits = parts.length <= 5 ? [15, 22, 20, 18, 24] : [14, 22, 13, 18, 16, 22];
+    const wrappedParts = parts.slice(0, 6).map((part, index) => wrapPdfLine(part, wrapLimits[index] ?? 18));
+    const rowHeight = Math.max(34, Math.max(...wrappedParts.map((lines) => lines.length)) * 11 + 18);
+    ensureSpace(rowHeight + 8);
+    rect(marginX, y - rowHeight + 8, contentWidth, rowHeight, "0.985 0.99 1 rg", color.muted);
+    let x = marginX + 10;
+    wrappedParts.forEach((partLines, index) => {
+      partLines.forEach((line, lineIndex) => {
+        text(line, x, y - 5 - lineIndex * 11, index === 4 ? 8 : 7.5, index === 4 ? "F2" : "F1", index === 4 ? color.teal : color.navy);
+      });
+      x += widths[index] ?? 70;
+    });
+    y -= rowHeight + 8;
+  }
+
+  startPage();
+  const titleLines = wrapPdfLine(title, 46);
+  titleLines.forEach((line, index) => {
+    text(line, marginX, y, index === 0 ? 24 : 18, "F2");
+    y -= index === 0 ? 27 : 22;
   });
-  contentLines.push("ET");
-  const content = contentLines.join("\n");
+  paragraph("Professionell formatierter Export aus Koenen Investment. Die Buchhaltung und gepflegten Stammdaten bleiben die fachliche Quelle.", { size: 10, fill: color.slate, maxLength: 84 });
+  y -= 8;
+  rect(marginX, y - 42, contentWidth, 48, color.mint, "0.74 0.9 0.82 rg");
+  text("REPORT-METADATEN", marginX + 14, y - 8, 8, "F2", color.teal);
+  text(`Erstellt: ${generatedAt}`, marginX + 14, y - 25, 10, "F2", color.navy);
+  text("Quelle: App-Daten, Buchhaltung, Darlehen, Fahrtenbuch", marginX + 240, y - 25, 9, "F1", color.slate);
+  y -= 70;
+
+  lines.forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line) {
+      y -= 8;
+      return;
+    }
+    if (/^[A-Za-z0-9 .,&/()äöüÄÖÜß§-]{2,70}:$/.test(line) || ["Buchungen:", "Darlehen:", "Leerstände:", "Steuerliche Dokumentation:", "Pruefhinweise:"].includes(line)) {
+      sectionHeading(line);
+      return;
+    }
+    if (line.includes("|")) {
+      tableLikeRow(line);
+      return;
+    }
+    const keyValue = line.match(/^([^:]{2,72}):\s*(.+)$/);
+    if (keyValue) {
+      keyValueRow(keyValue[1], keyValue[2]);
+      return;
+    }
+    paragraph(line.startsWith("-") ? line : line, { indent: line.startsWith("-") ? 10 : 0, fill: line.startsWith("-") ? color.slate : color.navy });
+  });
+
+  pageStreams.push(current.join("\n"));
+  const pageKids = pageStreams.map((_, index) => `${5 + index * 2} 0 R`).join(" ");
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>",
+    `<< /Type /Pages /Kids [${pageKids}] /Count ${pageStreams.length} >>`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
-    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    ...pageStreams.flatMap((content, index) => [
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${6 + index * 2} 0 R >>`,
+      `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    ]),
   ];
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
@@ -1445,6 +1817,74 @@ function createZip(files: Array<{ name: string; content: string }>): Blob {
   return new Blob(parts, { type: "application/zip" });
 }
 
+async function createZipWithBinary(files: Array<{ name: string; content: string | Blob | Uint8Array }>): Promise<Blob> {
+  const encoder = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+  const centralChunks: Uint8Array[] = [];
+  let offset = 0;
+
+  function pushUint32(view: DataView, viewOffset: number, value: number) {
+    view.setUint32(viewOffset, value >>> 0, true);
+  }
+
+  for (const file of files) {
+    const nameBytes = encoder.encode(file.name);
+    let contentBytes: Uint8Array;
+    if (typeof file.content === "string") {
+      contentBytes = encoder.encode(file.content);
+    } else if (file.content instanceof Blob) {
+      contentBytes = new Uint8Array(await file.content.arrayBuffer());
+    } else {
+      contentBytes = file.content;
+    }
+
+    const checksum = crc32(contentBytes);
+    const local = new Uint8Array(30 + nameBytes.length);
+    const localView = new DataView(local.buffer);
+    pushUint32(localView, 0, 0x04034b50);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0x0800, true);
+    localView.setUint16(8, 0, true);
+    pushUint32(localView, 14, checksum);
+    pushUint32(localView, 18, contentBytes.length);
+    pushUint32(localView, 22, contentBytes.length);
+    localView.setUint16(26, nameBytes.length, true);
+    local.set(nameBytes, 30);
+    chunks.push(local, contentBytes);
+
+    const central = new Uint8Array(46 + nameBytes.length);
+    const centralView = new DataView(central.buffer);
+    pushUint32(centralView, 0, 0x02014b50);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0x0800, true);
+    centralView.setUint16(10, 0, true);
+    pushUint32(centralView, 16, checksum);
+    pushUint32(centralView, 20, contentBytes.length);
+    pushUint32(centralView, 24, contentBytes.length);
+    centralView.setUint16(28, nameBytes.length, true);
+    pushUint32(centralView, 42, offset);
+    central.set(nameBytes, 46);
+    centralChunks.push(central);
+    offset += local.length + contentBytes.length;
+  }
+
+  const centralOffset = offset;
+  const centralSize = centralChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const end = new Uint8Array(22);
+  const endView = new DataView(end.buffer);
+  pushUint32(endView, 0, 0x06054b50);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  pushUint32(endView, 12, centralSize);
+  pushUint32(endView, 16, centralOffset);
+
+  const parts = [...chunks, ...centralChunks, end].map((chunk) =>
+    chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength) as ArrayBuffer,
+  );
+  return new Blob(parts, { type: "application/zip" });
+}
+
 function ReportActionButton({ label, primary = false, onClick }: { label: string; primary?: boolean; onClick: () => void }) {
   return (
     <button
@@ -1469,9 +1909,15 @@ function ReportsExportsPage() {
   const [period, setPeriod] = useState(String(currentYear));
   const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
   const [vacancyError, setVacancyError] = useState<string | null>(null);
-  const selectedObject = objects.find((object) => object.id === objectFilter);
+  const [mileageTrips, setMileageTrips] = useState<MileageTripRow[]>([]);
+  const [mileageError, setMileageError] = useState<string | null>(null);
+  const [rentAnnualReport, setRentAnnualReport] = useState<RentAnnualReportSnapshot | null>(null);
+  const rentReportRef = useRef<HTMLElement | null>(null);
+  const isPortfolioReportFilter = objectFilter === "portfolio";
+  const selectedObject = isPortfolioReportFilter ? undefined : objects.find((object) => object.id === objectFilter);
   const periodStart = `${period}-01-01`;
   const periodEnd = `${period}-12-31`;
+  const selectedYear = Number(period) || currentYear;
   const yearEntries = entries.filter((entry) => entry.booking_date?.startsWith(`${period}-`));
   const matchesSelectedObject = (entry: FinanceEntry) => {
     if (!selectedObject) return true;
@@ -1484,13 +1930,15 @@ function ReportsExportsPage() {
       .filter(Boolean);
     return candidates.some((candidate) => haystack.includes(candidate) || candidate.includes(haystack));
   };
-  const scopedEntries = selectedObject
-    ? yearEntries.filter(matchesSelectedObject)
-    : yearEntries;
+  const scopedEntries = yearEntries.filter((entry) => {
+    if (isPortfolioReportFilter) return isPortfolioGeneralEntry(entry);
+    if (selectedObject) return matchesSelectedObject(entry);
+    return true;
+  });
   const income = scopedEntries.filter((entry) => entry.entry_type === "income").reduce((sum, entry) => sum + entry.amount, 0);
   const expenses = scopedEntries.filter((entry) => entry.entry_type === "expense").reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
   const rentItems = scopedEntries.filter((entry) => isRentLikeEntry(entry)).length;
-  const reportObjectName = selectedObject?.label ?? "Alle Immobilien";
+  const reportObjectName = isPortfolioReportFilter ? PORTFOLIO_GENERAL_LABEL : selectedObject?.label ?? "Alle Immobilien";
   const reportSlug = `${slugifyReportPart(reportObjectName)}-${period}`;
   const matchesSelectedVacancy = (vacancy: UnitVacancy) => {
     if (!selectedObject) return true;
@@ -1501,16 +1949,27 @@ function ReportsExportsPage() {
       .filter(Boolean);
     return candidates.some((candidate) => haystack.includes(candidate) || candidate.includes(haystack));
   };
-  const scopedVacancies = vacancies
-    .filter((vacancy) => isVacancyInRange(vacancy, periodStart, periodEnd))
-    .filter(matchesSelectedVacancy)
-    .sort((a, b) => String(a.start_date).localeCompare(String(b.start_date)));
-  const scopedLoans = selectedObject
-    ? loanRows.filter((row) => {
-      const rowName = row.property_name.toLowerCase();
-      return row.property_id === selectedObject.id || rowName.includes(selectedObject.label.toLowerCase()) || selectedObject.label.toLowerCase().includes(rowName);
-    })
-    : loanRows;
+  const scopedVacancies = isPortfolioReportFilter
+    ? []
+    : vacancies
+      .filter((vacancy) => isVacancyInRange(vacancy, periodStart, periodEnd))
+      .filter(matchesSelectedVacancy)
+      .sort((a, b) => String(a.start_date).localeCompare(String(b.start_date)));
+  const scopedLoans = isPortfolioReportFilter
+    ? []
+    : selectedObject
+      ? loanRows.filter((row) => {
+        const rowName = row.property_name.toLowerCase();
+        return row.property_id === selectedObject.id || rowName.includes(selectedObject.label.toLowerCase()) || selectedObject.label.toLowerCase().includes(rowName);
+      })
+      : loanRows;
+  const taxAdvisorDashboard = buildTaxAdvisorDashboard({
+    year: selectedYear,
+    entries: yearEntries,
+    loans: loanRows,
+    mileageTrips,
+    objects,
+  });
 
   useEffect(() => {
     let alive = true;
@@ -1533,15 +1992,39 @@ function ReportsExportsPage() {
     };
   }, [periodEnd, periodStart]);
 
+  useEffect(() => {
+    let alive = true;
+
+    async function loadMileageRows() {
+      try {
+        setMileageError(null);
+        const rows = await listMileageTrips({ year: selectedYear });
+        if (alive) setMileageTrips(rows);
+      } catch (error) {
+        if (!alive) return;
+        setMileageTrips([]);
+        setMileageError(error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    void loadMileageRows();
+    return () => {
+      alive = false;
+    };
+  }, [selectedYear]);
+
   function reportTitle(kind: ReportKind): string {
     const titles: Record<ReportKind, string> = {
       tax: "Steuer-Report Anlage V",
       advisor: "Export für den Steuerberater",
+      "anlage-v-package": "Anlage-V Exportpaket",
+      section35a: "§35a Bericht Hohenloher Str. 78",
       "rent-account": "Mietkonto-Check und offene Zahlungen",
       utilities: "Nebenkostenabrechnungen",
       wealth: "Immobilien-Vermögen und Kredite",
       handover: "Übergabeprotokolle und Zählerstände",
       vacancy: "Leerstandsbericht",
+      "tax-data-package": "Steuerberater-Datenpaket",
     };
     return titles[kind];
   }
@@ -1563,11 +2046,99 @@ function ReportsExportsPage() {
     return scopedEntries;
   }
 
+  function buildRentAccountLines(): string[] {
+    const report = getReadyRentReport();
+    if (!report) {
+      return [
+        `Zeitraum: ${period}`,
+        "Quelle: Seite Mieteingang / Zahlungskalender",
+        "Der Mietkonto-Jahresreport wird noch aus der Hauptquelle geladen.",
+      ];
+    }
+
+    const kpiOrder: Array<keyof RentAnnualReportSnapshot["kpis"]> = [
+      "1.-5. Tag",
+      "6.-10. Tag",
+      "11.-20. Tag",
+      "ab 21. Tag",
+      "Teilweise",
+      "Fehlt",
+      "Leerstand",
+      "Neutral",
+    ];
+
+    return [
+      `Objektfilter: ${reportObjectName}`,
+      `Zeitraum: ${period}`,
+      "Hauptquelle: Seite Mieteingang / Zahlungskalender",
+      "Soll: Mietentwicklung/Mietanpassungen und Mieterregister. Ist: Buchungen. Leerstand: Seite Leerstand.",
+      "",
+      `Summe Zahlungseingänge: ${formatCurrency(report.totals.paid)}`,
+      `Soll gesamt: ${formatCurrency(report.totals.expected)}`,
+      `Noch offen: ${formatCurrency(report.totals.open)}`,
+      `Überzahlung: ${formatCurrency(report.totals.overpaid)}`,
+      "",
+      "KPI Zahlungskalender:",
+      ...kpiOrder.map((label) => `${label}: ${report.kpis[label]}`),
+      "",
+      "Jahressummen nach Immobilie:",
+      ...report.propertyTotals.map((row) =>
+        `${row.objectLabel} | Zahlungseingänge ${formatCurrency(row.paid)} | Soll ${formatCurrency(row.expected)} | Offen ${formatCurrency(row.open)} | Überzahlung ${formatCurrency(row.overpaid)}`
+      ),
+      "",
+      "Monatsübersicht nach Immobilie und Einheit:",
+      ...report.rows.flatMap((row) => [
+        `${row.objectLabel} | ${row.unitLabel} | Mieter: ${row.tenantName} | Jahr Ist ${formatCurrency(row.yearPaid)} | Jahr Soll ${formatCurrency(row.yearExpected)} | Offen ${formatCurrency(row.yearOpen)} | Überzahlung ${formatCurrency(row.yearOverpaid)}`,
+        ...row.months.map((month) =>
+          `  ${month.monthLabel}: ${month.kpi} | Eingang ${formatCurrency(month.paid)} | Soll ${formatCurrency(month.expected)} | Offen ${formatCurrency(month.open)} | Überzahlung ${formatCurrency(month.overpaid)} | Eingang ${formatDate(month.paymentDate)} | Quelle ${month.expectedSource}`
+        ),
+      ]),
+    ];
+  }
+
+  function getReadyRentReport(): RentAnnualReportSnapshot | null {
+    const expectedObjectFilter = selectedObject?.id ?? "";
+    return (
+      rentAnnualReport
+      && rentAnnualReport.year === selectedYear
+      && rentAnnualReport.objectFilter === expectedObjectFilter
+    ) ? rentAnnualReport : null;
+  }
+
   function buildReportLines(kind: ReportKind): string[] {
+    if (kind === "tax-data-package") {
+      return buildTaxDataPackageLines();
+    }
+
+    if (kind === "anlage-v-package") {
+      return [
+        `Steuerjahr: ${period}`,
+        "Exportbereich A: Anlage V - 5 separate Objektberichte",
+        "",
+        ...taxAdvisorDashboard.AnlageVReports.flatMap((report, index) => [
+          `${index + 1}. ${report.profile.reportLabel}`,
+          ...buildAnlageVReportLines(report).map((line) => (line ? `  ${line}` : "")),
+          "",
+        ]),
+        taxAdvisorDashboard.warnings.length ? "Pruefhinweise:" : "",
+        ...taxAdvisorDashboard.warnings.map((warning) => `- ${warning}`),
+      ].filter((line, index, list) => line || list[index - 1] !== "");
+    }
+
+    if (kind === "section35a") {
+      return [
+        `Steuerjahr: ${period}`,
+        "Exportbereich B: §35a EStG - nur Hohenloher Str. 78",
+        "",
+        ...buildSection35aReportLines(taxAdvisorDashboard.section35aReport),
+        mileageError ? `Hinweis: Fahrtenbuch konnte nicht vollständig geladen werden: ${mileageError}` : "",
+      ].filter(Boolean);
+    }
+
     if (kind === "vacancy") {
       const vacancyLines = scopedVacancies.map((vacancy) => {
         const endDate = vacancy.end_date ?? "offen";
-        return `${formatDate(vacancy.start_date)} bis ${formatDate(endDate)} | ${vacancy.object_label || vacancy.object_code || reportObjectName} | ${vacancy.unit_label || "Gesamte Immobilie"} | ${vacancy.reason ?? "-"} | ${vacancy.notes ?? ""}`;
+        return `${formatDate(vacancy.start_date)} bis ${formatDate(endDate)} | Status: ${vacancy.status || "-"} | ${vacancy.object_label || vacancy.object_code || reportObjectName} | ${vacancy.unit_label || "Gesamte Immobilie"} | ${vacancy.reason ?? "-"} | ${vacancy.notes ?? ""}`;
       });
       return [
         `Objekt: ${reportObjectName}`,
@@ -1581,6 +2152,10 @@ function ReportsExportsPage() {
         ...(vacancyLines.length ? vacancyLines : ["Für diese Filterauswahl wurden keine Leerstände dokumentiert."]),
         vacancyError ? `Hinweis: Leerstände konnten nicht vollständig geladen werden: ${vacancyError}` : "",
       ].filter(Boolean);
+    }
+
+    if (kind === "rent-account") {
+      return buildRentAccountLines();
     }
 
     const rows = entryRows(kind);
@@ -1612,7 +2187,106 @@ function ReportsExportsPage() {
     return lines;
   }
 
+  function buildTaxDataPackageLines(): string[] {
+    const sections: Array<{ title: string; kind: ReportKind }> = [
+      { title: "1. Anlage-V-Paket fuer Steuerberater", kind: "anlage-v-package" },
+      { title: "2. Steuer-Report Anlage V", kind: "tax" },
+      { title: "3. Mietkonto-Check und offene Zahlungen", kind: "rent-account" },
+      { title: "4. Immobilien-Vermoegen und Kredite", kind: "wealth" },
+      { title: "5. Leerstandsbericht", kind: "vacancy" },
+      { title: "6. Paragraf 35a Bericht Hohenloher Str. 78", kind: "section35a" },
+      { title: "7. Export fuer den Steuerberater", kind: "advisor" },
+      { title: "8. Nebenkostenabrechnungen", kind: "utilities" },
+    ];
+
+    return [
+      `Steuerjahr: ${period}`,
+      "Paketinhalt: Alle steuerrelevanten Jahresunterlagen in einem zusammengefuehrten PDF.",
+      "Quelle: Buchhaltung, Darlehen, Leerstand, Fahrtenbuch, Mietregister und Immobilienvermoegen.",
+      "Hinweis: Allgemein / Portfolio-Ausgaben werden anteilig auf die vermieteten Anlage-V-Objekte verteilt; Hohenloher Str. 78 bleibt fuer Anlage V gesperrt.",
+      "",
+      ...sections.flatMap((section) => [
+        `${section.title}:`,
+        ...buildReportLines(section.kind),
+        "",
+      ]),
+      "Paket-Pruefhinweise:",
+      ...(taxAdvisorDashboard.warnings.length ? taxAdvisorDashboard.warnings.map((warning) => `- ${warning}`) : ["- Keine offenen Steuerhinweise im aktuellen Dashboard."]),
+      mileageError ? `- Fahrtenbuch-Hinweis: ${mileageError}` : "",
+      vacancyError ? `- Leerstand-Hinweis: ${vacancyError}` : "",
+    ].filter(Boolean);
+  }
+
   function buildReportCsv(kind: ReportKind): string {
+    if (kind === "tax-data-package") {
+      return buildCsv(["Bereich", "Datei", "Format", "Beschreibung"], [
+        ["Anlage V", `anlage-v/steuerberater-jahresakte-${period}.pdf`, "PDF", "Zusammengefuehrter Objektbericht mit Verwaltungskosten & Pauschalen"],
+        ["Anlage V", `anlage-v/gesamtuebersicht-${period}.csv`, "CSV", "Felder 1 bis 7 je vermietetem Objekt"],
+        ["Steuer", `steuer-report-anlage-v-${period}.pdf`, "PDF", "Allgemeine Anlage-V-Jahresuebersicht"],
+        ["Mietkonto", `mietkonto-check-${period}.pdf`, "PDF", "Mietzahlungen und offene Posten"],
+        ["Vermoegen", `immobilien-vermoegen-kredite-${period}.pdf`, "PDF", "Objektwerte, Darlehen und Zins-/Tilgungswerte"],
+        ["Leerstand", `leerstandsbericht-${period}.pdf`, "PDF", "Leerstand mit Status, Beginn und Ende"],
+        ["§35a", `35a-hohenloher-str-78-${period}.pdf`, "PDF", "Selbstgenutztes Objekt, Arbeitslohn und Barzahlungspruefung"],
+        ["Steuerberater", `export-steuerberater-${period}.xlsx`, "Excel", "Strukturierte Uebergabedaten"],
+        ["Nebenkosten", `nebenkostenabrechnungen-${period}.pdf`, "PDF", "Nebenkosten- und Betriebskostenuebersicht"],
+        ["Portfolio", `portfolio-ausgaben-${period}.csv`, "CSV", "Allgemein / Portfolio-Ausgaben mit anteiliger Steuerlogik"],
+      ]);
+    }
+
+    if (kind === "anlage-v-package") {
+      const rows = taxAdvisorDashboard.AnlageVReports.map((report) => [
+        report.profile.reportLabel,
+        report.profile.usage === "rented_parking" ? "Stellplatz-Vermietung" : "Wohnraumvermietung",
+        report.income,
+        report.buildingAfa,
+        report.inventoryAfa,
+        report.loanInterest,
+        report.maintenance,
+        report.runningCosts,
+        report.administrationCosts,
+        report.portfolioAdministrationShare,
+        report.mileageTravelCosts,
+        report.mileageVmaCosts,
+        report.mileageHotelCosts,
+        report.businessMealDeductible,
+        report.telecommunicationDeductible,
+        report.net,
+      ]);
+      return buildCsv([
+        "Objekt",
+        "Status",
+        "Feld 1 Mieteinnahmen",
+        "Feld 2 AfA",
+        "Feld 3 Inventar-AfA",
+        "Feld 4 Schuldzinsen",
+        "Feld 5 Erhaltungsaufwand",
+        "Feld 6 Betriebs-/Nebenkosten",
+        "Feld 7 Verwaltungskosten",
+        "davon Portfolio-Ausgaben anteilig",
+        "davon Fahrt/Ticket",
+        "davon VMA",
+        "davon Hotel",
+        "davon Bewirtungskosten 70%",
+        "davon Telefon/Internet anteilig",
+        "Ergebnis",
+      ], rows);
+    }
+
+    if (kind === "section35a") {
+      const report = taxAdvisorDashboard.section35aReport;
+      return buildCsv(["Objekt", "Steuerjahr", "Haushaltsnah Arbeitslohn", "Handwerker Arbeitslohn", "davon Handwerker-Fahrtkosten §35a", "Homeoffice-Fahrtkosten", "Barzahlungen ausgeschlossen", "Homeoffice %", "Homeoffice abziehbar"], [[
+        report.profile.reportLabel,
+        period,
+        report.householdServicesLabor,
+        report.craftsmanLabor,
+        report.section35aTripCosts,
+        report.homeOfficeTripCosts,
+        report.excludedCashPayments.length,
+        report.homeOfficePercentage,
+        report.homeOfficeDeductible,
+      ]]);
+    }
+
     if (kind === "vacancy") {
       const rows = scopedVacancies.map((vacancy) => [
         vacancy.object_label || vacancy.object_code || reportObjectName,
@@ -1625,6 +2299,48 @@ function ReportsExportsPage() {
         "Nachweis fuer Steuererklaerung / Vermietungsabsicht",
       ]);
       return buildCsv(["Objekt", "Einheit", "Beginn", "Ende", "Status", "Grund", "Notiz", "Steuerhinweis"], rows);
+    }
+
+    if (kind === "rent-account") {
+      const report = getReadyRentReport();
+      const rows = report ? report.rows.flatMap((row) => row.months.map((month) => [
+        row.objectLabel,
+        row.unitLabel,
+        row.tenantName,
+        period,
+        month.monthLabel,
+        month.kpi,
+        month.status === "none" ? "Nicht ausgewertet" : month.status,
+        month.paid,
+        month.expected,
+        month.open,
+        month.overpaid,
+        month.paymentDate ?? "",
+        month.expectedSource,
+        row.yearPaid,
+        row.yearExpected,
+        row.yearOpen,
+        row.yearOverpaid,
+      ])) : [];
+      return buildCsv([
+        "Immobilie",
+        "Einheit",
+        "Mieter",
+        "Jahr",
+        "Monat",
+        "KPI",
+        "Status",
+        "Zahlungseingang",
+        "Soll",
+        "Noch offen",
+        "Überzahlung",
+        "Zahlungsdatum",
+        "Soll-Quelle",
+        "Jahr Ist",
+        "Jahr Soll",
+        "Jahr offen",
+        "Jahr Überzahlung",
+      ], rows);
     }
 
     const rows = entryRows(kind)
@@ -1651,14 +2367,170 @@ function ReportsExportsPage() {
     ].join("\n");
   }
 
-  function downloadReport(kind: ReportKind, format: ReportFormat) {
+  async function downloadTaxDataPackage(format: ReportFormat) {
+    const packageSlug = `steuerberater-datenpaket-${period}`;
+    const packageTitle = `Steuerberater-Datenpaket ${period}`;
+    const combinedPdf = createSimplePdf(packageTitle, buildTaxDataPackageLines());
+
+    if (format === "pdf") {
+      downloadBlob(`${packageSlug}.pdf`, combinedPdf);
+      return;
+    }
+
+    if (format === "csv") {
+      downloadBlob(`${packageSlug}-index.csv`, new Blob([`\uFEFF${buildReportCsv("tax-data-package")}`], { type: "text/csv;charset=utf-8" }));
+      return;
+    }
+
+    if (format === "excel") {
+      downloadBlob(`${packageSlug}-index.xls`, new Blob([`\uFEFF${csvToExcelHtml(packageTitle, buildReportCsv("tax-data-package"))}`], { type: "application/vnd.ms-excel;charset=utf-8" }));
+      return;
+    }
+
+    const packageKinds: Array<{ folder: string; filename: string; kind: ReportKind }> = [
+      { folder: "01-anlage-v", filename: `anlage-v-paket-${period}`, kind: "anlage-v-package" },
+      { folder: "02-steuer-report", filename: `steuer-report-anlage-v-${period}`, kind: "tax" },
+      { folder: "03-mietkonto", filename: `mietkonto-check-${period}`, kind: "rent-account" },
+      { folder: "04-vermoegen-kredite", filename: `immobilien-vermoegen-kredite-${period}`, kind: "wealth" },
+      { folder: "05-leerstand", filename: `leerstandsbericht-${period}`, kind: "vacancy" },
+      { folder: "06-35a-hohenloher", filename: `35a-hohenloher-str-78-${period}`, kind: "section35a" },
+      { folder: "07-steuerberater-export", filename: `export-steuerberater-${period}`, kind: "advisor" },
+      { folder: "08-nebenkosten", filename: `nebenkostenabrechnungen-${period}`, kind: "utilities" },
+    ];
+
+    const rentedReportCount = taxAdvisorDashboard.AnlageVReports.length || 1;
+    const portfolioExpenseRows = taxAdvisorDashboard.AnlageVReports.flatMap((report) =>
+      report.portfolioAdministrationRows.map((entry) => {
+        const amount = Math.abs(Number(entry.amount ?? 0));
+        return [report.profile.reportLabel, entry.booking_date ?? "", entry.category ?? "", amount, amount / rentedReportCount, entry.note ?? ""];
+      })
+    );
+
+    const readyRentReport = getReadyRentReport();
+    if (!readyRentReport) {
+      window.alert("Der Mietkonto-Jahresreport wird noch aus der Seite Mieteingang geladen. Bitte einen Moment warten und den Export erneut starten.");
+      return;
+    }
+
+    const files: Array<{ name: string; content: string | Blob }> = [
+      { name: `${packageSlug}/00-zusammengefuehrter-steuerberater-report-${period}.pdf`, content: combinedPdf },
+      { name: `${packageSlug}/00-paket-index.csv`, content: buildReportCsv("tax-data-package") },
+      { name: `${packageSlug}/00-paket-index.xls`, content: csvToExcelHtml(packageTitle, buildReportCsv("tax-data-package")) },
+      { name: `${packageSlug}/00-lesemich.txt`, content: buildSummaryText("tax-data-package") },
+      { name: `${packageSlug}/portfolio-ausgaben/portfolio-ausgaben-${period}.csv`, content: buildCsv(["Objekt", "Datum", "Kategorie", "Gesamtbetrag", "Objektanteil", "Notiz"], portfolioExpenseRows) },
+      { name: `${packageSlug}/portfolio-ausgaben/portfolio-ausgaben-${period}.xls`, content: csvToExcelHtml(`Portfolio-Ausgaben ${period}`, buildCsv(["Objekt", "Datum", "Kategorie", "Gesamtbetrag", "Objektanteil", "Notiz"], portfolioExpenseRows)) },
+      { name: `${packageSlug}/hinweis.txt`, content: "Dieses Datenpaket ist nach Steuerjahr gefiltert. Das zusammengefuehrte PDF ist die Leseakte; CSV/XLS-Dateien dienen der Detailpruefung. Allgemein / Portfolio-Ausgaben sind gesondert enthalten und werden in Anlage V anteilig verteilt." },
+    ];
+
+    packageKinds.forEach((item) => {
+      const csv = buildReportCsv(item.kind);
+      files.push(
+        {
+          name: `${packageSlug}/${item.folder}/${item.filename}.pdf`,
+          content: item.kind === "rent-account"
+            ? createRentAccountPdf(readyRentReport, reportObjectName)
+            : createSimplePdf(reportTitle(item.kind), buildReportLines(item.kind)),
+        },
+        { name: `${packageSlug}/${item.folder}/${item.filename}.csv`, content: csv },
+        { name: `${packageSlug}/${item.folder}/${item.filename}.xls`, content: csvToExcelHtml(reportTitle(item.kind), csv) },
+        { name: `${packageSlug}/${item.folder}/${item.filename}.txt`, content: buildSummaryText(item.kind) },
+      );
+    });
+
+    downloadBlob(`${packageSlug}.zip`, await createZipWithBinary(files));
+  }
+
+  async function downloadReport(kind: ReportKind, format: ReportFormat) {
+    if (kind === "tax-data-package") {
+      await downloadTaxDataPackage(format);
+      return;
+    }
+
+    if (kind === "rent-account" && !getReadyRentReport()) {
+      window.alert("Der Mietkonto-Jahresreport wird noch aus der Seite Mieteingang geladen. Bitte einen Moment warten und den Export erneut starten.");
+      return;
+    }
+
     const baseName = `${slugifyReportPart(reportTitle(kind))}-${reportSlug}`;
+    if (kind === "anlage-v-package" && format === "zip") {
+      const rentedReportCount = taxAdvisorDashboard.AnlageVReports.length || 1;
+      const portfolioExpenseRows = taxAdvisorDashboard.AnlageVReports.flatMap((report) =>
+        report.portfolioAdministrationRows.map((entry) => {
+          const amount = Math.abs(Number(entry.amount ?? 0));
+          return [
+            report.profile.reportLabel,
+            entry.booking_date ?? "",
+            entry.category ?? "",
+            amount,
+            amount / rentedReportCount,
+            entry.note ?? "",
+          ];
+        })
+      );
+      const portfolioExpenseText = [
+        `Portfolio-Ausgaben fuer Anlage V ${period}`,
+        "Quelle: Buchhaltung, Zuordnung Allgemein / Portfolio-Ausgabe.",
+        "Diese Positionen werden nicht einer einzelnen Immobilie direkt zugeordnet, sondern anteilig auf die 5 vermieteten Anlage-V-Objekte verteilt. Hohenloher Str. 78 bleibt ausgeschlossen.",
+        "",
+        "Typische Kategorien: Steuerberater, Software, Kontofuehrungsgebuehr, Buero / Porto, Verwaltungskosten.",
+        "",
+        ...(portfolioExpenseRows.length
+          ? portfolioExpenseRows.map((row) => `${row[1]} | ${row[0]} | ${row[2]} | Gesamt ${formatCurrency(Number(row[3]))} | Objektanteil ${formatCurrency(Number(row[4]))} | ${row[5]}`)
+          : ["Keine Portfolio-Ausgaben fuer diesen Zeitraum gefunden."]),
+      ].join("\n");
+      const files = [
+        { name: `anlage-v/steuerberater-jahresakte-${period}.txt`, content: buildSummaryText("anlage-v-package") },
+        {
+          name: `anlage-v/portfolio-ausgaben-steuerberater-${period}.csv`,
+          content: buildCsv(["Objekt", "Datum", "Kategorie", "Gesamtbetrag", "Objektanteil", "Notiz"], portfolioExpenseRows),
+        },
+        { name: `anlage-v/portfolio-ausgaben-steuerberater-${period}.txt`, content: portfolioExpenseText },
+        ...taxAdvisorDashboard.AnlageVReports.flatMap((report) => {
+          const name = slugifyReportPart(`${report.profile.reportLabel}-${period}`);
+          return [
+            { name: `anlage-v/${name}.txt`, content: buildAnlageVReportLines(report).join("\n") },
+            {
+              name: `anlage-v/${name}.csv`,
+              content: buildCsv(["Feld", "Wert"], [
+                [report.incomeLabel, report.income],
+                ["Gebaeude-/Teileigentum-AfA", report.buildingAfa],
+                ["Einbaukuechen & Inventar-AfA", report.inventoryAfa],
+                ["Schuldzinsen", report.loanInterest],
+                ["Erhaltungsaufwand", report.maintenance],
+                ["Laufende Betriebs- & Nebenkosten", report.runningCosts],
+                ["Verwaltungskosten & Pauschalen", report.administrationCosts],
+                ["davon Portfolio-Ausgaben anteilig", report.portfolioAdministrationShare],
+                ["Reisekosten gesamt", report.mileageCosts],
+                ["Fahrt/Ticket", report.mileageTravelCosts],
+                ["Verpflegungsmehraufwand", report.mileageVmaCosts],
+                ["Hotelkosten", report.mileageHotelCosts],
+                ["Bewirtungskosten 70%-Anteil", report.businessMealDeductible],
+                ["Telefon-/Internetkosten anteilig", report.telecommunicationDeductible],
+                ["Vorlaeufiges Ergebnis", report.net],
+              ]),
+            },
+          ];
+        }),
+        { name: "anlage-v/gesamtuebersicht.csv", content: buildReportCsv("anlage-v-package") },
+        { name: "hinweis.txt", content: `Anlage V: Hohenloher Str. 78 ist wegen Status Selbstgenutzt / WEG technisch ausgeschlossen. Rosenstein wird als isolierte Stellplatz-Vermietung getrennt ausgewiesen.\n\nSteuerberater-, Software-, Kontofuehrungs- und sonstige Portfolio-Ausgaben finden Sie in anlage-v/portfolio-ausgaben-steuerberater-${period}.csv sowie im jeweiligen Objektbericht unter Feld 7.` },
+      ];
+      downloadBlob(`${baseName}.zip`, createZip(files));
+      return;
+    }
+
     if (format === "csv") {
       downloadBlob(`${baseName}.csv`, new Blob([`\uFEFF${buildReportCsv(kind)}`], { type: "text/csv;charset=utf-8" }));
       return;
     }
+    if (format === "excel") {
+      downloadBlob(`${baseName}.xls`, new Blob([`\uFEFF${csvToExcelHtml(reportTitle(kind), buildReportCsv(kind))}`], { type: "application/vnd.ms-excel;charset=utf-8" }));
+      return;
+    }
     if (format === "pdf") {
-      downloadBlob(`${baseName}.pdf`, createSimplePdf(reportTitle(kind), buildReportLines(kind)));
+      const content = kind === "rent-account"
+        ? createRentAccountPdf(getReadyRentReport()!, reportObjectName)
+        : createSimplePdf(reportTitle(kind), buildReportLines(kind));
+      downloadBlob(`${baseName}.pdf`, content);
       return;
     }
     downloadBlob(`${baseName}.zip`, createZip([
@@ -1670,54 +2542,96 @@ function ReportsExportsPage() {
 
   const reportCards = [
     {
+      title: "Steuerberater-Datenpaket",
+      description: "Ein Jahrespaket mit zusammengefuehrtem PDF, Einzel-PDFs, CSV-/Excel-Tabellen und Portfolio-Ausgaben fuer die direkte Uebergabe an den Steuerberater.",
+      icon: PackageCheck,
+      actions: [
+        { label: "Data-Package ZIP", kind: "tax-data-package", format: "zip", primary: true },
+        { label: "Zusammengeführtes PDF", kind: "tax-data-package", format: "pdf" },
+        { label: "Paket-Index Excel", kind: "tax-data-package", format: "excel" },
+        { label: "Paket-Index CSV", kind: "tax-data-package", format: "csv" },
+      ],
+    },
+    {
+      title: "Anlage-V-Paket für Steuerberater",
+      description: "Erzeugt 5 getrennte Objektberichte: 4 Wohnungen plus Rosensteinstr. 25 als isolierte TG-Stellplatz-Vermietung. Hohenloher bleibt gesperrt.",
+      icon: FileText,
+      actions: [
+        { label: "Anlage-V-Paket ZIP", kind: "anlage-v-package", format: "zip", primary: true },
+        { label: "Jahresakte-PDF", kind: "anlage-v-package", format: "pdf" },
+        { label: "Excel", kind: "anlage-v-package", format: "excel" },
+        { label: "Gesamtübersicht CSV", kind: "anlage-v-package", format: "csv" },
+      ],
+    },
+    {
       title: "Steuer-Report (Anlage V)",
-      description: "Jahresübersicht mit Mieteinnahmen, Werbungskosten, Darlehenszinsen und objektbezogener Zuordnung.",
+      description: "Allgemeine Jahresübersicht aus Buchungen. Für die Steuerabgabe bitte bevorzugt das neue Anlage-V-Paket verwenden.",
       icon: Euro,
       actions: [
         { label: "PDF herunterladen", kind: "tax", format: "pdf", primary: true },
-        { label: "Excel-Tabelle exportieren", kind: "tax", format: "csv" },
+        { label: "Excel", kind: "tax", format: "excel" },
+        { label: "CSV", kind: "tax", format: "csv" },
+      ],
+    },
+    {
+      title: "Mietkonto-Check & Offene Zahlungen",
+      description: "Jahresreport aus der Hauptquelle Mieteingang: Zahlungskalender, farbliche Zahlungs-KPIs sowie Ist, Soll, offen und Überzahlung je Immobilie.",
+      icon: CalendarCheck,
+      actions: [
+        { label: "PDF herunterladen", kind: "rent-account", format: "pdf", primary: true },
+        { label: "Excel", kind: "rent-account", format: "excel" },
+        { label: "CSV", kind: "rent-account", format: "csv" },
+      ],
+    },
+    {
+      title: "Immobilien-Vermögen & Kredite",
+      description: "Objektwerte, Restschulden, Zins- und Tilgungswerte für Bank, Finanzierung und Vermögensübersicht.",
+      icon: Landmark,
+      actions: [
+        { label: "Vermögens-PDF", kind: "wealth", format: "pdf", primary: true },
+        { label: "Excel", kind: "wealth", format: "excel" },
+        { label: "CSV", kind: "wealth", format: "csv" },
+      ],
+    },
+    {
+      title: "Leerstandsbericht",
+      description: "Dokumentiert Leerstandszeiträume mit Status, Beginn, Ende, Grund und Notiz für Steuerberater und Anlage-V-Nachweis.",
+      icon: DoorOpen,
+      actions: [
+        { label: "PDF herunterladen", kind: "vacancy", format: "pdf", primary: true },
+        { label: "Excel", kind: "vacancy", format: "excel" },
+        { label: "CSV", kind: "vacancy", format: "csv" },
+      ],
+    },
+    {
+      title: "§35a-Bericht Hohenloher Str. 78",
+      description: "Isolierter Bericht für haushaltsnahe Dienstleistungen und Handwerkerleistungen. Barzahlungen werden ausgeschlossen und als Warnung dokumentiert.",
+      icon: ShieldCheck,
+      actions: [
+        { label: "§35a-PDF", kind: "section35a", format: "pdf", primary: true },
+        { label: "Excel", kind: "section35a", format: "excel" },
+        { label: "CSV", kind: "section35a", format: "csv" },
       ],
     },
     {
       title: "Export für den Steuerberater",
       description: "Strukturierte Export-Datei mit Buchungen, Objektbezug, Kategorien und Jahresfilter für die Übergabe.",
       icon: BriefcaseBusiness,
-      actions: [{ label: "Export-Datei erstellen", kind: "advisor", format: "csv", primary: true }],
-    },
-    {
-      title: "Mietkonto-Check & Offene Zahlungen",
-      description: "Prüft Mietzahlungen, Teilzahlungen und offene Beträge gegen die vorhandenen Mieteingänge.",
-      icon: CalendarCheck,
       actions: [
-        { label: "PDF herunterladen", kind: "rent-account", format: "pdf", primary: true },
-        { label: "Liste exportieren", kind: "rent-account", format: "csv" },
+        { label: "PDF", kind: "advisor", format: "pdf", primary: true },
+        { label: "Excel", kind: "advisor", format: "excel" },
+        { label: "CSV", kind: "advisor", format: "csv" },
       ],
     },
     {
       title: "Nebenkostenabrechnungen (PDF-Paket)",
-      description: "Bündelt vorhandene Nebenkosten-Abrechnungen für Wohnungen und Tiefgarage als Übergabepaket.",
+      description: "Bündelt Nebenkosten- und Betriebskostenbuchungen für Wohnungen und Tiefgarage als Übergabepaket.",
       icon: ReceiptText,
-      actions: [{ label: "PDFs als ZIP-Datei herunterladen", kind: "utilities", format: "zip", primary: true }],
-    },
-    {
-      title: "Immobilien-Vermögen & Kredite",
-      description: "Objektwerte, Restschulden, Zins- und Tilgungswerte für Bank, Finanzierung und Vermögensübersicht.",
-      icon: Landmark,
-      actions: [{ label: "Vermögens-PDF erstellen", kind: "wealth", format: "pdf", primary: true }],
-    },
-    {
-      title: "Übergabeprotokolle & Zählerstände",
-      description: "Dokumente für Einzug, Auszug, Übergaben und Zählerstände objektbezogen zusammenstellen.",
-      icon: KeyRound,
-      actions: [{ label: "Dokumente exportieren", kind: "handover", format: "zip", primary: true }],
-    },
-    {
-      title: "Leerstandsbericht",
-      description: "Dokumentiert Leerstandszeiträume, Grund und Notiz für Steuerberater und Anlage-V-Nachweis.",
-      icon: DoorOpen,
       actions: [
-        { label: "PDF herunterladen", kind: "vacancy", format: "pdf", primary: true },
-        { label: "CSV exportieren", kind: "vacancy", format: "csv" },
+        { label: "PDF herunterladen", kind: "utilities", format: "pdf", primary: true },
+        { label: "Excel", kind: "utilities", format: "excel" },
+        { label: "CSV", kind: "utilities", format: "csv" },
+        { label: "ZIP-Paket", kind: "utilities", format: "zip" },
       ],
     },
   ] satisfies Array<{
@@ -1730,10 +2644,17 @@ function ReportsExportsPage() {
   return (
     <div className="space-y-5">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Ausgewertete Buchungen" value={scopedEntries.length} detail={selectedObject?.label ?? "Alle Objekte"} icon={WalletCards} tone="blue" />
+        <KpiCard label="Ausgewertete Buchungen" value={scopedEntries.length} detail={reportObjectName} icon={WalletCards} tone="blue" />
         <KpiCard label="Einnahmen" value={formatCurrency(income)} detail={period} icon={TrendingUp} tone="green" />
         <KpiCard label="Ausgaben" value={formatCurrency(expenses)} detail={`${rentItems} Mietbuchungen erkannt`} icon={ReceiptText} tone="red" />
         <KpiCard label="Leerstände" value={scopedVacancies.length} detail={vacancyError ? "Leerstand konnte nicht geladen werden" : "Zeiträume im Filter"} icon={DoorOpen} tone={scopedVacancies.length ? "amber" : "slate"} />
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <KpiCard label="Anlage-V-Berichte" value={taxAdvisorDashboard.AnlageVReports.length} detail="4 Wohnungen + TG-Stellplätze" icon={FileText} tone="blue" />
+        <KpiCard label="§35a Arbeitslohn" value={formatTaxCurrency(taxAdvisorDashboard.section35aReport.householdServicesLabor + taxAdvisorDashboard.section35aReport.craftsmanLabor)} detail="Hohenloher Str. 78" icon={ShieldCheck} tone="green" />
+        <KpiCard label="Barzahlung gesperrt" value={taxAdvisorDashboard.section35aReport.excludedCashPayments.length} detail="aus §35a ausgeschlossen" icon={ReceiptText} tone={taxAdvisorDashboard.section35aReport.excludedCashPayments.length ? "amber" : "slate"} />
+        <KpiCard label="Steuerhinweise" value={taxAdvisorDashboard.warnings.length} detail={mileageError ? "Fahrtenbuch prüfen" : "Berechnungsprüfung"} icon={Bell} tone={taxAdvisorDashboard.warnings.length || mileageError ? "amber" : "green"} />
       </section>
 
       <SectionPanel
@@ -1750,6 +2671,7 @@ function ReportsExportsPage() {
               className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
             >
               <option value="all">Alle Objekte</option>
+              <option value="portfolio">{PORTFOLIO_GENERAL_LABEL}</option>
               {objects.map((object) => (
                 <option key={object.id} value={object.id}>{object.label}</option>
               ))}
@@ -1785,6 +2707,13 @@ function ReportsExportsPage() {
                 </div>
               </div>
               <div className="mt-5 flex flex-wrap gap-2">
+                {card.title === "Mietkonto-Check & Offene Zahlungen" ? (
+                  <ReportActionButton
+                    label="Jahresreport anzeigen"
+                    primary
+                    onClick={() => rentReportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                  />
+                ) : null}
                 {card.actions.map((action) => (
                   <ReportActionButton
                     key={action.label}
@@ -1797,6 +2726,24 @@ function ReportsExportsPage() {
             </article>
           );
         })}
+      </section>
+
+      <section ref={rentReportRef} className="scroll-mt-24">
+        <SectionPanel
+          eyebrow="Mietkonto-Check & Offene Zahlungen"
+          title={`Mieteingang Jahresübersicht ${period}`}
+          description="Dieser Report verwendet direkt den Zahlungskalender der Seite Mieteingang. Änderungen an Buchungen, Mietanpassungen, Mietverträgen oder Leerständen fließen dadurch ohne parallele Datenquelle ein."
+        >
+          <Suspense fallback={<div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm font-bold text-slate-500">Mietkonto-Jahresreport wird geladen…</div>}>
+            <Mietuebersicht
+              key={`rent-account-${selectedYear}-${selectedObject?.id ?? "all"}`}
+              embeddedAnnualReport
+              reportYear={selectedYear}
+              reportObjectId={selectedObject?.id ?? null}
+              onAnnualReportChange={setRentAnnualReport}
+            />
+          </Suspense>
+        </SectionPanel>
       </section>
 
       <SectionPanel
@@ -2507,8 +3454,7 @@ function AppShell() {
     () => [
       { to: "/dashboard/finanz-kennzahlen", label: "Cockpit", group: "Dashboard", icon: LayoutDashboard },
       { to: "/dashboard/warnmeldungen", label: "Warnungen", group: "Dashboard", icon: Bell },
-      ...(isAdmin ? [{ to: "/immobilien/immobilie-anlegen", label: "Immobilie anlegen", group: "Immobilien", icon: PlusCircle }] : []),
-      { to: "/immobilien/mietentwicklung", label: "Mietentwicklung", group: "Immobilien", icon: TrendingUp },
+      { to: "/immobilien/immobilie-anlegen", label: "Immobilie anlegen", group: "Immobilien", icon: PlusCircle },
       { to: "/leerstand", label: "Leerstand", group: "Immobilien", icon: DoorOpen },
       { to: "/immobilienvermoegen", label: "Dashboard", group: "Immobilienvermögen", icon: Landmark },
       { to: "/immobilienvermoegen/lilienthaler-str-54", label: "Lilienthaler Str. 54", group: "Immobilienvermögen", icon: Building2 },
@@ -2518,7 +3464,9 @@ function AppShell() {
       { to: "/immobilienvermoegen/hohenloher-str-78", label: "Hohenloher Str. 78", group: "Immobilienvermögen", icon: Building2 },
       { to: "/immobilienvermoegen/rosensteinstr-25", label: "Rosensteinstr. 25", group: "Immobilienvermögen", icon: Building2 },
       { to: "/investment-bericht", label: "Investment-Bericht", group: "Investment", icon: BookOpenCheck },
+      { to: "/mieter/register", label: "Mieterregister", group: "Mieter", icon: Users },
       { to: "/mieter/stammdaten", label: "Stammdaten", group: "Mieter", icon: Users },
+      { to: "/mieter/mietentwicklung", label: "Mietentwicklung", group: "Mieter", icon: TrendingUp },
       { to: "/mieter/mieteingang", label: "Mieteingang", group: "Mieter", icon: CalendarCheck },
       { to: "/ein-auszug", label: "Ein-/Auszug", group: "Mieter", icon: KeyRound },
       { to: "/buchhaltung/einnahmen-ausgaben", label: "Einnahmen & Ausgaben", group: "Buchhaltung", icon: PlusCircle },
@@ -2533,10 +3481,8 @@ function AppShell() {
       { to: "/mahnwesen", label: "Mahnwesen", group: "Aufgaben", icon: Bell },
       { to: "/ticketsystem/schadenmeldungen", label: "Tickets", group: "Aufgaben", icon: FolderKanban },
       { to: "/dokumente", label: "Archiv", group: "Dokumente", icon: FolderOpen },
-      ...(isAdmin ? [
-        { to: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", group: "Einstellungen", icon: UserCog },
-        { to: "/einstellungen/datenschutz-compliance", label: "Datenschutz", group: "Einstellungen", icon: ShieldCheck },
-      ] : []),
+      { to: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", group: "Einstellungen", icon: UserCog },
+      ...(isAdmin ? [{ to: "/einstellungen/datenschutz-compliance", label: "Datenschutz", group: "Einstellungen", icon: ShieldCheck }] : []),
     ],
     [isAdmin],
   );
@@ -2560,6 +3506,7 @@ function AppShell() {
   }
 
   return (
+    <ReadOnlyInteractionGuard enabled={isReadOnly}>
     <div className={["min-h-screen text-slate-950", isReadOnly ? "app-readonly" : ""].filter(Boolean).join(" ")}>
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[286px] flex-col border-r border-white/10 bg-[linear-gradient(180deg,#102535_0%,#132a38_48%,#0d1824_100%)] text-white shadow-[18px_0_52px_rgba(15,23,42,0.20)] xl:flex">
         <NavLink
@@ -2797,6 +3744,7 @@ function AppShell() {
         <Outlet />
       </main>
     </div>
+    </ReadOnlyInteractionGuard>
   );
 }
 
@@ -2834,11 +3782,11 @@ export default function App() {
         />
         <Route
           path="/immobilien/immobilie-anlegen"
-          element={<AdminOnlyWorkspace config={workspaceConfigs.immobilienAnlegen}><Administrator focus="property" /></AdminOnlyWorkspace>}
+          element={<ModuleWorkspacePage config={workspaceConfigs.immobilienAnlegen}><Administrator focus="property" /></ModuleWorkspacePage>}
         />
         <Route
           path="/immobilien/mietentwicklung"
-          element={<ModuleWorkspacePage config={workspaceConfigs.immobilienMietentwicklung}><Mietentwicklung /></ModuleWorkspacePage>}
+          element={<Navigate to="/mieter/mietentwicklung" replace />}
         />
         <Route
           path="/immobilien/einheiten-verwaltung"
@@ -2893,7 +3841,7 @@ export default function App() {
         />
         <Route
           path="/buchhaltung/sollstellungen-mietanpassungen"
-          element={<Navigate to="/immobilien/mietentwicklung" replace />}
+          element={<Navigate to="/mieter/mietentwicklung" replace />}
         />
         <Route
           path="/buchhaltung/nebenkostenabrechnung"
@@ -2935,8 +3883,8 @@ export default function App() {
         <Route path="/buchhaltung/mahnwesen" element={<Navigate to="/buchhaltung/automatisiertes-mahnwesen" replace />} />
         <Route path="/buchhaltung/kautionen" element={<Navigate to="/buchhaltung/sollstellungen-mietanpassungen" replace />} />
         <Route path="/buchhaltung/nebenkosten" element={<Navigate to="/buchhaltung/nebenkostenabrechnung" replace />} />
-        <Route path="/buchhaltung/mietanpassungen" element={<Navigate to="/immobilien/mietentwicklung" replace />} />
-        <Route path="/mietanpassungen" element={<Navigate to="/immobilien/mietentwicklung" replace />} />
+        <Route path="/buchhaltung/mietanpassungen" element={<Navigate to="/mieter/mietentwicklung" replace />} />
+        <Route path="/mietanpassungen" element={<Navigate to="/mieter/mietentwicklung" replace />} />
         <Route path="/berichte-exporte" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
         <Route path="/buchhaltung/berichte" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
         <Route path="/buchhaltung/export" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
@@ -2974,14 +3922,18 @@ export default function App() {
           path="/kontakte/wohnungsgeberbescheinigungen-uebergabeprotokolle"
           element={<ModuleWorkspacePage config={workspaceConfigs.kontakteUebergaben}><EinAuszug /></ModuleWorkspacePage>}
         />
-        <Route path="/mieter" element={<Navigate to="/mieter/stammdaten" replace />} />
+        <Route path="/mieter" element={<Navigate to="/mieter/uebersicht" replace />} />
         <Route path="/mieter/uebersicht" element={<MieterHubPage />} />
+        <Route path="/mieter/register" element={<MieterRegister />} />
         <Route path="/mieter/stammdaten" element={<MieterAnlegen />} />
         <Route path="/mieter/vertrag" element={<MieterAnlegen />} />
         <Route path="/mieter/zahlungen" element={<Mietuebersicht />} />
         <Route path="/mieter/mieteingang" element={<Mietuebersicht />} />
         <Route path="/mieter/mieteingang/jahresuebersicht" element={<Mietuebersicht />} />
-        <Route path="/mieter/mietentwicklung" element={<Mietentwicklung />} />
+        <Route
+          path="/mieter/mietentwicklung"
+          element={<ModuleWorkspacePage config={workspaceConfigs.mieterMietentwicklung}><Mietentwicklung /></ModuleWorkspacePage>}
+        />
         <Route path="/mieter/dokumente" element={<OrganisationHubPage kind="dokumente" />} />
         <Route path="/mieter/historie" element={<EinAuszug />} />
         <Route path="/mieter/ein-auszug" element={<EinAuszug />} />

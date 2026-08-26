@@ -4,23 +4,23 @@ import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../auth/AuthProvider";
 import { isReadonlyApprovalEmail, normalizeEmail } from "../auth/accessControl";
 import { clearAppSessionStorage } from "../lib/security";
+import { safeInternalPath } from "../lib/navigation";
 
 function getFromPath(locationState: unknown): string {
   const from = (
     locationState as { from?: { pathname?: string } | string } | null
   )?.from;
 
-  if (typeof from === "string" && from.startsWith("/")) {
-    return from;
+  if (typeof from === "string") {
+    return safeInternalPath(from, "/dashboard");
   }
 
   if (
     typeof from === "object" &&
     from !== null &&
-    typeof from.pathname === "string" &&
-    from.pathname.startsWith("/")
+    typeof from.pathname === "string"
   ) {
-    return from.pathname;
+    return safeInternalPath(from.pathname, "/dashboard");
   }
 
   return "/dashboard";

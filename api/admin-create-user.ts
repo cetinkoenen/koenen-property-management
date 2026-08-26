@@ -39,7 +39,21 @@ async function requireAdmin(req: ApiRequest) {
   if (error || normalizeEmail(data.user?.email) !== ADMIN_EMAIL) {
     throw new Error("Nur Admin darf User anlegen.");
   }
+  const tokenPayload = parseJwtPayload(token);
+  if (tokenPayload.aal !== "aal2") {
+    throw new Error("Bitte Authenticator-Code bestaetigen, bevor Benutzer angelegt werden.");
+  }
   return data.user;
+}
+
+function parseJwtPayload(token: string): { aal?: string } {
+  try {
+    const payload = token.split(".")[1] ?? "";
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(Buffer.from(normalized, "base64").toString("utf8")) as { aal?: string };
+  } catch {
+    return {};
+  }
 }
 
 async function logAdminUserAction(
@@ -155,6 +169,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       const { data, error } = await admin.auth.admin.updateUserById(authUser.id, {
         password,
         email_confirm: true,
+        app_metadata: { ...(authUser.app_metadata ?? {}), role, access: role === "viewer" ? "readonly" : "admin" },
         user_metadata: { role, access: role === "viewer" ? "readonly" : "admin" },
       });
       if (error) throw error;
@@ -164,6 +179,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         email,
         password,
         email_confirm: true,
+        app_metadata: { role, access: role === "viewer" ? "readonly" : "admin" },
         user_metadata: { role, access: role === "viewer" ? "readonly" : "admin" },
       });
       if (error) throw error;

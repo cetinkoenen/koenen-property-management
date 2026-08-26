@@ -1039,7 +1039,7 @@ export default function InvestmentBericht() {
       .map((card) => {
         const equityPosition = card.marketValue - card.remainingDebt;
         const note = card.isRosenstein
-          ? "Tiefgaragestellplätze: P250 und P253 vermietet, P254 leer. Soll TG mtl. wird separat dokumentiert."
+          ? "Drei Tiefgaragenstellplätze. Der aktuelle Vermietungs- und Leerstandsstatus wird ausschließlich in Immobilienvermögen geführt."
           : "Bestandsimmobilie aus Immobilien Vermögen mit Marktwert, Restschuld und Monatsrate.";
         return `<tr><td>${escapeHtml(card.name)}</td><td>${escapeHtml(card.address)}</td><td>${escapeHtml(formatCurrencyExact(card.marketValue))}</td><td>${escapeHtml(formatCurrencyExact(card.remainingDebt))}</td><td>${escapeHtml(formatCurrencyExact(card.monthlyRate))}</td><td>${escapeHtml(formatCurrencyExact(equityPosition))}</td><td>${escapeHtml(note)}</td></tr>`;
       })
@@ -1697,8 +1697,7 @@ export default function InvestmentBericht() {
                     {card.isRosenstein ? (
                       <div className="mt-3 flex flex-wrap gap-2">
                         <span className="rounded-full bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-blue-700">3 TG-Stellplätze</span>
-                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-700">2 vermietet</span>
-                        <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600">P254 leer</span>
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600">Status aus Immobilienvermögen</span>
                       </div>
                     ) : null}
                   </div>

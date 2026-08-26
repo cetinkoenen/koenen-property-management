@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useMemo, useState } from "react";
 import { useActiveAccount } from "../roles/useActiveAccount";
 import { useMyRole } from "../roles/useMyRole";
+import { openProfessionalPdfReport } from "../lib/professionalPdfReport";
 
 /**
  * Exports Page
@@ -271,7 +272,38 @@ export default function Exports() {
         </ActionButton>
 
         <ActionButton
-          onClick={() => alert("PDF Export kommt als nächster Schritt.")}
+          onClick={() => openProfessionalPdfReport({
+            documentName: "koenen-investment-export-center.pdf",
+            title: "Export-Center",
+            subtitle: "Zentrale Exportübersicht für Koenen Investment. Detailberichte werden in den jeweiligen Fachseiten mit derselben PDF-Vorlage erzeugt.",
+            meta: [
+              { label: "Rolle", value: role ?? "-" },
+              { label: "Account", value: accountId ?? "-" },
+            ],
+            metrics: [
+              { label: "CSV", value: "Bereit" },
+              { label: "TXT", value: "Bereit in Steuerberichten" },
+              { label: "PDF", value: "Vorlage aktiv" },
+            ],
+            sections: [
+              {
+                title: "Verfügbare PDF-Struktur",
+                subtitle: "Alle neuen PDF-Exporte nutzen Deckkopf, Untertitel, Kennzahlen, Tabellenoptik und Fußzeile.",
+                tables: [
+                  {
+                    title: "Berichtsstandard",
+                    headers: ["Element", "Status"],
+                    rows: [
+                      ["Dokumentname", "Im Kopfbereich sichtbar"],
+                      ["Printed Datum", "Automatisch gesetzt"],
+                      ["Fußzeile", "Hohenloher Str. 78 74243 Langenbrettach - info.koenen@gmail.com"],
+                      ["Seitenangabe", "In der Druckvorlage vorbereitet"],
+                    ],
+                  },
+                ],
+              },
+            ],
+          })}
           disabled={!canExport || status.kind !== "ready"}
           title={!canExport ? "Nur admin/owner" : "Export als PDF"}
         >

@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import { isReadonlyApprovalEmail } from "../auth/accessControl";
+import { syncTenantEndFromVacancy } from "./tenantService";
 
 export type VacancyStatus = "active" | "planned" | "ended";
 export type VacancyType = "manual" | "contract_ended" | "notice" | "other";
@@ -46,15 +47,23 @@ function cleanText(value: string | null | undefined): string | null {
   return cleaned ? cleaned : null;
 }
 
-function normalizeText(value: string | null | undefined): string {
-  return String(value ?? "")
-    .toLowerCase()
-    .replaceAll("ß", "ss")
-    .replace(/[ä]/g, "ae")
-    .replace(/[ö]/g, "oe")
-    .replace(/[ü]/g, "ue")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+function assertIsoDate(value: string, fieldName: string): string {
+  const trimmed = value.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (!match) {
+    throw new Error(`${fieldName} ist kein gueltiges ISO-Datum.`);
+  }
+
+  const [, yearValue, monthValue, dayValue] = match;
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+  const lastDayOfMonth = new Date(year, month, 0).getDate();
+  if (month < 1 || month > 12 || day < 1 || day > lastDayOfMonth) {
+    throw new Error(`${fieldName} ist kein gueltiges Datum.`);
+  }
+
+  return trimmed;
 }
 
 function addDays(value: string, days: number): string {
@@ -92,9 +101,8 @@ export function isVacancyInRange(vacancy: Pick<UnitVacancy, "start_date" | "end_
 
 export function isEndedTenancyVacancySignal(vacancy: Pick<UnitVacancy, "end_date" | "vacancy_type" | "reason" | "notes">): boolean {
   if (!vacancy.end_date) return false;
-  if (vacancy.vacancy_type === "contract_ended" || vacancy.vacancy_type === "notice") return true;
-  const text = normalizeText(`${vacancy.reason ?? ""} ${vacancy.notes ?? ""}`);
-  return text.includes("kuendigung") || text.includes("kundigung") || text.includes("mietende") || text.includes("mietzeitraum") || text.includes("auszug");
+  if (vacancy.vacancy_type === "contract_ended") return true;
+  return false;
 }
 
 export function effectiveVacancyStartDate(vacancy: Pick<UnitVacancy, "start_date" | "end_date" | "status" | "vacancy_type" | "reason" | "notes">): string {
@@ -136,8 +144,11 @@ export async function listVacancies(filters: VacancyFilters = {}): Promise<UnitV
   if (!(await isCurrentUserReadonly())) query = query.eq("user_id", userId);
   if (filters.propertyId) query = query.eq("property_id", filters.propertyId);
   if (filters.status && filters.status !== "all") query = query.eq("status", filters.status);
-  if (filters.to) query = query.lte("start_date", filters.to);
-  if (filters.from) query = query.or(`end_date.is.null,end_date.gte.${filters.from}`);
+  if (filters.to) query = query.lte("start_date", assertIsoDate(filters.to, "Bis-Datum"));
+  if (filters.from) {
+    const safeFrom = assertIsoDate(filters.from, "Von-Datum");
+    query = query.or(`end_date.is.null,end_date.gte.${safeFrom}`);
+  }
 
   const { data, error } = await query;
   if (error) throw error;
@@ -244,6 +255,12 @@ export async function createVacancy(input: VacancyInput): Promise<UnitVacancy> {
 
   const { data, error } = await supabase.from("unit_vacancies").insert(payload).select("*").single();
   if (error) throw error;
+  await syncTenantEndFromVacancy({
+    propertyId,
+    objectCode: payload.object_code,
+    unitLabel: payload.unit_label,
+    vacancyStartDate: payload.start_date ?? "",
+  });
   return data as UnitVacancy;
 }
 
@@ -268,6 +285,12 @@ export async function updateVacancy(id: string, input: Partial<VacancyInput>): P
     .single();
 
   if (error) throw error;
+  await syncTenantEndFromVacancy({
+    propertyId: (data as UnitVacancy).property_id,
+    objectCode: (data as UnitVacancy).object_code,
+    unitLabel: (data as UnitVacancy).unit_label,
+    vacancyStartDate: (data as UnitVacancy).start_date,
+  });
   return data as UnitVacancy;
 }
 

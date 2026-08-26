@@ -3,6 +3,18 @@ import { Car, Download, ExternalLink, FileText, Printer, RefreshCw, Search, X } 
 
 import { supabase } from "../lib/supabase";
 import { classifyTaxRelevance, canonicalCategoryForTax } from "../lib/taxClassification";
+import { calculateBusinessMealDeductible, isBusinessMealCategory } from "../lib/businessMealTax";
+import { downloadTextReport, openProfessionalPdfReport, type PdfReportSection } from "../lib/professionalPdfReport";
+import { isTelecommunicationCategory, parseTelecommunicationTaxDetails } from "../lib/telecommunicationTax";
+import {
+  buildAnlageVReportLines,
+  buildSection35aReportLines,
+  buildTaxAdvisorDashboard,
+  formatTaxCurrency,
+  type AnlageVReport,
+  type Section35aReport,
+  type TaxAdvisorDashboard,
+} from "../services/taxReportEngine";
 import { listMileageTrips, openMileageReceipt, type MileageTripRow } from "../services/mileageTripService";
 import { isVacancyInRange, listVacancies, type UnitVacancy } from "../services/vacancyService";
 import { parseLocaleNumber } from "../utils/numberParser";
@@ -49,6 +61,9 @@ type MileageSummaryRow = {
   trips: MileageTripRow[];
   total_km: number;
   total_amount: number;
+  total_travel: number;
+  total_vma: number;
+  total_hotel: number;
 };
 
 type ClassifiedEntry = EntryRow & {
@@ -57,6 +72,45 @@ type ClassifiedEntry = EntryRow & {
   tax_hint: string;
   relevance: "tax" | "check" | "private";
 };
+
+async function loadAllFinanceEntriesForTaxRules(): Promise<EntryRow[]> {
+  const pageSize = 1000;
+  let from = 0;
+  const rows: EntryRow[] = [];
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("finance_entry")
+      .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,is_deleted")
+      .eq("is_deleted", false)
+      .in("entry_type", ["income", "expense"])
+      .order("booking_date", { ascending: false })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+
+    const pageRows: EntryRow[] = (data ?? []).map((row: unknown) => {
+      const item = row as Partial<EntryRow>;
+      const entryType: EntryType = item.entry_type === "expense" ? "expense" : "income";
+      return {
+        id: Number(item.id ?? 0),
+        objekt_code: item.objekt_code ?? null,
+        booking_date: String(item.booking_date ?? ""),
+        amount: parseLocaleNumber(item.amount, 0),
+        category: item.category ?? null,
+        note: item.note ?? null,
+        entry_type: entryType,
+        tax_relevant: typeof item.tax_relevant === "boolean" ? item.tax_relevant : null,
+      };
+    });
+
+    rows.push(...pageRows);
+    if (pageRows.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return rows;
+}
 
 function getLoadErrorMessage(error: unknown, fallback = "Daten konnten nicht geladen werden."): string {
   if (error instanceof Error && error.message) return error.message;
@@ -94,6 +148,15 @@ type TaxTotals = {
 };
 
 const currentYear = new Date().getFullYear();
+
+function roundCurrency(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function sumCurrency<T>(rows: T[], selector: (row: T) => number): number {
+  return roundCurrency(rows.reduce((sum, row) => sum + selector(row), 0));
+}
 
 const styles: Record<string, CSSProperties> = {
   page: {
@@ -160,6 +223,124 @@ const styles: Record<string, CSSProperties> = {
     background: "#ffffff",
     padding: 18,
     boxShadow: "0 1px 2px rgba(15, 23, 42, 0.05)",
+  },
+  taxDashboardTopline: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+    gap: 12,
+    marginBottom: 16,
+  },
+  taxExportSplit: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    gap: 18,
+  },
+  taxExportColumn: {
+    border: "1px solid #e5e7eb",
+    borderRadius: 18,
+    background: "#f8fafc",
+    padding: 16,
+    minWidth: 0,
+  },
+  taxExportColumnAnlageV: {
+    border: "1px solid #dbeafe",
+    borderRadius: 18,
+    background: "linear-gradient(180deg, #f8fbff 0%, #ffffff 100%)",
+    padding: 16,
+    minWidth: 0,
+  },
+  taxExportColumn35a: {
+    border: "1px solid #fde68a",
+    borderRadius: 18,
+    background: "linear-gradient(180deg, #fffbeb 0%, #ffffff 100%)",
+    padding: 16,
+    minWidth: 0,
+  },
+  exportHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 12,
+    flexWrap: "wrap",
+  },
+  exportTitle: {
+    margin: "4px 0 0",
+    fontSize: 18,
+    fontWeight: 950,
+    color: "#0f172a",
+  },
+  reportList: {
+    display: "grid",
+    gap: 10,
+  },
+  AnlageVReportGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
+    gap: 12,
+  },
+  reportCard: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 16,
+    background: "#ffffff",
+    padding: 14,
+  },
+  reportCardHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    alignItems: "flex-start",
+    marginBottom: 12,
+  },
+  reportFields: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: 8,
+  },
+  reportField: {
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
+    background: "#fbfdff",
+    padding: "9px 10px",
+  },
+  acquisitionCheckBox: {
+    marginTop: 10,
+    border: "1px solid #fde68a",
+    borderRadius: 14,
+    background: "#fffbeb",
+    padding: 12,
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 12,
+    alignItems: "start",
+  },
+  acquisitionEntryList: {
+    display: "grid",
+    gap: 6,
+  },
+  acquisitionEntryRow: {
+    display: "grid",
+    gridTemplateColumns: "90px 1fr auto",
+    gap: 8,
+    alignItems: "center",
+    border: "1px solid #fef3c7",
+    borderRadius: 10,
+    background: "#ffffff",
+    padding: "7px 8px",
+    fontSize: 12,
+    fontWeight: 800,
+    color: "#334155",
+  },
+  warningBox: {
+    marginTop: 14,
+    border: "1px solid #fde68a",
+    borderRadius: 14,
+    background: "#fffbeb",
+    color: "#92400e",
+    padding: 12,
+    fontSize: 13,
+    lineHeight: 1.55,
+    fontWeight: 750,
   },
   controls: {
     display: "grid",
@@ -430,6 +611,17 @@ function classifyEntry(entry: EntryRow, objectLabel: string): ClassifiedEntry {
   return classified;
 }
 
+function taxableEntryAmount(row: ClassifiedEntry): number {
+  if (row.relevance !== "tax") return 0;
+  if (row.entry_type === "expense" && isBusinessMealCategory(row.category)) {
+    return roundCurrency(calculateBusinessMealDeductible(row.amount));
+  }
+  if (row.entry_type === "expense" && isTelecommunicationCategory(row.category)) {
+    return roundCurrency(parseTelecommunicationTaxDetails(row)?.deductibleTotal ?? 0);
+  }
+  return roundCurrency(row.amount);
+}
+
 function escapeCsv(value: unknown): string {
   const text = String(value ?? "");
   if (text.includes(";") || text.includes("\"") || text.includes("\n") || text.includes("\r")) {
@@ -533,25 +725,32 @@ function downloadAdvisorCsv(
     ]),
     [],
     ["Fahrtkosten-Nachweise"],
-    ["Objekt", "Jahr", "Fahrten", "Abgerechnete km", "Werbungskosten Anlage V"],
+    ["Objekt", "Jahr", "Fahrten", "Abgerechnete km", "Fahrt/Ticket", "VMA", "Hotel", "Werbungskosten Anlage V"],
     ...payload.mileageSummaryRows.map((row) => [
       row.property_label,
       row.year,
       row.trips.length,
       amount(row.total_km),
+      amount(row.total_travel),
+      amount(row.total_vma),
+      amount(row.total_hotel),
       amount(row.total_amount),
     ]),
     [],
     ["Fahrtenbuch Details"],
-    ["Datum", "Objekt", "Grund", "Start", "Ziel", "Einfache km", "Hin und Rueckfahrt", "Betrag", "Beleg"],
+    ["Datum", "Objekt", "Grund", "Verkehrsmittel", "Start", "Ziel", "Einfache km", "Hin und Rueckfahrt", "Fahrt/Ticket", "VMA", "Hotel", "Betrag", "Beleg"],
     ...payload.mileageRows.map((row) => [
       row.datum,
       row.property_label,
       row.grund,
+      row.verkehrsmittel === "public_transport" ? "Bahn/OePNV" : "Eigenes Auto",
       row.start_adresse,
       row.zieladresse,
       amount(row.distanz_km),
       row.hin_und_rueckfahrt ? "Ja" : "Nein",
+      amount(row.fahrtkosten_betrag || row.berechneter_betrag),
+      amount(row.vma_betrag),
+      amount(row.hotelkosten_brutto),
       amount(row.berechneter_betrag),
       row.beleg_url || "",
     ]),
@@ -581,6 +780,239 @@ function downloadAdvisorCsv(
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+type AdvisorExportPayload = {
+  year: number;
+  objectLabel: string;
+  totals: TaxTotals;
+  summary: SummaryRow[];
+  loanRows: LoanTaxRow[];
+  vacancyRows: TaxVacancyRow[];
+  mileageSummaryRows: MileageSummaryRow[];
+  mileageRows: MileageTripRow[];
+  rows: ClassifiedEntry[];
+  dashboard: TaxAdvisorDashboard;
+};
+
+function advisorExportText(payload: AdvisorExportPayload): string {
+  const lines = [
+    "Koenen Investment - Steuerberater-Jahresakte",
+    `Dokument: steuerberater-jahresakte-${payload.year}`,
+    `Jahr: ${payload.year}`,
+    `Objekt: ${payload.objectLabel}`,
+    `Printed: ${new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date())}`,
+    "",
+    "Kennzahlen",
+    `Steuer-Einnahmen: ${eur(payload.totals.taxIncome)}`,
+    `Steuer-Ausgaben Buchungen: ${eur(payload.totals.taxExpense)}`,
+    `Fahrtkosten Anlage V: ${eur(payload.totals.mileageExpense)}`,
+    `Darlehenszinsen: ${eur(payload.totals.loanInterest)}`,
+    `Steuerlicher Ueberschuss inkl. Darlehen: ${eur(payload.totals.taxNetIncludingLoans)}`,
+    "",
+    "Exportbereich A - Anlage-V-Export",
+    ...payload.dashboard.AnlageVReports.flatMap((report, index) => [
+      "",
+      `A.${index + 1} ${report.profile.reportLabel}`,
+      ...buildAnlageVReportLines(report),
+    ]),
+    "",
+    "Exportbereich B - §35a-Export",
+    ...buildSection35aReportLines(payload.dashboard.section35aReport),
+    "",
+    "Fusszeile: Hohenloher Str. 78 74243 Langenbrettach - info.koenen@gmail.com",
+  ];
+  return lines.join("\n");
+}
+
+function openAdvisorPdf(payload: AdvisorExportPayload) {
+  const documentName = `steuerberater-jahresakte-${payload.year}.pdf`;
+  const AnlageVSections: PdfReportSection[] = payload.dashboard.AnlageVReports.map((report, index) => ({
+    title: `A.${index + 1} ${report.profile.reportLabel}`,
+    subtitle: report.profile.usage === "rented_parking"
+      ? "Anlage V · isolierte TG-Stellplatz-Vermietung"
+      : "Anlage V · Wohnraumvermietung",
+    metrics: [
+      { label: "Mieteinnahmen", value: formatTaxCurrency(report.income), hint: report.incomeLabel },
+      { label: "AfA Gebäude", value: formatTaxCurrency(report.buildingAfa), hint: "2% linear, Baujahr vor 2022" },
+      { label: "Schuldzinsen", value: formatTaxCurrency(report.loanInterest), hint: "Nur Zinsanteil" },
+      { label: "Ergebnis", value: formatTaxCurrency(report.net), hint: "Vorläufige steuerliche Summe" },
+    ],
+    tables: [
+      {
+        title: "Anlage-V-Felder",
+        headers: ["Feld", "Position", "Betrag", "Hinweis"],
+        rows: [
+          ["1", report.incomeLabel, formatTaxCurrency(report.income), report.profile.usage === "rented_parking" ? "Stellplaetze separat ausgewiesen" : "Wohnraumvermietung"],
+          ["2", "Gebäude-/Teileigentum-AfA", formatTaxCurrency(report.buildingAfa), "2% linear"],
+          ["3", "Einbauküchen & Inventar-AfA", formatTaxCurrency(report.inventoryAfa), "<800 EUR sofort, sonst 10 Jahre"],
+          ["4", "Schuldzinsen", formatTaxCurrency(report.loanInterest), "Tilgung ausgeschlossen"],
+          ["5", "Erhaltungsaufwand", formatTaxCurrency(report.maintenance), `${report.maintenanceDistributionYears} Jahr(e) Verteilung`],
+          ["6", "Laufende Betriebs- & Nebenkosten", formatTaxCurrency(report.runningCosts), "Grundsteuer, Versicherung, Müll, Wartung"],
+          ["7", "Verwaltungskosten & Pauschalen", formatTaxCurrency(report.administrationCosts), "Verwaltung, Reisen, Bewirtung, Telefon/Internet, Pauschale"],
+        ],
+      },
+      {
+        title: "Feld 7 Aufschlüsselung",
+        headers: ["Position", "Betrag"],
+        rows: [
+          ["Portfolio-Ausgaben anteilig", formatTaxCurrency(report.portfolioAdministrationShare)],
+          ["Reisekosten gesamt", formatTaxCurrency(report.mileageCosts)],
+          ["Fahrt / Ticket", formatTaxCurrency(report.mileageTravelCosts)],
+          ["Verpflegungsmehraufwand", formatTaxCurrency(report.mileageVmaCosts)],
+          ["Hotelkosten", formatTaxCurrency(report.mileageHotelCosts)],
+          ["Bewirtungskosten 70%", formatTaxCurrency(report.businessMealDeductible)],
+          ["Telefon/Internet anteilig", formatTaxCurrency(report.telecommunicationDeductible)],
+          ["Kontoführungsgebühr-Pauschale", formatTaxCurrency(report.bankAccountFlatFee)],
+        ],
+      },
+      ...(report.portfolioAdministrationRows.length
+        ? [
+            {
+              title: "Portfolio-Ausgaben-Dokumentation",
+              headers: ["Datum", "Kategorie", "Gesamtbetrag", "Objektanteil", "Notiz"],
+              rows: report.portfolioAdministrationRows.map((entry) => [
+                entry.booking_date ?? "",
+                entry.category ?? "",
+                formatTaxCurrency(Math.abs(Number(entry.amount ?? 0))),
+                formatTaxCurrency(Math.abs(Number(entry.amount ?? 0)) / payload.dashboard.AnlageVReports.length),
+                entry.note ?? "",
+              ]),
+            },
+          ]
+        : []),
+    ],
+  }));
+
+  openProfessionalPdfReport({
+    documentName,
+    title: "Steuerberater-Jahresakte",
+    subtitle: "Moderner PDF-Bericht für Anlage V und §35a. Die Daten kommen aus Buchhaltung, Darlehen, Leerstand und Fahrtenbuch.",
+    meta: [
+      { label: "Jahr", value: String(payload.year) },
+      { label: "Objektfilter", value: payload.objectLabel },
+    ],
+    metrics: [
+      { label: "Steuer-Einnahmen", value: eur(payload.totals.taxIncome) },
+      { label: "Steuer-Ausgaben", value: eur(payload.totals.taxExpense) },
+      { label: "Fahrtkosten", value: eur(payload.totals.mileageExpense) },
+      { label: "Darlehenszinsen", value: eur(payload.totals.loanInterest) },
+      { label: "Überschuss inkl. Darlehen", value: eur(payload.totals.taxNetIncludingLoans) },
+      { label: "Offene Prüffälle", value: String(payload.totals.checkRows) },
+    ],
+    sections: [
+      {
+        title: "Bereitstellungs-Check",
+        subtitle: "Kontrollblock für Vollständigkeit und steuerliche Plausibilität.",
+        tables: [
+          {
+            title: "Summen nach Steuergruppe",
+            headers: ["Steuergruppe", "Einnahmen", "Ausgaben", "Saldo", "Buchungen"],
+            rows: payload.summary.map((row) => [row.group, eur(row.income), eur(row.expense), eur(row.income - row.expense), row.count]),
+          },
+        ],
+      },
+      {
+        title: "Exportbereich A · Anlage-V-Export",
+        subtitle: "Fünf getrennte Objektberichte: vier Wohnungen plus Rosensteinstr. 25 als isolierte TG-Stellplatz-Vermietung.",
+        paragraphs: ["Hohenloher Str. 78 bleibt für Anlage V gesperrt und wird im §35a-Bereich geführt."],
+      },
+      ...AnlageVSections,
+      {
+        title: "Exportbereich B · §35a-Export",
+        subtitle: "Isolierter Bericht für Hohenloher Str. 78. Materialkosten und Barzahlungen werden nicht angesetzt.",
+        metrics: [
+          { label: "Haushaltsnah Arbeitslohn", value: formatTaxCurrency(payload.dashboard.section35aReport.householdServicesLabor) },
+          { label: "Handwerker Arbeitslohn", value: formatTaxCurrency(payload.dashboard.section35aReport.craftsmanLabor) },
+          { label: "Erwerbsnebenkosten prüfen", value: formatTaxCurrency(payload.dashboard.section35aReport.acquisitionSideCostTotal) },
+          { label: "Homeoffice-Anteil", value: `${payload.dashboard.section35aReport.homeOfficePercentage.toLocaleString("de-DE")} %` },
+          { label: "Barzahlung gesperrt", value: String(payload.dashboard.section35aReport.excludedCashPayments.length) },
+        ],
+        tables: [
+          {
+            title: "§35a-Prüfung",
+            headers: ["Position", "Betrag", "Hinweis"],
+            rows: [
+              ["Haushaltsnahe Dienstleistungen", formatTaxCurrency(payload.dashboard.section35aReport.householdServicesLabor), "Nur Arbeits- und Fahrtkosten"],
+              ["Handwerkerleistungen", formatTaxCurrency(payload.dashboard.section35aReport.craftsmanLabor), "Materialkosten ausgeschlossen"],
+              ["Handwerker-Fahrtkosten §35a", formatTaxCurrency(payload.dashboard.section35aReport.section35aTripCosts), "Aus Fahrtenbuch"],
+              ["Homeoffice abziehbar", formatTaxCurrency(payload.dashboard.section35aReport.homeOfficeDeductible), "Nur bei gesetztem Anteil"],
+              ["Erwerbsnebenkosten / Anschaffungskosten prüfen", formatTaxCurrency(payload.dashboard.section35aReport.acquisitionSideCostTotal), "Notar, Grundbuch, Grunderwerbsteuer, Kaufnebenkosten nicht als laufende Anlage-V-Ausgabe"],
+            ],
+          },
+          ...(payload.dashboard.section35aReport.acquisitionSideCostRows.length
+            ? [
+                {
+                  title: "Erwerbsnebenkosten-Dokumentation",
+                  headers: ["Datum", "Kategorie", "Betrag", "Notiz"],
+                  rows: payload.dashboard.section35aReport.acquisitionSideCostRows.map((row) => [
+                    row.booking_date ?? "",
+                    row.category ?? "",
+                    formatTaxCurrency(Math.abs(Number(row.amount ?? 0))),
+                    row.note ?? "",
+                  ]),
+                },
+              ]
+            : []),
+        ],
+      },
+      {
+        title: "Darlehen, Leerstand und Fahrtenbuch",
+        subtitle: "Nachvollziehbare Quelltabellen für den Steuerberater.",
+        tables: [
+          {
+            title: "Darlehenswerte",
+            headers: ["Objekt", "Jahr", "Zinsen", "Tilgung", "Restschuld", "Quelle"],
+            rows: payload.loanRows.map((row) => [row.property_label, row.year, eur(row.interest), eur(row.principal), eur(row.balance), row.source || "Darlehens-Ledger"]),
+          },
+          {
+            title: "Fahrtkosten-Nachweise",
+            headers: ["Objekt", "Fahrten", "km", "Fahrt/Ticket", "VMA", "Hotel", "Gesamt"],
+            rows: payload.mileageSummaryRows.map((row) => [
+              row.property_label,
+              row.trips.length,
+              row.total_km.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+              eur(row.total_travel),
+              eur(row.total_vma),
+              eur(row.total_hotel),
+              eur(row.total_amount),
+            ]),
+          },
+          {
+            title: "Leerstands-Nachweise",
+            headers: ["Objekt", "Einheit", "Zeitraum", "Grund", "Steuerhinweis"],
+            rows: payload.vacancyRows.map((row) => [
+              row.object_label || row.object_code || row.property_id,
+              row.unit_label || "Gesamte Immobilie",
+              row.tax_period,
+              row.reason || "",
+              row.tax_hint,
+            ]),
+          },
+        ],
+      },
+      {
+        title: "Buchungsnachweis",
+        subtitle: "Gefilterte Buchungen aus der Hauptquelle finance_entry.",
+        tables: [
+          {
+            title: "Buchungen",
+            headers: ["Datum", "Objekt", "Typ", "Status", "Gruppe", "Kategorie", "Betrag", "Hinweis"],
+            rows: payload.rows.map((row) => [
+              row.booking_date,
+              row.object_label,
+              row.entry_type === "income" ? "Einnahme" : "Ausgabe",
+              row.relevance === "tax" ? "Steuerrelevant" : row.relevance === "check" ? "Prüfen" : "Nicht abziehbar",
+              row.tax_group,
+              row.category ?? "",
+              eur(row.amount),
+              row.tax_hint,
+            ]),
+          },
+        ],
+      },
+    ],
+  });
 }
 
 export default function SteuerCenter() {
@@ -782,7 +1214,7 @@ export default function SteuerCenter() {
 
   async function applyTaxRulesToCurrentSelection() {
     const confirmed = window.confirm(
-      "Steuerrelevanz fuer die aktuelle Auswahl nach Anlage-V-Regeln aktualisieren?\n\n" +
+      "Steuerrelevanz fuer alle Buchungen nach Anlage-V-/§35a-Regeln aktualisieren?\n\n" +
         "Miete, Garage, Mietbestandteil-NK und klare Werbungskosten werden als St markiert. " +
         "Laufende Kreditraten werden bewusst ohne St gespeichert. Unklare Faelle bleiben Prueffaelle.",
     );
@@ -793,12 +1225,20 @@ export default function SteuerCenter() {
     setTaxRepairStatus(null);
 
     try {
-      const updates = entries
+      let objectOptions = objects;
+      if (objectOptions.length === 0) {
+        objectOptions = await loadObjects();
+      }
+      const repairObjectLabelByCode = new Map(objectOptions.map((object) => [object.objekt_code, object.label]));
+      const allEntries = await loadAllFinanceEntriesForTaxRules();
+
+      const updates = allEntries
         .map((entry) => {
           const objectLabel = entry.objekt_code
-            ? objectLabelByCode.get(entry.objekt_code) ?? entry.objekt_code
+            ? repairObjectLabelByCode.get(entry.objekt_code) ?? entry.objekt_code
             : "Ohne Objekt";
           const rule = classifyTaxRelevance(entry, objectLabel);
+          const canonicalCategory = canonicalCategoryForTax(entry, objectLabel);
           let nextValue: boolean | null = entry.tax_relevant;
 
           if (rule.locked) {
@@ -811,13 +1251,18 @@ export default function SteuerCenter() {
             return null;
           }
 
-          if (nextValue === entry.tax_relevant) return null;
-          return { id: entry.id, tax_relevant: nextValue };
+          const nextCategory =
+            rule.group === "Erwerbsnebenkosten / Anschaffungskosten prüfen" && canonicalCategory
+              ? canonicalCategory
+              : null;
+
+          if (nextValue === entry.tax_relevant && (!nextCategory || nextCategory === entry.category)) return null;
+          return { id: entry.id, tax_relevant: nextValue, category: nextCategory };
         })
-        .filter((item): item is { id: number; tax_relevant: boolean } => Boolean(item));
+        .filter((item): item is { id: number; tax_relevant: boolean; category: string | null } => Boolean(item));
 
       if (updates.length === 0) {
-        setTaxRepairStatus("Keine Aenderung noetig. Die aktuelle Auswahl passt bereits zu den Steuerregeln.");
+        setTaxRepairStatus("Keine Aenderung noetig. Alle Buchungen passen bereits zu den Steuerregeln.");
         return;
       }
 
@@ -825,7 +1270,10 @@ export default function SteuerCenter() {
         updates.map((update) =>
           supabase
             .from("finance_entry")
-            .update({ tax_relevant: update.tax_relevant })
+            .update({
+              tax_relevant: update.tax_relevant,
+              ...(update.category ? { category: update.category } : {}),
+            })
             .eq("id", update.id)
             .eq("is_deleted", false),
         ),
@@ -835,7 +1283,7 @@ export default function SteuerCenter() {
       if (failed?.error) throw failed.error;
 
       await loadEntries();
-      setTaxRepairStatus(`${updates.length} Buchung(en) nach Steuerregeln aktualisiert.`);
+      setTaxRepairStatus(`${updates.length} Buchung(en) im Gesamtbestand nach Steuerregeln aktualisiert.`);
     } catch (repairError) {
       setError(getLoadErrorMessage(repairError, "Steuerregeln konnten nicht angewendet werden."));
     } finally {
@@ -917,8 +1365,8 @@ export default function SteuerCenter() {
       };
 
       current.count += 1;
-      if (row.entry_type === "income") current.income += row.amount;
-      else current.expense += row.amount;
+      if (row.entry_type === "income") current.income = roundCurrency(current.income + taxableEntryAmount(row));
+      else current.expense = roundCurrency(current.expense + taxableEntryAmount(row));
       map.set(row.tax_group, current);
     }
 
@@ -953,33 +1401,39 @@ export default function SteuerCenter() {
         trips: [],
         total_km: 0,
         total_amount: 0,
+        total_travel: 0,
+        total_vma: 0,
+        total_hotel: 0,
       };
       current.trips.push(trip);
-      current.total_km += trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1);
-      current.total_amount += trip.berechneter_betrag;
+      current.total_km = roundCurrency(current.total_km + (trip.verkehrsmittel === "car" ? trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1) : 0));
+      current.total_amount = roundCurrency(current.total_amount + trip.berechneter_betrag);
+      current.total_travel = roundCurrency(current.total_travel + (trip.fahrtkosten_betrag || trip.berechneter_betrag));
+      current.total_vma = roundCurrency(current.total_vma + (trip.vma_betrag || 0));
+      current.total_hotel = roundCurrency(current.total_hotel + (trip.hotelkosten_brutto || 0));
       map.set(key, current);
     }
     return Array.from(map.values()).sort((a, b) => a.property_label.localeCompare(b.property_label, "de"));
   }, [filteredMileageTrips, year]);
 
   const totals = useMemo<TaxTotals>(() => {
-    const income = filteredRows.filter((row) => row.entry_type === "income").reduce((sum, row) => sum + row.amount, 0);
-    const expense = filteredRows.filter((row) => row.entry_type === "expense").reduce((sum, row) => sum + row.amount, 0);
-    const taxIncome = filteredRows.filter((row) => row.relevance === "tax" && row.entry_type === "income").reduce((sum, row) => sum + row.amount, 0);
-    const taxExpense = filteredRows.filter((row) => row.relevance === "tax" && row.entry_type === "expense").reduce((sum, row) => sum + row.amount, 0);
-    const mileageExpense = mileageSummaryRows.reduce((sum, row) => sum + row.total_amount, 0);
-    const loanInterest = loanTaxRows.reduce((sum, row) => sum + row.interest, 0);
-    const loanPrincipal = loanTaxRows.reduce((sum, row) => sum + row.principal, 0);
+    const income = sumCurrency(filteredRows.filter((row) => row.entry_type === "income"), (row) => row.amount);
+    const expense = sumCurrency(filteredRows.filter((row) => row.entry_type === "expense"), (row) => row.amount);
+    const taxIncome = sumCurrency(filteredRows.filter((row) => row.relevance === "tax" && row.entry_type === "income"), taxableEntryAmount);
+    const taxExpense = sumCurrency(filteredRows.filter((row) => row.relevance === "tax" && row.entry_type === "expense"), taxableEntryAmount);
+    const mileageExpense = sumCurrency(mileageSummaryRows, (row) => row.total_amount);
+    const loanInterest = sumCurrency(loanTaxRows, (row) => row.interest);
+    const loanPrincipal = sumCurrency(loanTaxRows, (row) => row.principal);
     const taxRows = filteredRows.filter((row) => row.relevance === "tax").length;
     const checkRows = filteredRows.filter((row) => row.relevance === "check").length;
     return {
       income,
       expense,
-      net: income - expense,
+      net: roundCurrency(income - expense),
       taxIncome,
       taxExpense,
       mileageExpense,
-      taxNetIncludingLoans: taxIncome - taxExpense - mileageExpense - loanInterest,
+      taxNetIncludingLoans: roundCurrency(taxIncome - taxExpense - mileageExpense - loanInterest),
       loanInterest,
       loanPrincipal,
       taxRows,
@@ -1064,6 +1518,34 @@ export default function SteuerCenter() {
       relevance: "tax",
     },
   ] satisfies Array<{ label: string; value: string; relevance: ClassifiedEntry["relevance"] }>;
+
+  const taxAdvisorDashboard = useMemo(() => buildTaxAdvisorDashboard({
+    year,
+    entries: classifiedRows,
+    loans: loanTaxRows,
+    mileageTrips: filteredMileageTrips,
+    objects: objects.map((object) => ({
+      id: object.objekt_code,
+      code: object.objekt_code,
+      label: object.label,
+      aliases: [object.objekt_code, object.label],
+    })),
+  }), [classifiedRows, filteredMileageTrips, loanTaxRows, objects, year]);
+
+  const AnlageVTotal = taxAdvisorDashboard.AnlageVReports.reduce((sum, report) => sum + report.net, 0);
+  const section35aTotal = taxAdvisorDashboard.section35aReport.householdServicesLabor + taxAdvisorDashboard.section35aReport.craftsmanLabor;
+  const advisorExportPayload: AdvisorExportPayload = {
+    year,
+    objectLabel: selectedObjectLabel,
+    totals,
+    summary,
+    loanRows: loanTaxRows,
+    vacancyRows: taxVacancyRows,
+    mileageSummaryRows,
+    mileageRows: filteredMileageTrips,
+    rows: filteredRows,
+    dashboard: taxAdvisorDashboard,
+  };
 
   return (
     <div className="tax-print-root" style={styles.page}>
@@ -1198,25 +1680,23 @@ export default function SteuerCenter() {
             <div className="tax-no-print" style={styles.actionRow}>
               <button
                 type="button"
-                onClick={() => downloadAdvisorCsv(`steuerberater_jahresakte_${filenameObject}_${year}.csv`, {
-                  year,
-                  objectLabel: selectedObjectLabel,
-                  totals,
-                  summary,
-                  loanRows: loanTaxRows,
-                  vacancyRows: taxVacancyRows,
-                  mileageSummaryRows,
-                  mileageRows: filteredMileageTrips,
-                  rows: filteredRows,
-                })}
+                onClick={() => downloadAdvisorCsv(`steuerberater_jahresakte_${filenameObject}_${year}.csv`, advisorExportPayload)}
                 style={styles.primaryButton}
               >
                 <Download size={16} />
                 Steuerberater-CSV
               </button>
-              <button type="button" onClick={() => window.print()} style={styles.button}>
+              <button
+                type="button"
+                onClick={() => downloadTextReport(`steuerberater_jahresakte_${filenameObject}_${year}.txt`, advisorExportText(advisorExportPayload))}
+                style={styles.button}
+              >
+                <FileText size={16} />
+                Steuerberater-TXT
+              </button>
+              <button type="button" onClick={() => openAdvisorPdf(advisorExportPayload)} style={styles.button}>
                 <Printer size={16} />
-                Jahresakte drucken
+                Steuerberater-PDF
               </button>
             </div>
           </div>
@@ -1236,6 +1716,58 @@ export default function SteuerCenter() {
             </div>
           </div>
         </div>
+      </section>
+
+      <section style={styles.panel}>
+        <SectionHeading
+          title="Steuerberater & Finanzamt Dashboard"
+          subtitle="Strikte Trennung: Anlage V nur fuer vermietete Objekte, §35a nur fuer Hohenloher Str. 78. Die Berechnung nutzt Buchungen, Darlehen und Fahrtenbuch aus denselben App-Quellen."
+        />
+        <div style={styles.taxDashboardTopline}>
+          <MetricCard label="Anlage-V-Berichte" value={`${taxAdvisorDashboard.AnlageVReports.length}`} tone="blue" />
+          <MetricCard label="Anlage-V Ergebnis" value={formatTaxCurrency(AnlageVTotal)} tone={AnlageVTotal >= 0 ? "green" : "red"} />
+          <MetricCard label="§35a Arbeitslohn" value={formatTaxCurrency(section35aTotal)} tone="green" />
+          <MetricCard label="Warnungen" value={`${taxAdvisorDashboard.warnings.length}`} tone={taxAdvisorDashboard.warnings.length ? "amber" : "slate"} />
+        </div>
+
+        <div style={styles.taxExportSplit}>
+          <div style={styles.taxExportColumnAnlageV}>
+            <div style={styles.exportHeader}>
+              <div>
+                <div style={styles.metaLabel}>Exportbereich A</div>
+                <h3 style={styles.exportTitle}>Anlage-V-Export</h3>
+              </div>
+              <TonePill label="5 separate Berichte" tone="green" />
+            </div>
+            <div style={styles.AnlageVReportGrid}>
+              {taxAdvisorDashboard.AnlageVReports.map((report) => (
+                <AnlageVReportCard key={report.profile.key} report={report} />
+              ))}
+            </div>
+          </div>
+
+          <div style={styles.taxExportColumn35a}>
+            <div style={styles.exportHeader}>
+              <div>
+                <div style={styles.metaLabel}>Exportbereich B</div>
+                <h3 style={styles.exportTitle}>§35a-Export</h3>
+              </div>
+              <TonePill label="Hohenloher gesperrt fuer Anlage V" tone="amber" />
+            </div>
+            <Section35aReportCard report={taxAdvisorDashboard.section35aReport} />
+          </div>
+        </div>
+
+        {taxAdvisorDashboard.warnings.length ? (
+          <div style={styles.warningBox}>
+            <strong>Pruefhinweise:</strong>
+            <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+              {taxAdvisorDashboard.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
 
       <section style={styles.grid3}>
@@ -1294,7 +1826,7 @@ export default function SteuerCenter() {
       <section style={styles.panel}>
         <SectionHeading
           title="Fahrtkosten (Werbungskosten Anlage V)"
-          subtitle="Kommt aus Immobilienvermögen > Fahrtenbuch. Betrag = einfache Strecke x Hin/Rück-Faktor x 0,30 EUR und wird dem Steuerjahr automatisch zugeordnet."
+          subtitle="Kommt aus dem zentralen Fahrtenbuch. Betrag = Fahrt/Ticket + Verpflegungsmehraufwand + Hotel und wird dem Steuerjahr automatisch zugeordnet."
         />
         <div style={styles.tableWrap}>
           <table style={styles.table}>
@@ -1323,6 +1855,9 @@ export default function SteuerCenter() {
                     >
                       {eur(row.total_amount)}
                     </button>
+                    <div style={{ marginTop: 5, color: "#64748b", fontSize: 12, fontWeight: 750, lineHeight: 1.35 }}>
+                      Fahrt/Ticket {eur(row.total_travel)} · VMA {eur(row.total_vma)} · Hotel {eur(row.total_hotel)}
+                    </div>
                   </td>
                   <td style={styles.td}>
                     <button type="button" onClick={() => setSelectedMileageProperty(row)} style={styles.button}>
@@ -1492,6 +2027,14 @@ export default function SteuerCenter() {
                 <div style={styles.metaLabel}>Werbungskosten</div>
                 <div style={styles.metaValue}>{eur(selectedMileageProperty.total_amount)}</div>
               </div>
+              <div style={styles.metaBox}>
+                <div style={styles.metaLabel}>Aufschlüsselung</div>
+                <div style={{ ...styles.metaValue, fontSize: 14, lineHeight: 1.45 }}>
+                  Fahrt {eur(selectedMileageProperty.total_travel)}<br />
+                  VMA {eur(selectedMileageProperty.total_vma)}<br />
+                  Hotel {eur(selectedMileageProperty.total_hotel)}
+                </div>
+              </div>
             </div>
             <div style={{ ...styles.tableWrap, marginTop: 14 }}>
               <table style={styles.table}>
@@ -1499,6 +2042,7 @@ export default function SteuerCenter() {
                   <tr>
                     <th style={styles.th}>Datum</th>
                     <th style={styles.th}>Grund</th>
+                    <th style={styles.th}>Typ</th>
                     <th style={styles.th}>Start</th>
                     <th style={styles.th}>Ziel</th>
                     <th style={styles.th}>km</th>
@@ -1511,13 +2055,21 @@ export default function SteuerCenter() {
                     <tr key={trip.id}>
                       <td style={styles.td}><strong>{dateDE(trip.datum)}</strong></td>
                       <td style={styles.td}>{trip.grund}</td>
+                      <td style={styles.td}>{trip.verkehrsmittel === "public_transport" ? "Bahn/ÖPNV" : "Eigenes Auto"}</td>
                       <td style={styles.td}>{trip.start_adresse}</td>
                       <td style={styles.td}>{trip.zieladresse}</td>
                       <td style={styles.td}>
-                        {(trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1)).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <div style={{ color: "#64748b", fontSize: 12 }}>{trip.hin_und_rueckfahrt ? "Hin und Rückfahrt" : "Einfache Fahrt"}</div>
+                        {trip.verkehrsmittel === "public_transport"
+                          ? "Ticket"
+                          : (trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1)).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <div style={{ color: "#64748b", fontSize: 12 }}>{trip.verkehrsmittel === "public_transport" ? eur(trip.ticketpreis_brutto) : trip.hin_und_rueckfahrt ? "Hin und Rückfahrt" : "Einfache Fahrt"}</div>
                       </td>
-                      <td style={styles.td}><strong>{eur(trip.berechneter_betrag)}</strong></td>
+                      <td style={styles.td}>
+                        <strong>{eur(trip.berechneter_betrag)}</strong>
+                        <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>
+                          Fahrt {eur(trip.fahrtkosten_betrag || trip.berechneter_betrag)} · VMA {eur(trip.vma_betrag || 0)} · Hotel {eur(trip.hotelkosten_brutto || 0)}
+                        </div>
+                      </td>
                       <td style={styles.td}>
                         {trip.beleg_url ? (
                           <button type="button" onClick={() => void openMileageReceipt(trip.beleg_url ?? "")} style={styles.button}>
@@ -1596,5 +2148,96 @@ function StatusPill({ relevance }: { relevance: ClassifiedEntry["relevance"] }) 
     <span style={{ display: "inline-flex", borderRadius: 999, background: bg, color, padding: "4px 8px", fontSize: 11, fontWeight: 950 }}>
       {label}
     </span>
+  );
+}
+
+function ReportField({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div style={styles.reportField}>
+      <div style={styles.metaLabel}>{label}</div>
+      <div style={{ marginTop: 5, fontSize: 16, fontWeight: 950, color: "#0f172a" }}>{value}</div>
+      {hint ? <div style={{ marginTop: 4, fontSize: 12, fontWeight: 750, color: "#64748b", lineHeight: 1.35 }}>{hint}</div> : null}
+    </div>
+  );
+}
+
+function AnlageVReportCard({ report }: { report: AnlageVReport }) {
+  const tone = report.profile.usage === "rented_parking" ? "amber" : "green";
+  return (
+    <article style={styles.reportCard}>
+      <div style={styles.reportCardHeader}>
+        <div>
+          <h4 style={{ margin: 0, fontSize: 17, fontWeight: 950, color: "#0f172a" }}>{report.profile.reportLabel}</h4>
+          <p style={{ margin: "4px 0 0", fontSize: 12, fontWeight: 800, color: "#64748b" }}>{report.incomeLabel}</p>
+        </div>
+        <TonePill label={report.profile.usage === "rented_parking" ? "Stellplätze" : "Wohnraum"} tone={tone} />
+      </div>
+      <div style={styles.reportFields}>
+        <ReportField label="Feld 1 Mieteinnahmen" value={formatTaxCurrency(report.income)} hint={report.incomeLabel} />
+        <ReportField label="Feld 2 AfA Gebäude" value={formatTaxCurrency(report.buildingAfa)} hint="2% linear, Baujahr vor 2022" />
+        <ReportField label="Feld 3 Inventar-AfA" value={formatTaxCurrency(report.inventoryAfa)} hint="<800 EUR sofort, sonst 10 Jahre" />
+        <ReportField label="Feld 4 Schuldzinsen" value={formatTaxCurrency(report.loanInterest)} hint="Nur Zinsanteil, keine Tilgung" />
+        <ReportField label="Feld 5 Erhaltungsaufwand" value={formatTaxCurrency(report.maintenance)} hint={`Verteilung: ${report.maintenanceDistributionYears} Jahr(e)`} />
+        <ReportField label="Feld 6 Betriebskosten" value={formatTaxCurrency(report.runningCosts)} hint="Grundsteuer, Versicherung, Müll, Wartung..." />
+        <ReportField
+          label="Feld 7 Verwaltung"
+          value={formatTaxCurrency(report.administrationCosts)}
+          hint={`Reisen ${formatTaxCurrency(report.mileageCosts)} (Fahrt ${formatTaxCurrency(report.mileageTravelCosts)}, VMA ${formatTaxCurrency(report.mileageVmaCosts)}, Hotel ${formatTaxCurrency(report.mileageHotelCosts)}), Bewirtung ${formatTaxCurrency(report.businessMealDeductible)}, Telefon/Internet ${formatTaxCurrency(report.telecommunicationDeductible)} + ${formatTaxCurrency(report.bankAccountFlatFee)} Pauschale`}
+        />
+        <ReportField label="Ergebnis" value={formatTaxCurrency(report.net)} hint="Vorläufige steuerliche Summe" />
+      </div>
+    </article>
+  );
+}
+
+function Section35aReportCard({ report }: { report: Section35aReport }) {
+  return (
+    <article style={styles.reportCard}>
+      <div style={styles.reportCardHeader}>
+        <div>
+          <h4 style={{ margin: 0, fontSize: 17, fontWeight: 950, color: "#0f172a" }}>{report.profile.reportLabel}</h4>
+          <p style={{ margin: "4px 0 0", fontSize: 12, fontWeight: 800, color: "#64748b" }}>Selbstgenutzt / WEG · Anlage V technisch gesperrt</p>
+        </div>
+        <TonePill label="§35a" tone="amber" />
+      </div>
+      <div style={styles.reportFields}>
+        <ReportField label="Haushaltsnah Arbeitslohn" value={formatTaxCurrency(report.householdServicesLabor)} hint="Nur Arbeits- und Fahrtkosten" />
+        <ReportField label="Handwerker Arbeitslohn" value={formatTaxCurrency(report.craftsmanLabor)} hint={`Materialkosten ausgeschlossen; davon Fahrten ${formatTaxCurrency(report.section35aTripCosts)}`} />
+        <ReportField label="Erwerbsnebenkosten prüfen" value={formatTaxCurrency(report.acquisitionSideCostTotal)} hint="Notar, Grundbuch, Grunderwerbsteuer und Kaufnebenkosten separat dokumentieren" />
+        <ReportField label="Barzahlung gesperrt" value={`${report.excludedCashPayments.length}`} hint="Nicht in §35a berechnet" />
+        <ReportField label="Homeoffice Anteil" value={`${report.homeOfficePercentage.toLocaleString("de-DE")} %`} hint={`Abziehbar: ${formatTaxCurrency(report.homeOfficeDeductible)}, davon Fahrten ${formatTaxCurrency(report.homeOfficeTripCosts)}`} />
+      </div>
+      <div style={styles.acquisitionCheckBox}>
+        <div>
+          <div style={styles.metaLabel}>Erwerbsnebenkosten / Anschaffungskosten prüfen</div>
+          <div style={{ marginTop: 5, fontSize: 18, fontWeight: 950, color: "#92400e" }}>
+            {formatTaxCurrency(report.acquisitionSideCostTotal)}
+          </div>
+          <p style={{ margin: "6px 0 0", fontSize: 12, fontWeight: 750, color: "#64748b", lineHeight: 1.35 }}>
+            Notar, Grundbuch, Grunderwerbsteuer und Kaufnebenkosten werden fuer Hohenloher separat dokumentiert und nicht als laufende Anlage-V-Ausgabe gerechnet.
+          </p>
+        </div>
+        {report.acquisitionSideCostRows.length ? (
+          <div style={styles.acquisitionEntryList}>
+            {report.acquisitionSideCostRows.slice(0, 4).map((entry) => (
+              <div key={entry.id} style={styles.acquisitionEntryRow}>
+                <span>{entry.booking_date ? new Date(entry.booking_date).toLocaleDateString("de-DE") : "-"}</span>
+                <strong>{entry.category ?? "Ausgabe"}</strong>
+                <span>{formatTaxCurrency(Number(entry.amount) || 0)}</span>
+              </div>
+            ))}
+            {report.acquisitionSideCostRows.length > 4 ? (
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>
+                + {report.acquisitionSideCostRows.length - 4} weitere Buchung(en) im Export
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8" }}>
+            Fuer dieses Steuerjahr wurden noch keine passenden Erwerbsnebenkosten erkannt.
+          </div>
+        )}
+      </div>
+    </article>
   );
 }

@@ -402,7 +402,7 @@ export default function Datenpruefung() {
     year: currentYear,
   }), [app.objects, app.entries, app.yearlyFinanceSummaries, app.portfolioRows, app.loanRows, app.loanChartByPropertyId]);
 
-  const consistencyTopRows = useMemo(() => consistencySummary.checks.slice(0, 14), [consistencySummary.checks]);
+  const consistencyRows = consistencySummary.checks;
 
   const masterTotals = useMemo(() => buildMasterTotals(masterSnapshots), [masterSnapshots]);
 
@@ -619,7 +619,7 @@ export default function Datenpruefung() {
             </div>
             <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">Automatische Konsistenzprüfung</h2>
             <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-600">
-              Die App prüft jetzt frontendseitig Buchungs-Dubletten, fehlende Mieteingänge, Jahreswert-Abweichungen, steigende Darlehenssalden und Portfolio-/Darlehens-Differenzen. Zukünftige Monate werden bewusst neutral behandelt.
+              Die App prüft Buchungs-Dubletten, fehlende Mieteingänge, Jahreswert-Abweichungen, Steuerkennzeichen, Spezialkategorien, Kategorie-Normalisierung, Portfolio-Ausgaben, Darlehenssalden, Portfolio-Verknüpfungen und die Steuerbericht-Quellen inklusive Allgemein-/Portfolio-Ausgaben. Fehlende Dokument-Uploads werden bewusst nicht als Fehler bewertet.
             </p>
           </div>
 
@@ -652,7 +652,7 @@ export default function Datenpruefung() {
             <div>Nächster Schritt</div>
           </div>
           <div className="divide-y divide-slate-100">
-            {consistencyTopRows.length ? consistencyTopRows.map((check) => (
+            {consistencyRows.length ? consistencyRows.map((check) => (
               <div key={check.id} className="grid gap-3 px-4 py-4 lg:grid-cols-[120px_150px_minmax(160px,1fr)_minmax(220px,1.4fr)_minmax(220px,1.2fr)] lg:items-start">
                 <div><StatusBadge status={check.severity === "critical" ? "bad" : check.severity === "warning" ? "warn" : "ok"} label={check.severity === "critical" ? "kritisch" : check.severity === "warning" ? "prüfen" : "ok"} /></div>
                 <div className="text-sm font-black text-slate-950">{check.area}</div>

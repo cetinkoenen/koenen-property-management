@@ -2,6 +2,7 @@ import { parseLocaleNumber, parseNullableLocaleNumber } from "@/utils/numberPars
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "../lib/supabase";
 import { APP_DATA_CACHE_KEY, clearAppDataCache } from "../lib/appCache";
+import { isPureRentBackPayment } from "../lib/financeCategories";
 
 export type AppObject = {
   id: string;
@@ -20,6 +21,7 @@ export type FinanceEntry = {
   amount: number;
   category: string | null;
   note: string | null;
+  tax_relevant?: boolean | null;
   nk_relevant?: boolean | null;
 };
 
@@ -127,6 +129,7 @@ type FinanceEntryRow = {
   amount: unknown;
   category: string | null;
   note: string | null;
+  tax_relevant: boolean | null;
   nk_relevant: boolean | null;
 };
 
@@ -251,6 +254,7 @@ function dateInYear(value: string | null, year?: number) {
 
 function isRentEntry(entry: FinanceEntry): boolean {
   if (entry.entry_type !== "income") return false;
+  if (isPureRentBackPayment(entry.category, entry.note)) return false;
   const text = `${entry.category ?? ""} ${entry.note ?? ""}`.toLowerCase();
   return text.includes("miet") || text.includes("kaltmiete") || text.includes("warmmiete") || text.includes("pacht");
 }
@@ -518,7 +522,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     try {
       const [objectsRes, entriesRes, portfolioRes, loanRes] = await Promise.all([
         supabase.from("v_object_dropdown").select("value,objekt_code,label,object_id,property_id").order("label", { ascending: true }),
-        supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,nk_relevant").eq("is_deleted", false).order("booking_date", { ascending: false }).limit(5000),
+        supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,tax_relevant,nk_relevant").eq("is_deleted", false).order("booking_date", { ascending: false }).limit(5000),
         supabase.from("vw_property_loan_dashboard_portfolio_v2").select("property_id,portfolio_property_id,property_name,last_balance,principal_total,interest_total,repaid_percent,repayment_status,repayment_label").order("property_name", { ascending: true }),
         supabase.from("vw_property_loan_dashboard_dedup").select("property_id,property_name,first_year,last_year,last_balance_year,last_balance,interest_total,principal_total,repaid_percent,repaid_percent_display,repayment_status,repayment_label,refreshed_at").order("property_name", { ascending: true }),
       ]);
@@ -551,6 +555,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         amount: toNumber(row.amount),
         category: row.category ?? null,
         note: row.note ?? null,
+        tax_relevant: typeof row.tax_relevant === "boolean" ? row.tax_relevant : null,
         nk_relevant: typeof row.nk_relevant === "boolean" ? row.nk_relevant : null,
       }));
 

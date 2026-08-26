@@ -1,6 +1,8 @@
 import { canonicalizeFinanceCategory, normalizeFinanceCategoryText } from "./financeCategories";
+import { getRepairCapexDisplayCategory } from "./repairCapex";
 
 export const MIETBESTANDTEIL_NK_CATEGORY = "Mietbestandteil-NK";
+export { MIETE_NACHZAHLUNG_CATEGORY, isPureRentBackPayment } from "./financeCategories";
 
 type FinanceEntryLike = {
   entry_type?: string | null;
@@ -33,5 +35,7 @@ export function isHohenloherMietbestandteilNk(entry: FinanceEntryLike, objectLab
 
 export function displayFinanceCategory(entry: FinanceEntryLike, objectLabel?: string | null): string {
   if (isHohenloherMietbestandteilNk(entry, objectLabel)) return MIETBESTANDTEIL_NK_CATEGORY;
+  const repairCapexCategory = getRepairCapexDisplayCategory(entry);
+  if (repairCapexCategory) return repairCapexCategory;
   return canonicalizeFinanceCategory(entry.category, entry.entry_type === "income" || entry.entry_type === "expense" ? entry.entry_type : null) || "Ohne Kategorie";
 }
