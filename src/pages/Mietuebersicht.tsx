@@ -1042,7 +1042,10 @@ function lilienthalerBookingAllocation(
     };
   }
 
-  return null;
+  // Fuer Lilienthaler ist das Ergebnis auch ohne Treffer abschliessend.
+  // Ein null-Wert wuerde danach die allgemeine (breitere) Buchungslogik
+  // aktivieren und koennte eine fremde Einnahme als Ersatzwert uebernehmen.
+  return { paidAmount: 0, lastBookingDate: null };
 }
 
 

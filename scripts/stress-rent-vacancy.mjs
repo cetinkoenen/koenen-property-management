@@ -101,6 +101,10 @@ function isLilienthalerRentReceipt(entry, object) {
   return entry.entry_type === "income" && Number(entry.amount) > 0 && rentReferenceText({ category: entry.category, note: "", objekt_code: "" }) === "miete" && directMatch;
 }
 
+function lilienthalerPaidAmount(entries, object) {
+  return entries.filter((entry) => isLilienthalerRentReceipt(entry, object)).reduce((sum, entry) => sum + Number(entry.amount), 0);
+}
+
 function manualNewTotal(adjustment) {
   return money((adjustment.new_cold_rent ?? 0) + (adjustment.new_operating_costs ?? 0));
 }
@@ -192,6 +196,17 @@ const tests = [
     );
     assert.equal(isStrictRentCategory({ category: "Mietbestandteil-NK" }), false);
     assert.equal(isStrictRentCategory({ category: "Miete" }), true);
+    assert.equal(
+      lilienthalerPaidAmount([{
+        object_id: "hohenloher-id",
+        objekt_code: "Objekt_5",
+        entry_type: "income",
+        amount: 270,
+        category: "Mietbestandteil-NK",
+      }], lilienthaler),
+      0,
+      "Ohne Lilienthaler-Mietbuchung muss der Monat 0 statt eines Fallback-Betrags ergeben",
+    );
   },
   () => {
     const vacancy = { vacancy_type: "contract_ended", status: "active", start_date: "2026-02-28", end_date: "2026-02-28" };
