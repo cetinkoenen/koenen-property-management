@@ -24,6 +24,7 @@ export type PropertyExtraInfo = {
 };
 
 export type PropertyExtra = PropertyExtraInfo;
+export type PropertyWealthProfile = Record<string, string>;
 
 export const emptyPropertyExtra: PropertyExtraInfo = {
   property_id: "",
@@ -174,4 +175,61 @@ export async function loadAllPropertyExtras(): Promise<Record<string, PropertyEx
 export async function loadPropertyExtra(propertyId: string): Promise<PropertyExtraInfo | null> { const all = await loadPropertyExtras(); return all[propertyId] ?? null; }
 export async function migrateLocalExtrasToSupabase(propertyIds: string[], local: Record<string, PropertyExtraInfo>, remote: Record<string, PropertyExtraInfo>) {
   for (const propertyId of propertyIds) if (local[propertyId] && !remote[propertyId]) await savePropertyExtra(propertyId, local[propertyId]);
+}
+
+function normalizeWealthProfile(value: unknown): PropertyWealthProfile {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, fieldValue]) => typeof fieldValue === "string")
+      .map(([key, fieldValue]) => [key, String(fieldValue)]),
+  );
+}
+
+export async function fetchPropertyWealthProfiles(propertyIds?: string[]): Promise<Record<string, PropertyWealthProfile>> {
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData.user;
+  if (!user) return {};
+
+  let query = supabase.from("property_extra_info").select("property_id,wealth_profile");
+  if (!isReadonlyApprovalEmail(user.email)) query = query.eq("user_id", user.id);
+  if (propertyIds?.length) query = query.in("property_id", propertyIds);
+  const { data, error } = await query;
+  if (error) {
+    console.warn("property wealth profiles load failed:", error.message);
+    return {};
+  }
+
+  const result: Record<string, PropertyWealthProfile> = {};
+  for (const row of data ?? []) {
+    const propertyId = String(row.property_id ?? "").trim();
+    if (!propertyId) continue;
+    result[propertyId] = normalizeWealthProfile(row.wealth_profile);
+  }
+  return result;
+}
+
+export async function savePropertyWealthProfile(
+  propertyId: string,
+  profile: PropertyWealthProfile,
+): Promise<{ ok: boolean; message: string; error?: unknown }> {
+  const normalizedPropertyId = String(propertyId ?? "").trim();
+  if (!normalizedPropertyId) return { ok: false, message: "Objektzuordnung fehlt" };
+
+  const { data: userData } = await supabase.auth.getUser();
+  const user = userData.user;
+  if (!user) return { ok: false, message: "Nicht eingeloggt" };
+
+  const { error } = await supabase.from("property_extra_info").upsert({
+    user_id: user.id,
+    property_id: normalizedPropertyId,
+    wealth_profile: normalizeWealthProfile(profile),
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id,property_id" });
+
+  if (error) {
+    console.error("property wealth profile save failed:", error.message);
+    return { ok: false, message: `Supabase Fehler: ${error.message}`, error };
+  }
+  return { ok: true, message: "In Supabase gespeichert" };
 }

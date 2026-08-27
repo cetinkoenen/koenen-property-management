@@ -23,7 +23,15 @@ import { portfolioGalleryItems, type PortfolioGalleryItem } from "@/data/portfol
 import { useAppData, type FinanceEntry, type PortfolioLoanRow } from "@/state/AppDataContext";
 import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
 import { buildRepairCapexSummary, type RepairCapexSummary } from "@/lib/repairCapex";
-import { loadAllPropertyExtras, savePropertyExtra, emptyPropertyExtra, type PropertyExtraInfo } from "@/services/propertyExtraService";
+import {
+  emptyPropertyExtra,
+  fetchPropertyWealthProfiles,
+  loadAllPropertyExtras,
+  savePropertyExtra,
+  savePropertyWealthProfile,
+  type PropertyExtraInfo,
+} from "@/services/propertyExtraService";
+import { loadExposeLinks, uploadExpose } from "@/lib/uploadExpose";
 import { yearlyCapexService } from "@/services/yearlyCapexService";
 import {
   isVacancyEffectivelyActiveInRange,
@@ -759,14 +767,14 @@ function withoutEmptyValues(draft: WealthDraft | undefined): WealthDraft {
 }
 
 function mergeDraft(row: PortfolioLoanRow | undefined, template: WealthTemplate, stored: Record<string, WealthDraft>): WealthDraft {
-  const legacyId = row?.portfolio_property_id ?? row?.property_id;
   const liveFallback: WealthDraft = row ? { name: template.defaults.name || row.property_name } : {};
 
   return {
     ...template.defaults,
     ...liveFallback,
-    ...(legacyId ? withoutEmptyValues(stored[legacyId]) : {}),
     ...withoutEmptyValues(stored[template.key]),
+    ...(row?.portfolio_property_id ? withoutEmptyValues(stored[row.portfolio_property_id]) : {}),
+    ...(row?.property_id ? withoutEmptyValues(stored[row.property_id]) : {}),
   };
 }
 
@@ -791,8 +799,9 @@ function buildCards(rows: PortfolioLoanRow[], stored: Record<string, WealthDraft
       draft: {
         ...EMPTY_DRAFT,
         ...(stored[id] ?? {}),
-        name: stored[id]?.name || row.property_name,
-        remainingDebt: stored[id]?.remainingDebt || String(Math.round(row.last_balance || 0)),
+        ...(stored[row.property_id] ?? {}),
+        name: stored[row.property_id]?.name || stored[id]?.name || row.property_name,
+        remainingDebt: stored[row.property_id]?.remainingDebt || stored[id]?.remainingDebt || String(Math.round(row.last_balance || 0)),
       },
     });
   });
@@ -1525,7 +1534,7 @@ function DetailPage({
       </SectionPanel>
 
       <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-[24px] border border-white/70 bg-white/90 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm font-bold text-slate-600">{!isAdmin ? "Nur-Lesen-Zugang: Die Detailmaske ist geschützt." : saveStatus ?? "Änderungen werden lokal in dieser App gespeichert."}</p>
+        <p className="text-sm font-bold text-slate-600">{!isAdmin ? "Nur-Lesen-Zugang: Die Detailmaske ist geschützt." : saveStatus ?? "Änderungen werden zentral in Supabase gespeichert."}</p>
         <button
           type="button"
           onClick={() => onSave(card.id)}
@@ -1603,7 +1612,9 @@ export default function ImmobilienVermoegen() {
   const backendFinance = useBackendFinanceMaster(year);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const capexSyncSignatureRef = useRef("");
-  const [storedDrafts, setStoredDrafts] = useState<Record<string, WealthDraft>>(() => loadStoredDrafts());
+  const [legacyDrafts] = useState<Record<string, WealthDraft>>(loadStoredDrafts);
+  const wealthProfilesLoadedRef = useRef(false);
+  const [storedDrafts, setStoredDrafts] = useState<Record<string, WealthDraft>>(legacyDrafts);
   const [saveStatus, setSaveStatus] = useState<Record<string, string>>({});
   const [extraInfo, setExtraInfo] = useState<Record<string, PropertyExtraInfo>>({});
   const [dirtyExtras, setDirtyExtras] = useState<Record<string, boolean>>({});
@@ -1646,6 +1657,68 @@ export default function ImmobilienVermoegen() {
       return card.id === routeId || row?.property_id === routeId || row?.portfolio_property_id === routeId;
     });
   }, [cardsWithAutoModernizations, params.propertyId]);
+
+  useEffect(() => {
+    if (!appData.portfolioRows.length || wealthProfilesLoadedRef.current) return;
+    wealthProfilesLoadedRef.current = true;
+    let cancelled = false;
+
+    async function loadWealthProfiles() {
+      const propertyIds = appData.portfolioRows.map((row) => row.property_id).filter(Boolean);
+      const remote = await fetchPropertyWealthProfiles(propertyIds);
+      const legacy = legacyDrafts;
+      const next: Record<string, WealthDraft> = { ...legacy, ...remote };
+
+      if (isAdmin) {
+        for (const row of appData.portfolioRows) {
+          if (remote[row.property_id] && Object.keys(remote[row.property_id]).length > 0) continue;
+          const templateKey = findTemplate(row.property_name)?.key;
+          const legacyProfile = legacy[row.property_id]
+            ?? (row.portfolio_property_id ? legacy[row.portfolio_property_id] : undefined)
+            ?? (templateKey ? legacy[templateKey] : undefined);
+          if (!legacyProfile || Object.keys(withoutEmptyValues(legacyProfile)).length === 0) continue;
+          const result = await savePropertyWealthProfile(row.property_id, legacyProfile);
+          if (result.ok) next[row.property_id] = legacyProfile;
+        }
+      }
+
+      if (cancelled) return;
+      setStoredDrafts(next);
+      if (isAdmin) {
+        try { window.localStorage.removeItem(STORAGE_KEY); } catch { /* Legacy-Speicher darf blockiert sein. */ }
+      }
+    }
+
+    void loadWealthProfiles();
+    return () => {
+      cancelled = true;
+    };
+  }, [appData.portfolioRows, isAdmin, legacyDrafts]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadRemoteExposes() {
+      try {
+        const links = await loadExposeLinks();
+        if (cancelled) return;
+        setExposes((legacy) => {
+          const next = { ...legacy };
+          for (const link of links) {
+            const value = { fileName: link.fileName, dataUrl: link.publicUrl, uploadedAt: "" };
+            next[link.portfolioPropertyId] = value;
+            if (link.corePropertyId) next[link.corePropertyId] = value;
+          }
+          return next;
+        });
+      } catch (error) {
+        console.warn("Exposés konnten nicht zentral geladen werden", error);
+      }
+    }
+    void loadRemoteExposes();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -1827,17 +1900,22 @@ export default function ImmobilienVermoegen() {
           [key]: value,
         },
       };
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      window.dispatchEvent(new Event(WEALTH_UPDATED_EVENT));
       return next;
     });
-    setSaveStatus((current) => ({ ...current, [id]: "Ungespeicherte Änderung lokal vorgemerkt." }));
+    setSaveStatus((current) => ({ ...current, [id]: "Ungespeicherte Änderung." }));
   }
 
-  function saveDraft(id: string) {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(storedDrafts));
-    window.dispatchEvent(new Event(WEALTH_UPDATED_EVENT));
-    setSaveStatus((current) => ({ ...current, [id]: "Gespeichert." }));
+  async function saveDraft(id: string) {
+    const card = cards.find((candidate) => candidate.id === id);
+    const propertyId = card?.row?.property_id;
+    if (!propertyId) {
+      setSaveStatus((current) => ({ ...current, [id]: "Speichern nicht möglich: Objekt-ID fehlt." }));
+      return;
+    }
+    setSaveStatus((current) => ({ ...current, [id]: "Wird in Supabase gespeichert…" }));
+    const result = await savePropertyWealthProfile(propertyId, card.draft);
+    setSaveStatus((current) => ({ ...current, [id]: result.message }));
+    if (result.ok) window.dispatchEvent(new Event(WEALTH_UPDATED_EVENT));
   }
 
   function updateExtra(propertyId: string, field: keyof PropertyExtraInfo, value: string) {
@@ -1858,27 +1936,27 @@ export default function ImmobilienVermoegen() {
     window.setTimeout(() => fileInputRef.current?.click(), 0);
   }
 
-  function handleExposeUpload(event: ChangeEvent<HTMLInputElement>) {
+  async function handleExposeUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     const propertyId = uploadTarget;
     event.target.value = "";
     if (!file || !propertyId) return;
-    if (file.type !== "application/pdf") {
-      window.alert("Bitte nur PDF-Dateien als Exposé hochladen.");
-      return;
+    const card = cards.find((candidate) => candidate.row?.portfolio_property_id === propertyId || candidate.row?.property_id === propertyId);
+    const statusKey = card?.id ?? propertyId;
+    setSaveStatus((current) => ({ ...current, [statusKey]: "Exposé wird in Supabase hochgeladen…" }));
+    try {
+      const uploaded = await uploadExpose(propertyId, file);
+      const value = { fileName: file.name, dataUrl: uploaded.publicUrl, uploadedAt: new Date().toISOString() };
+      setExposes((current) => ({
+        ...current,
+        [propertyId]: value,
+        ...(card?.row?.property_id ? { [card.row.property_id]: value } : {}),
+      }));
+      setSaveStatus((current) => ({ ...current, [statusKey]: "Exposé in Supabase gespeichert." }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unbekannter Fehler";
+      setSaveStatus((current) => ({ ...current, [statusKey]: `Exposé-Upload fehlgeschlagen: ${message}` }));
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const next = {
-        ...exposes,
-        [propertyId]: { fileName: file.name, dataUrl: String(reader.result ?? ""), uploadedAt: new Date().toISOString() },
-      };
-      setExposes(next);
-      window.localStorage.setItem(EXPOSE_STORAGE_KEY, JSON.stringify(next));
-      window.alert("Exposé wurde gespeichert.");
-    };
-    reader.onerror = () => window.alert("Exposé konnte nicht gelesen werden.");
-    reader.readAsDataURL(file);
   }
 
   function previewExpose(card: WealthCard, extra: PropertyExtraInfo, finance: WealthFinance) {
@@ -1917,7 +1995,7 @@ export default function ImmobilienVermoegen() {
           onExtraSave={saveExtra}
           onExposePreview={previewExpose}
           onExposeGenerate={generateExpose}
-          onExposeUpload={openUpload}
+          onExposeUpload={(corePropertyId) => openUpload(selectedCard.row?.portfolio_property_id ?? corePropertyId)}
           onImageOpen={setSelectedImage}
           extraDirty={dirtyExtras[propertyId]}
           extraStatus={extraStatus[propertyId]}

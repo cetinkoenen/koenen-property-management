@@ -65,12 +65,12 @@ function withoutEmptyValues(draft = {}) {
 }
 
 function mergeDraft(row, template, stored) {
-  const legacyId = row?.portfolio_property_id ?? row?.property_id;
   return {
     ...template.defaults,
     ...(row ? { name: template.defaults.name || row.property_name } : {}),
-    ...(legacyId ? withoutEmptyValues(stored[legacyId]) : {}),
     ...withoutEmptyValues(stored[template.key]),
+    ...(row?.portfolio_property_id ? withoutEmptyValues(stored[row.portfolio_property_id]) : {}),
+    ...(row?.property_id ? withoutEmptyValues(stored[row.property_id]) : {}),
   };
 }
 
@@ -94,8 +94,9 @@ function buildCards(rows, stored = {}) {
       draft: {
         ...EMPTY_DRAFT,
         ...(stored[id] ?? {}),
-        name: stored[id]?.name || row.property_name,
-        remainingDebt: stored[id]?.remainingDebt || String(Math.round(row.last_balance || 0)),
+        ...(stored[row.property_id] ?? {}),
+        name: stored[row.property_id]?.name || stored[id]?.name || row.property_name,
+        remainingDebt: stored[row.property_id]?.remainingDebt || stored[id]?.remainingDebt || String(Math.round(row.last_balance || 0)),
       },
     });
   });
@@ -303,6 +304,16 @@ const tests = [
     const nkEntries = { p1: [{ amount: 120.11 }, { amount: 49.89 }] };
     const finance = financeForCard(cards.find((card) => card.id === "lilienthaler-str-54"), { snapshots, nkEntries });
     assert.equal(roundCurrency(finance.nebenkosten), 170);
+  },
+  () => {
+    const cards = buildCards(rows, {
+      "lilienthaler-str-54": { marketValue: "111000", notes: "lokale Vorlage" },
+      pf1: { marketValue: "222000", notes: "lokale Portfolio-ID" },
+      p1: { marketValue: "333000", notes: "zentrale Supabase-Quelle" },
+    });
+    const lilienthaler = cards.find((card) => card.id === "lilienthaler-str-54");
+    assert.equal(lilienthaler?.draft.marketValue, "333000", "Supabase-Profil der Kernobjekt-ID muss lokale Altdaten uebersteuern");
+    assert.equal(lilienthaler?.draft.notes, "zentrale Supabase-Quelle");
   },
 ];
 

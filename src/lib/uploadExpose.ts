@@ -8,6 +8,12 @@ type UploadExposeResult = {
   publicUrl: string;
 };
 
+export type StoredExposeLink = UploadExposeResult & {
+  portfolioPropertyId: string;
+  corePropertyId: string | null;
+  fileName: string;
+};
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -118,4 +124,27 @@ export async function uploadExpose(
     filePath,
     publicUrl,
   };
+}
+
+export async function loadExposeLinks(): Promise<StoredExposeLink[]> {
+  const { data, error } = await supabase
+    .from("portfolio_properties")
+    .select("id,core_property_id,expose_path")
+    .not("expose_path", "is", null);
+
+  if (error) throw new Error(`Exposé-Verweise konnten nicht geladen werden: ${error.message}`);
+
+  return (data ?? []).flatMap((row) => {
+    const filePath = String(row.expose_path ?? "").trim();
+    if (!filePath) return [];
+    const { data: publicUrlData } = supabase.storage.from(EXPOSE_BUCKET).getPublicUrl(filePath);
+    if (!publicUrlData.publicUrl) return [];
+    return [{
+      portfolioPropertyId: String(row.id),
+      corePropertyId: row.core_property_id ? String(row.core_property_id) : null,
+      filePath,
+      publicUrl: publicUrlData.publicUrl,
+      fileName: filePath.split("/").at(-1) || "expose.pdf",
+    }];
+  });
 }
