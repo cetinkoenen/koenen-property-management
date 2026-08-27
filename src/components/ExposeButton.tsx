@@ -1,5 +1,6 @@
 
-import { supabase } from "../lib/supabaseClient";
+import { useEffect, useState } from "react";
+import { createExposeSignedUrl } from "../lib/uploadExpose";
 
 type ExposeButtonProps = {
   exposePath?: string | null;
@@ -31,22 +32,33 @@ function emptyButton() {
 
 export default function ExposeButton({ exposePath }: ExposeButtonProps) {
   const cleanedPath = typeof exposePath === "string" ? exposePath.trim() : "";
+  const [linkState, setLinkState] = useState<{ path: string; url: string; failed: boolean }>({ path: "", url: "", failed: false });
 
-  if (!cleanedPath) {
+  useEffect(() => {
+    let cancelled = false;
+    if (!cleanedPath) return;
+    createExposeSignedUrl(cleanedPath)
+      .then((url) => {
+        if (!cancelled) setLinkState({ path: cleanedPath, url, failed: false });
+      })
+      .catch((error) => {
+        console.warn("Exposé-Link konnte nicht geladen werden", error);
+        if (!cancelled) setLinkState({ path: cleanedPath, url: "", failed: true });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cleanedPath]);
+
+  if (!cleanedPath || (linkState.path === cleanedPath && linkState.failed)) {
     return emptyButton();
   }
 
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("exposes").getPublicUrl(cleanedPath);
-
-  if (!publicUrl) {
-    return emptyButton();
-  }
+  if (linkState.path !== cleanedPath || !linkState.url) return <span aria-live="polite">Exposé wird geladen…</span>;
 
   return (
     <a
-      href={publicUrl}
+      href={linkState.url}
       target="_blank"
       rel="noopener noreferrer"
       onClick={(event) => event.stopPropagation()}

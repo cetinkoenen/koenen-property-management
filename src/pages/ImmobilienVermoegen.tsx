@@ -1704,7 +1704,7 @@ export default function ImmobilienVermoegen() {
         setExposes((legacy) => {
           const next = { ...legacy };
           for (const link of links) {
-            const value = { fileName: link.fileName, dataUrl: link.publicUrl, uploadedAt: "" };
+            const value = { fileName: link.fileName, dataUrl: link.signedUrl, uploadedAt: "" };
             next[link.portfolioPropertyId] = value;
             if (link.corePropertyId) next[link.corePropertyId] = value;
           }
@@ -1946,7 +1946,7 @@ export default function ImmobilienVermoegen() {
     setSaveStatus((current) => ({ ...current, [statusKey]: "Exposé wird in Supabase hochgeladen…" }));
     try {
       const uploaded = await uploadExpose(propertyId, file);
-      const value = { fileName: file.name, dataUrl: uploaded.publicUrl, uploadedAt: new Date().toISOString() };
+      const value = { fileName: file.name, dataUrl: uploaded.signedUrl, uploadedAt: new Date().toISOString() };
       setExposes((current) => ({
         ...current,
         [propertyId]: value,

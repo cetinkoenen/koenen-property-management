@@ -5,7 +5,7 @@ const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 type UploadExposeResult = {
   filePath: string;
-  publicUrl: string;
+  signedUrl: string;
 };
 
 export type StoredExposeLink = UploadExposeResult & {
@@ -13,6 +13,20 @@ export type StoredExposeLink = UploadExposeResult & {
   corePropertyId: string | null;
   fileName: string;
 };
+
+const SIGNED_URL_TTL_SECONDS = 60 * 60;
+
+export async function createExposeSignedUrl(filePath: string): Promise<string> {
+  const cleanedPath = String(filePath ?? "").trim();
+  if (!cleanedPath) throw new Error("Exposé-Pfad fehlt.");
+  const { data, error } = await supabase.storage
+    .from(EXPOSE_BUCKET)
+    .createSignedUrl(cleanedPath, SIGNED_URL_TTL_SECONDS);
+  if (error || !data?.signedUrl) {
+    throw new Error(`Geschützter Exposé-Link konnte nicht erstellt werden: ${error?.message ?? "Unbekannter Fehler"}`);
+  }
+  return data.signedUrl;
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -104,25 +118,18 @@ export async function uploadExpose(
 
   if (import.meta.env.DEV) console.debug("[uploadExpose] db update success", updatedRows[0]);
 
-  // 3. Public URL erzeugen
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from(EXPOSE_BUCKET).getPublicUrl(filePath);
-
-  if (!publicUrl) {
-    console.error("[uploadExpose] public url generation failed", { filePath });
-    throw new Error("Public URL konnte nicht erzeugt werden.");
-  }
+  // 3. Zeitlich begrenzten Link fuer den privaten Bucket erzeugen
+  const signedUrl = await createExposeSignedUrl(filePath);
 
   if (import.meta.env.DEV) console.debug("[uploadExpose] done", {
     propertyId: normalizedPropertyId,
     filePath,
-    publicUrl,
+    signedUrl,
   });
 
   return {
     filePath,
-    publicUrl,
+    signedUrl,
   };
 }
 
@@ -134,17 +141,17 @@ export async function loadExposeLinks(): Promise<StoredExposeLink[]> {
 
   if (error) throw new Error(`Exposé-Verweise konnten nicht geladen werden: ${error.message}`);
 
-  return (data ?? []).flatMap((row) => {
+  const links = await Promise.all((data ?? []).map(async (row) => {
     const filePath = String(row.expose_path ?? "").trim();
-    if (!filePath) return [];
-    const { data: publicUrlData } = supabase.storage.from(EXPOSE_BUCKET).getPublicUrl(filePath);
-    if (!publicUrlData.publicUrl) return [];
-    return [{
+    if (!filePath) return null;
+    const signedUrl = await createExposeSignedUrl(filePath);
+    return {
       portfolioPropertyId: String(row.id),
       corePropertyId: row.core_property_id ? String(row.core_property_id) : null,
       filePath,
-      publicUrl: publicUrlData.publicUrl,
+      signedUrl,
       fileName: filePath.split("/").at(-1) || "expose.pdf",
-    }];
-  });
+    };
+  }));
+  return links.filter((link): link is StoredExposeLink => Boolean(link));
 }

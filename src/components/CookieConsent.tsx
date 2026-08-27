@@ -32,20 +32,13 @@ export function openCookieSettings() {
 }
 
 export default function CookieConsent() {
-  const [visible, setVisible] = useState(false);
+  const [initialConsent] = useState<CookieConsentValue | null>(getCookieConsent);
+  const [visible, setVisible] = useState(() => !initialConsent);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [analytics, setAnalytics] = useState(false);
-  const [marketing, setMarketing] = useState(false);
+  const [analytics, setAnalytics] = useState(() => Boolean(initialConsent?.analytics));
+  const [marketing, setMarketing] = useState(() => Boolean(initialConsent?.marketing));
 
   useEffect(() => {
-    const saved = getCookieConsent();
-    if (!saved) {
-      setVisible(true);
-    } else {
-      setAnalytics(saved.analytics);
-      setMarketing(saved.marketing);
-    }
-
     const openSettings = () => {
       const current = getCookieConsent();
       setAnalytics(Boolean(current?.analytics));

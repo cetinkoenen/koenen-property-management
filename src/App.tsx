@@ -3886,6 +3886,8 @@ export default function App() {
         <Route path="/buchhaltung/mietanpassungen" element={<Navigate to="/mieter/mietentwicklung" replace />} />
         <Route path="/mietanpassungen" element={<Navigate to="/mieter/mietentwicklung" replace />} />
         <Route path="/berichte-exporte" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
+        <Route path="/exports" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
+        <Route path="/export" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
         <Route path="/buchhaltung/berichte" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
         <Route path="/buchhaltung/export" element={<Navigate to="/buchhaltung/berichte-exporte" replace />} />
         <Route path="/buchhaltung/fahrten" element={<Navigate to="/buchhaltung/fahrtenbuch" replace />} />
