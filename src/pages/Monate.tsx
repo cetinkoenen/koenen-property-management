@@ -54,6 +54,25 @@ type ObjectDropdownResponse = {
   property_id?: string | null;
 };
 
+type PageNotice = { tone: "success" | "error" | "warning"; message: string };
+
+type FinanceEntryResponse = {
+  id: unknown;
+  object_id: unknown;
+  objekt_code: unknown;
+  booking_date: unknown;
+  amount: unknown;
+  category: unknown;
+  note: unknown;
+  entry_type: unknown;
+  tax_relevant: unknown;
+  nk_relevant: unknown;
+};
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 type SortKey = "booking_date" | "objekt_code" | "entry_type" | "category" | "amount";
 type SortDirection = "asc" | "desc";
 
@@ -344,6 +363,7 @@ export default function Monate() {
   const [rows, setRows] = useState<EntryRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<PageNotice | null>(null);
 
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -456,14 +476,14 @@ export default function Monate() {
     const { data, error } = await query;
     if (error) throw error;
 
-    const entries: EntryRow[] = (data ?? []).map((r: any) => ({
+    const entries: EntryRow[] = ((data ?? []) as FinanceEntryResponse[]).map((r) => ({
       id: Number(r.id),
       object_id: r.object_id == null ? null : String(r.object_id),
-      objekt_code: r.objekt_code ?? null,
-      booking_date: r.booking_date,
+      objekt_code: r.objekt_code == null ? null : String(r.objekt_code),
+      booking_date: String(r.booking_date ?? ""),
       amount: Number(r.amount || 0),
-      category: r.category ?? null,
-      note: r.note ?? null,
+      category: r.category == null ? null : String(r.category),
+      note: r.note == null ? null : String(r.note),
       entry_type: r.entry_type === "expense" ? "expense" : "income",
       tax_relevant: typeof r.tax_relevant === "boolean" ? r.tax_relevant : null,
       nk_relevant: typeof r.nk_relevant === "boolean" ? r.nk_relevant : null,
@@ -495,10 +515,10 @@ export default function Monate() {
     try {
       const data = await fetchEntriesForRange(from, to, code);
       setRows(data);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("loadEntries failed:", e);
       setRows([]);
-      setErr(e?.message ?? String(e));
+      setErr(errorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -769,13 +789,14 @@ export default function Monate() {
       .eq("id", id);
 
     if (error) {
-      alert(`Löschen fehlgeschlagen: ${error.message}`);
+      setNotice({ tone: "error", message: `Löschen fehlgeschlagen: ${error.message}` });
       return;
     }
 
     clearAppDataCache();
     emitFinanceEntryChanged();
     await loadEntries();
+    setNotice({ tone: "success", message: "Buchung wurde sicher in den Papierkorb verschoben." });
   }
 
   async function deleteSelectedEntries() {
@@ -794,7 +815,7 @@ export default function Monate() {
     );
 
     if (selectedIds.length === 0) {
-      alert("Keine gültigen Einträge ausgewählt.");
+      setNotice({ tone: "warning", message: "Keine gültigen Einträge ausgewählt." });
       return;
     }
 
@@ -818,8 +839,9 @@ export default function Monate() {
       clearAppDataCache();
       emitFinanceEntryChanged();
       await loadEntries();
-    } catch (e: any) {
-      alert(`Batch Delete fehlgeschlagen: ${e?.message ?? String(e)}`);
+      setNotice({ tone: "success", message: `${selectedIds.length} Buchung${selectedIds.length === 1 ? "" : "en"} wurde${selectedIds.length === 1 ? "" : "n"} sicher in den Papierkorb verschoben.` });
+    } catch (e: unknown) {
+      setNotice({ tone: "error", message: `Sammel-Löschen fehlgeschlagen: ${errorMessage(e)}` });
     } finally {
       setBulkDeleting(false);
     }
@@ -890,7 +912,7 @@ export default function Monate() {
     const n = isTelecommunicationEdit ? telecommunicationDetails.totalAmount : parseNumberInput(editAmount);
 
     if (!Number.isFinite(n) || n <= 0) {
-      alert("Bitte einen gültigen Betrag > 0 eingeben.");
+      setNotice({ tone: "warning", message: "Bitte einen gültigen Betrag größer als 0 eingeben." });
       return;
     }
 
@@ -903,17 +925,17 @@ export default function Monate() {
         !Number.isFinite(telecomLandlineInternet) ||
         telecomLandlineInternet < 0)
     ) {
-      alert("Bitte die drei Handy-&-Internet-Beträge gültig und nicht negativ eingeben.");
+      setNotice({ tone: "warning", message: "Bitte die drei Handy- und Internetbeträge gültig und nicht negativ eingeben." });
       return;
     }
 
     if (!editDate) {
-      alert("Bitte Datum setzen.");
+      setNotice({ tone: "warning", message: "Bitte ein Buchungsdatum eintragen." });
       return;
     }
 
     if (editCategoryMode === "new" && !editCategoryCustom.trim()) {
-      alert("Bitte eine neue Kategorie eingeben.");
+      setNotice({ tone: "warning", message: "Bitte eine neue Kategorie eingeben." });
       return;
     }
 
@@ -926,7 +948,7 @@ export default function Monate() {
       : editNote.trim() || null;
     const selectedObject = objectByValue.get(editObjectValue);
     if (!selectedObject) {
-      alert("Bitte ein Objekt auswählen.");
+      setNotice({ tone: "warning", message: "Bitte ein Objekt auswählen." });
       return;
     }
 
@@ -998,8 +1020,9 @@ export default function Monate() {
       clearAppDataCache();
       emitFinanceEntryChanged();
       await loadEntries();
-    } catch (e: any) {
-      alert(`Speichern fehlgeschlagen: ${e?.message ?? String(e)}`);
+      setNotice({ tone: "success", message: "Buchung wurde gespeichert." });
+    } catch (e: unknown) {
+      setNotice({ tone: "error", message: `Speichern fehlgeschlagen: ${errorMessage(e)}` });
     } finally {
       setEditSaving(false);
     }
@@ -1009,7 +1032,7 @@ export default function Monate() {
     const objectLabel = objectLabelMap.get(row.objekt_code ?? "") ?? row.objekt_code;
     const rule = taxRuleForRow(row, objectLabel);
     if (rule.locked && value) {
-      alert(rule.hint);
+      setNotice({ tone: "warning", message: rule.hint });
       setRows((current) => current.map((item) => (item.id === row.id ? { ...item, tax_relevant: false } : item)));
       return;
     }
@@ -1024,12 +1047,13 @@ export default function Monate() {
 
     if (error) {
       setRows((current) => current.map((item) => (item.id === row.id ? { ...item, tax_relevant: row.tax_relevant } : item)));
-      alert(`Steuerrelevanz konnte nicht gespeichert werden: ${error.message}`);
+      setNotice({ tone: "error", message: `Steuerrelevanz konnte nicht gespeichert werden: ${error.message}` });
       return;
     }
 
     clearAppDataCache();
     emitFinanceEntryChanged();
+    setNotice({ tone: "success", message: "Steuerrelevanz wurde gespeichert." });
   }
 
   async function updateNkRelevant(row: EntryRow, value: boolean) {
@@ -1051,17 +1075,18 @@ export default function Monate() {
 
     if (error) {
       setRows((current) => current.map((item) => (item.id === row.id ? { ...item, nk_relevant: row.nk_relevant } : item)));
-      alert(`NK-Relevanz konnte nicht gespeichert werden: ${error.message}`);
+      setNotice({ tone: "error", message: `NK-Relevanz konnte nicht gespeichert werden: ${error.message}` });
       return;
     }
 
     clearAppDataCache();
     emitFinanceEntryChanged();
+    setNotice({ tone: "success", message: "Nebenkosten-Relevanz wurde gespeichert." });
   }
 
   async function exportYearCsv() {
     if (!Number.isFinite(year) || year < 1900 || year > 3000) {
-      alert("Bitte ein gültiges Jahr eingeben.");
+      setNotice({ tone: "warning", message: "Bitte ein gültiges Jahr eingeben." });
       return;
     }
 
@@ -1099,8 +1124,9 @@ export default function Monate() {
       const objectPart = code && code !== "ALL" ? `${sanitizeFilenamePart(code)}_` : "alle_objekte_";
       const filename = `jahresuebersicht_${objectPart}${year}.csv`;
       downloadCsv(filename, csv);
-    } catch (e: any) {
-      alert(`Jahres-CSV fehlgeschlagen: ${e?.message ?? String(e)}`);
+      setNotice({ tone: "success", message: `Jahres-CSV „${filename}“ wurde erstellt.` });
+    } catch (e: unknown) {
+      setNotice({ tone: "error", message: `Jahres-CSV fehlgeschlagen: ${errorMessage(e)}` });
     } finally {
       setLoading(false);
     }
@@ -1199,6 +1225,35 @@ export default function Monate() {
 
   return (
     <div style={{ display: "grid", gap: 16 }}>
+      {notice ? (
+        <div
+          role={notice.tone === "error" ? "alert" : "status"}
+          aria-live={notice.tone === "error" ? "assertive" : "polite"}
+          style={{
+            border: `1px solid ${notice.tone === "success" ? "#86efac" : notice.tone === "warning" ? "#fcd34d" : "#fca5a5"}`,
+            borderRadius: 14,
+            background: notice.tone === "success" ? "#f0fdf4" : notice.tone === "warning" ? "#fffbeb" : "#fff1f2",
+            color: notice.tone === "success" ? "#166534" : notice.tone === "warning" ? "#92400e" : "#991b1b",
+            padding: "11px 14px",
+            fontSize: 13,
+            fontWeight: 800,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <span>{notice.message}</span>
+          <button
+            type="button"
+            onClick={() => setNotice(null)}
+            aria-label="Meldung schließen"
+            style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", fontSize: 18 }}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
       <div
         style={{
           display: "grid",

@@ -27,6 +27,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { isAdminEmail } from "@/auth/accessControl";
 import { useAppData, type PortfolioLoanRow } from "@/state/AppDataContext";
 import { runInvestmentAiAnalysis, type InvestmentAiFile } from "@/services/investmentAiService";
+import { fetchPropertyWealthProfiles } from "@/services/propertyExtraService";
 import {
   archiveInvestmentRequest,
   listInvestmentRequests,
@@ -204,7 +205,6 @@ const investmentSections: { id: InvestmentSection; label: string }[] = [
   { id: "export", label: "Export" },
 ];
 
-const WEALTH_STORAGE_KEY = "koenen:immobilienvermoegen:v2";
 const WEALTH_UPDATED_EVENT = "koenen:immobilienvermoegen:updated";
 
 const wealthDefaults: Array<{
@@ -288,16 +288,6 @@ function formatCurrencyExact(value: number | null | undefined) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value ?? 0);
 }
 
-function loadWealthDrafts(): Record<string, WealthDraft> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(WEALTH_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, WealthDraft>) : {};
-  } catch {
-    return {};
-  }
-}
-
 function findWealthRow(rows: PortfolioLoanRow[], match: string[], usedIds: Set<string>) {
   return rows.find((row) => {
     if (usedIds.has(row.property_id)) return false;
@@ -311,10 +301,10 @@ function buildInvestmentWealthCards(rows: PortfolioLoanRow[], storedDrafts: Reco
   return wealthDefaults.map((item) => {
     const row = findWealthRow(rows, item.match, usedIds);
     if (row) usedIds.add(row.property_id);
-    const rowStorageId = row?.portfolio_property_id ?? row?.property_id;
     const draft = {
-      ...(rowStorageId ? storedDrafts[rowStorageId] : undefined),
       ...(storedDrafts[item.id] ?? {}),
+      ...(row?.portfolio_property_id ? storedDrafts[row.portfolio_property_id] : undefined),
+      ...(row?.property_id ? storedDrafts[row.property_id] : undefined),
     };
     const streetLine = [draft.street ?? item.street, draft.houseNumber ?? item.houseNumber].filter(Boolean).join(" ").trim();
     const cityLine = [draft.postalCode ?? item.postalCode, draft.city ?? item.city].filter(Boolean).join(" ").trim();
@@ -469,7 +459,7 @@ export default function InvestmentBericht() {
   const appData = useAppData();
   const { user } = useAuth();
   const canManageInvestmentRequests = isAdminEmail(user?.email);
-  const [wealthDrafts, setWealthDrafts] = useState<Record<string, WealthDraft>>(() => loadWealthDrafts());
+  const [wealthDrafts, setWealthDrafts] = useState<Record<string, WealthDraft>>({});
   const [investmentRequests, setInvestmentRequests] = useState<InvestmentRequestRow[]>([]);
   const [selectedRequestId, setSelectedRequestId] = useState("");
   const [requestsLoading, setRequestsLoading] = useState(false);
@@ -692,14 +682,19 @@ export default function InvestmentBericht() {
   }
 
   useEffect(() => {
-    const refresh = () => setWealthDrafts(loadWealthDrafts());
-    window.addEventListener(WEALTH_UPDATED_EVENT, refresh);
-    window.addEventListener("storage", refresh);
-    return () => {
-      window.removeEventListener(WEALTH_UPDATED_EVENT, refresh);
-      window.removeEventListener("storage", refresh);
+    let cancelled = false;
+    const propertyIds = appData.portfolioRows.map((row) => row.property_id).filter(Boolean);
+    const refresh = async () => {
+      const profiles = await fetchPropertyWealthProfiles(propertyIds);
+      if (!cancelled) setWealthDrafts(profiles);
     };
-  }, []);
+    void refresh();
+    window.addEventListener(WEALTH_UPDATED_EVENT, refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(WEALTH_UPDATED_EVENT, refresh);
+    };
+  }, [appData.portfolioRows]);
 
   useEffect(() => {
     void refreshInvestmentRequests();

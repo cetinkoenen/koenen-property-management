@@ -1,6 +1,5 @@
 import { supabase } from "@/lib/supabase";
 
-const AUDIT_STORAGE_KEY = "koenen:audit-log:v1";
 const AUDIT_TABLE = "app_audit_log";
 
 export type AuditAction =
@@ -32,45 +31,18 @@ export type AuditLogEntry = {
   meta?: Record<string, unknown> | null;
 };
 
-function makeId() {
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function readLocalAuditLog(): AuditLogEntry[] {
-  try {
-    const raw = window.localStorage.getItem(AUDIT_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeLocalAuditLog(entries: AuditLogEntry[]) {
-  try {
-    window.localStorage.setItem(AUDIT_STORAGE_KEY, JSON.stringify(entries.slice(0, 500)));
-  } catch {}
-}
-
 export async function recordAuditLog(entry: Omit<AuditLogEntry, "id" | "created_at">): Promise<void> {
-  const next: AuditLogEntry = { id: makeId(), created_at: new Date().toISOString(), ...entry };
-  writeLocalAuditLog([next, ...readLocalAuditLog()]);
-  try {
-    await supabase.from(AUDIT_TABLE).insert({
-      action: next.action,
-      property_id: next.property_id ?? null,
-      portfolio_property_id: next.portfolio_property_id ?? null,
-      objekt_code: next.objekt_code ?? null,
-      label: next.label ?? null,
-      old_value: next.old_value ?? null,
-      new_value: next.new_value ?? null,
-      meta: next.meta ?? null,
-    });
-  } catch {}
-}
-
-export function getLocalAuditLog(limit = 50): AuditLogEntry[] {
-  return readLocalAuditLog().slice(0, limit);
+  const { error } = await supabase.from(AUDIT_TABLE).insert({
+    action: entry.action,
+    property_id: entry.property_id ?? null,
+    portfolio_property_id: entry.portfolio_property_id ?? null,
+    objekt_code: entry.objekt_code ?? null,
+    label: entry.label ?? null,
+    old_value: entry.old_value ?? null,
+    new_value: entry.new_value ?? null,
+    meta: entry.meta ?? null,
+  });
+  if (error) console.warn("Audit-Eintrag konnte nicht zentral gespeichert werden:", error.message);
 }
 
 

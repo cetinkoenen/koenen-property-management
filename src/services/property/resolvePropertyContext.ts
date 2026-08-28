@@ -1,4 +1,5 @@
 import { supabase } from "../../lib/supabaseClient";
+import { expandPropertyIdAliases, type PropertyIdAliasRow } from "../../lib/propertyIdAliases";
 
 function toSafeString(value: unknown): string {
   return String(value ?? "").trim();
@@ -46,34 +47,16 @@ function pickAddress(row: Record<string, unknown> | null | undefined): string | 
     .find(Boolean);
 }
 
-const KNOWN_PROPERTY_ID_ALIASES: Record<string, string[]> = {
-  // Elsasser Str. 52 existed in older app versions under several IDs.
-  // Include all known IDs so the detail pages can still find the Darlehens-Ledger
-  // even when the route opens the canonical property/portfolio id.
-  "f8a86965-07e4-4b6a-a97a-779dbe97a3fd": [
-    "5db6fcc3-6419-4fb1-a03f-087dc16383cc",
-    "4f9d5747-f808-45e7-83a1-b5738ee018c6",
-    "3f029417-88e1-4cbc-a3f5-37d246d71bb9",
-  ],
-  "5db6fcc3-6419-4fb1-a03f-087dc16383cc": [
-    "f8a86965-07e4-4b6a-a97a-779dbe97a3fd",
-    "4f9d5747-f808-45e7-83a1-b5738ee018c6",
-    "3f029417-88e1-4cbc-a3f5-37d246d71bb9",
-  ],
-  "4f9d5747-f808-45e7-83a1-b5738ee018c6": [
-    "f8a86965-07e4-4b6a-a97a-779dbe97a3fd",
-    "5db6fcc3-6419-4fb1-a03f-087dc16383cc",
-    "3f029417-88e1-4cbc-a3f5-37d246d71bb9",
-  ],
-  "3f029417-88e1-4cbc-a3f5-37d246d71bb9": [
-    "f8a86965-07e4-4b6a-a97a-779dbe97a3fd",
-    "5db6fcc3-6419-4fb1-a03f-087dc16383cc",
-    "4f9d5747-f808-45e7-83a1-b5738ee018c6",
-  ],
-};
-
-function aliasesForKnownPropertyIds(ids: string[]): string[] {
-  return ids.flatMap((id) => KNOWN_PROPERTY_ID_ALIASES[id] ?? []);
+async function aliasesForKnownPropertyIds(ids: string[]): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("property_id_aliases")
+    .select("object_id,legacy_property_id")
+    .limit(500);
+  if (error) {
+    console.warn("property_id_aliases load failed:", error.message);
+    return [];
+  }
+  return expandPropertyIdAliases(ids, (data ?? []) as PropertyIdAliasRow[]);
 }
 
 async function bridgeCandidatesForContext(ids: string[], displayName?: string): Promise<string[]> {
@@ -187,7 +170,7 @@ export async function resolvePropertyContext(propertyId: string) {
 
   const baseCandidates = [routeId, corePropertyId, portfolioPropertyId].filter(Boolean);
   const bridgeCandidates = await bridgeCandidatesForContext(baseCandidates, displayName ?? address);
-  const knownAliasCandidates = aliasesForKnownPropertyIds([...baseCandidates, ...bridgeCandidates]);
+  const knownAliasCandidates = await aliasesForKnownPropertyIds([...baseCandidates, ...bridgeCandidates]);
   const candidates = Array.from(
     new Set([...baseCandidates, ...bridgeCandidates, ...knownAliasCandidates].map(toSafeString).filter(Boolean))
   );
@@ -213,7 +196,7 @@ export async function resolvePropertyContext(propertyId: string) {
 
 export type ResolvedPropertyContext = {
   propertyId: string;
-  property: any;
+  property: Record<string, unknown> | null;
   incomePropertyId?: string;
   ledgerPropertyId?: string;
   portfolioPropertyId?: string;
