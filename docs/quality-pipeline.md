@@ -22,7 +22,7 @@ Er führt neun Prüfschritte aus:
 
 Vercel führt durch `vercel.json` denselben Befehl vor jeder Veröffentlichung aus. Eine fehlerhafte Version kann dadurch nicht als neue Produktionsversion bereitgestellt werden.
 
-Eine zusätzliche GitHub-Aktion ist lokal vorbereitet. Für deren Upload benötigt die GitHub-Anmeldung einmalig die Berechtigung `workflow`; bis dahin ist die verpflichtende Vercel-Prüfung die aktive automatische Schutzschicht.
+Die GitHub-Aktion `.github/workflows/quality.yml` führt dieselbe Prüfung bei jedem Push auf `main` und bei jedem Pull Request gegen `main` aus. Gemeinsam mit der verpflichtenden Vercel-Prüfung verhindert sie, dass ungeprüfte Änderungen unbemerkt in den Hauptstand oder in die Produktion gelangen.
 
 ## Warnungsbudget
 
