@@ -73,7 +73,10 @@ export function EntryForm({ onCreated, defaultObjectId }: EntryFormProps) {
 
   // Wenn App defaultObjectId ändert -> sync
   useEffect(() => {
-    if (defaultObjectId) setObjectId(defaultObjectId);
+    const syncDefaultObject = window.setTimeout(() => {
+      if (defaultObjectId) setObjectId(defaultObjectId);
+    }, 0);
+    return () => window.clearTimeout(syncDefaultObject);
   }, [defaultObjectId]);
 
   // Kategorien laden

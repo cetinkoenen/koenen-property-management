@@ -182,7 +182,10 @@ export default function Uebersicht() {
 
   // Wenn Objekt gesetzt ist, beim ersten Mal automatisch laden
   useEffect(() => {
-    if (objektCode) void load();
+    const initialLoad = window.setTimeout(() => {
+      if (objektCode) void load();
+    }, 0);
+    return () => window.clearTimeout(initialLoad);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objektCode]);
 

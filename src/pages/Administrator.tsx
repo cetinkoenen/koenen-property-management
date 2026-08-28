@@ -610,10 +610,11 @@ export default function Administrator({ focus = "all" }: { focus?: Administrator
   }, [isAdmin, showProperty]);
 
   useEffect(() => {
-    void loadManagedRows();
+    const initialLoad = window.setTimeout(() => void loadManagedRows(), 0);
     window.addEventListener("koenen:rentals-changed", loadManagedRows);
     window.addEventListener("koenen:rent-adjustments-changed", loadManagedRows);
     return () => {
+      window.clearTimeout(initialLoad);
       window.removeEventListener("koenen:rentals-changed", loadManagedRows);
       window.removeEventListener("koenen:rent-adjustments-changed", loadManagedRows);
     };
@@ -643,7 +644,8 @@ export default function Administrator({ focus = "all" }: { focus?: Administrator
   }, [isAdmin, showUsers]);
 
   useEffect(() => {
-    void loadManagedUsers();
+    const initialLoad = window.setTimeout(() => void loadManagedUsers(), 0);
+    return () => window.clearTimeout(initialLoad);
   }, [loadManagedUsers]);
 
   function updatePropertyField(event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {

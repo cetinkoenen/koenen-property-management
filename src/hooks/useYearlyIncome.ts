@@ -57,7 +57,8 @@ export function useYearlyIncome(
   }, [propertyId, autoGenerateIfMissing, startYear, yearCount]);
 
   useEffect(() => {
-    void load();
+    const initialLoad = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(initialLoad);
   }, [load]);
 
   return {

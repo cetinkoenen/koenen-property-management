@@ -1440,14 +1440,21 @@ function csvValue(value: unknown): string {
 }
 
 function downloadBlob(filename: string, blob: Blob) {
+  if (!filename.trim() || blob.size === 0) {
+    throw new Error("Der Export konnte nicht erstellt werden, weil die Datei leer ist.");
+  }
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
+  link.rel = "noopener";
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  // Firefox, Safari and embedded browsers may still read the Blob after the
+  // synthetic click. Releasing it immediately can cancel an otherwise valid
+  // download, so keep it alive briefly and clean it up afterwards.
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function buildCsv(headers: string[], rows: Array<Array<unknown>>): string {
@@ -1885,38 +1892,57 @@ async function createZipWithBinary(files: Array<{ name: string; content: string 
   return new Blob(parts, { type: "application/zip" });
 }
 
-function ReportActionButton({ label, primary = false, onClick }: { label: string; primary?: boolean; onClick: () => void }) {
+function ReportActionButton({
+  label,
+  primary = false,
+  disabled = false,
+  busy = false,
+  onClick,
+}: {
+  label: string;
+  primary?: boolean;
+  disabled?: boolean;
+  busy?: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
+      aria-busy={busy || undefined}
       className={[
-        "inline-flex min-h-10 items-center justify-center rounded-2xl px-4 text-sm font-black no-underline shadow-sm transition hover:-translate-y-0.5",
+        "inline-flex min-h-10 items-center justify-center rounded-2xl px-4 text-sm font-black no-underline shadow-sm transition hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-55 disabled:hover:translate-y-0",
         primary
           ? "bg-slate-950 text-white hover:bg-[#255f6f]"
           : "border border-slate-200 bg-white text-slate-900 hover:border-teal-200 hover:bg-teal-50",
       ].join(" ")}
     >
-      {label}
+      {busy ? "Export wird erstellt…" : label}
     </button>
   );
 }
 
 function ReportsExportsPage() {
-  const { objects, entries, loanRows, getPropertyName } = useAppData();
+  const { objects, entries, loanRows, getPropertyName, loading: appDataLoading } = useAppData();
   const currentYear = new Date().getFullYear();
   const [objectFilter, setObjectFilter] = useState("all");
   const [period, setPeriod] = useState(String(currentYear));
   const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
   const [vacancyError, setVacancyError] = useState<string | null>(null);
+  const [vacancyLoadedRange, setVacancyLoadedRange] = useState<string | null>(null);
   const [mileageTrips, setMileageTrips] = useState<MileageTripRow[]>([]);
   const [mileageError, setMileageError] = useState<string | null>(null);
+  const [mileageLoadedYear, setMileageLoadedYear] = useState<number | null>(null);
   const [rentAnnualReport, setRentAnnualReport] = useState<RentAnnualReportSnapshot | null>(null);
+  const [activeExport, setActiveExport] = useState<string | null>(null);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
   const rentReportRef = useRef<HTMLElement | null>(null);
   const isPortfolioReportFilter = objectFilter === "portfolio";
   const selectedObject = isPortfolioReportFilter ? undefined : objects.find((object) => object.id === objectFilter);
   const periodStart = `${period}-01-01`;
   const periodEnd = `${period}-12-31`;
+  const vacancyRangeKey = `${periodStart}:${periodEnd}`;
   const selectedYear = Number(period) || currentYear;
   const yearEntries = entries.filter((entry) => entry.booking_date?.startsWith(`${period}-`));
   const matchesSelectedObject = (entry: FinanceEntry) => {
@@ -1970,6 +1996,9 @@ function ReportsExportsPage() {
     mileageTrips,
     objects,
   });
+  const rentReportReady = getReadyRentReport() !== null;
+  const vacancyReportReady = vacancyLoadedRange === vacancyRangeKey;
+  const mileageReportReady = mileageLoadedYear === selectedYear;
 
   useEffect(() => {
     let alive = true;
@@ -1983,6 +2012,8 @@ function ReportsExportsPage() {
         if (!alive) return;
         setVacancies([]);
         setVacancyError(error instanceof Error ? error.message : String(error));
+      } finally {
+        if (alive) setVacancyLoadedRange(vacancyRangeKey);
       }
     }
 
@@ -1990,7 +2021,7 @@ function ReportsExportsPage() {
     return () => {
       alive = false;
     };
-  }, [periodEnd, periodStart]);
+  }, [periodEnd, periodStart, vacancyRangeKey]);
 
   useEffect(() => {
     let alive = true;
@@ -2004,6 +2035,8 @@ function ReportsExportsPage() {
         if (!alive) return;
         setMileageTrips([]);
         setMileageError(error instanceof Error ? error.message : String(error));
+      } finally {
+        if (alive) setMileageLoadedYear(selectedYear);
       }
     }
 
@@ -2012,6 +2045,31 @@ function ReportsExportsPage() {
       alive = false;
     };
   }, [selectedYear]);
+
+  function reportActionReady(kind: ReportKind): boolean {
+    if (appDataLoading) return false;
+    if (kind === "rent-account") return rentReportReady;
+    if (kind === "vacancy") return vacancyReportReady;
+    if (kind === "section35a" || kind === "anlage-v-package") return mileageReportReady;
+    if (kind === "tax-data-package") return rentReportReady && vacancyReportReady && mileageReportReady;
+    return true;
+  }
+
+  async function runReportExport(kind: ReportKind, format: ReportFormat) {
+    const exportKey = `${kind}:${format}`;
+    if (!reportActionReady(kind) || activeExport) return;
+    setActiveExport(exportKey);
+    setExportMessage(null);
+    try {
+      await downloadReport(kind, format);
+      setExportMessage(`${reportTitle(kind)} wurde als ${format.toUpperCase()} erstellt.`);
+    } catch (error) {
+      console.error("Berichtsexport fehlgeschlagen:", error);
+      setExportMessage(error instanceof Error ? error.message : "Der Export konnte nicht erstellt werden.");
+    } finally {
+      setActiveExport(null);
+    }
+  }
 
   function reportTitle(kind: ReportKind): string {
     const titles: Record<ReportKind, string> = {
@@ -2693,6 +2751,11 @@ function ReportsExportsPage() {
       </SectionPanel>
 
       <section className="grid gap-4 lg:grid-cols-2">
+        {exportMessage ? (
+          <div role="status" className="lg:col-span-2 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm font-bold text-teal-900">
+            {exportMessage}
+          </div>
+        ) : null}
         {reportCards.map((card) => {
           const Icon = card.icon;
           return (
@@ -2719,7 +2782,9 @@ function ReportsExportsPage() {
                     key={action.label}
                     label={action.label}
                     primary={action.primary}
-                    onClick={() => downloadReport(action.kind, action.format)}
+                    disabled={!reportActionReady(action.kind) || activeExport !== null}
+                    busy={activeExport === `${action.kind}:${action.format}`}
+                    onClick={() => void runReportExport(action.kind, action.format)}
                   />
                 ))}
               </div>

@@ -79,7 +79,8 @@ export function useAsyncResource<T>(
   }, [enabled, fetcher, onError]);
 
   useEffect(() => {
-    void load();
+    const initialLoad = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(initialLoad);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 

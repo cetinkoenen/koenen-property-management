@@ -142,7 +142,8 @@ export function useLedger(propertyIdInput?: string | null): UseLedgerResult {
   }, [hasPropertyId, propertyId]);
 
   useEffect(() => {
-    void load();
+    const initialLoad = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(initialLoad);
   }, [load]);
 
   const reload = useCallback(async () => {

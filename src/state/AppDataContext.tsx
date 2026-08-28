@@ -707,11 +707,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   }, [hydrateFromCache]);
 
   useEffect(() => {
-    void load();
+    const initialLoad = window.setTimeout(() => void load(), 0);
     const handler = () => void load();
     window.addEventListener("koenen:finance-entry-changed", handler);
     window.addEventListener("focus", handler);
     return () => {
+      window.clearTimeout(initialLoad);
       window.removeEventListener("koenen:finance-entry-changed", handler);
       window.removeEventListener("focus", handler);
     };

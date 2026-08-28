@@ -22,10 +22,13 @@ export function useBackendFinanceMaster(year: number, refreshKey = 0): BackendFi
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+    const startLoading = window.setTimeout(() => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+    }, 0);
 
-    Promise.allSettled([loadBackendFinanceMaster(year), loadBackendFinanceConsistency(year), loadBackendDataQualityChecks(year)])
+    void Promise.allSettled([loadBackendFinanceMaster(year), loadBackendFinanceConsistency(year), loadBackendDataQualityChecks(year)])
       .then((results) => {
         if (cancelled) return;
         const [masterResult, consistencyResult, qualityResult] = results;
@@ -53,6 +56,7 @@ export function useBackendFinanceMaster(year: number, refreshKey = 0): BackendFi
 
     return () => {
       cancelled = true;
+      window.clearTimeout(startLoading);
     };
   }, [year, refreshKey]);
 

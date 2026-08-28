@@ -13,6 +13,8 @@
     "stress:property-aliases": "node scripts/stress-property-id-aliases.mjs",
     "stress:central-data": "node scripts/stress-central-data-sources.mjs",
     "stress:data-quality": "node scripts/stress-data-quality-source.mjs",
+    "stress:report-exports": "node scripts/stress-report-exports.mjs",
+    "stress:security": "node scripts/stress-security-baseline.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
