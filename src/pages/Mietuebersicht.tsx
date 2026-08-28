@@ -1320,7 +1320,11 @@ export default function Mietuebersicht({
   const [tenantInfo, setTenantInfo] = useState<Record<string, TenantInfo>>({});
   const [tenantContracts, setTenantContracts] = useState<Record<string, TenantContractInfo>>({});
   const [tenantContractRows, setTenantContractRows] = useState<TenantContractProfileRow[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(true);
+  const [portfolioRentalsLoading, setPortfolioRentalsLoading] = useState(true);
+  const [vacanciesLoading, setVacanciesLoading] = useState(true);
   const [tenantContractsLoading, setTenantContractsLoading] = useState(true);
+  const [rentAdjustmentsLoading, setRentAdjustmentsLoading] = useState(true);
   const [portfolioProperties, setPortfolioProperties] = useState<PortfolioPropertyRow[]>([]);
   const [portfolioRentals, setPortfolioRentals] = useState<PortfolioRentalRow[]>([]);
   const [rentAdjustments, setRentAdjustments] = useState<RentAdjustmentRow[]>([]);
@@ -1337,34 +1341,39 @@ export default function Mietuebersicht({
     let cancelled = false;
 
     async function loadCurrentMonthBookings() {
-      const today = toIso(new Date());
-      const { data, error } = await supabase
-        .from("finance_entry")
-        .select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,is_deleted")
-        .eq("entry_type", "income")
-        .eq("is_deleted", false)
-        .gte("booking_date", "2023-12-25")
-        .lte("booking_date", today)
-        .order("booking_date", { ascending: false });
+      setBookingsLoading(true);
+      try {
+        const today = toIso(new Date());
+        const { data, error } = await supabase
+          .from("finance_entry")
+          .select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,is_deleted")
+          .eq("entry_type", "income")
+          .eq("is_deleted", false)
+          .gte("booking_date", "2023-12-25")
+          .lte("booking_date", today)
+          .order("booking_date", { ascending: false });
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      if (error) {
-        console.warn("Mieteingänge konnten nicht direkt geladen werden:", error);
-        setMonthBookings([]);
-        return;
+        if (error) {
+          console.warn("Mieteingänge konnten nicht direkt geladen werden:", error);
+          setMonthBookings([]);
+          return;
+        }
+
+        setMonthBookings(((data ?? []) as Array<Partial<FinanceEntry>>).map((row) => ({
+          id: row.id ?? null,
+          object_id: row.object_id == null ? null : String(row.object_id),
+          objekt_code: row.objekt_code ?? null,
+          entry_type: row.entry_type ?? null,
+          booking_date: row.booking_date ?? null,
+          amount: Number(row.amount) || 0,
+          category: row.category ?? null,
+          note: row.note ?? null,
+        })));
+      } finally {
+        if (!cancelled) setBookingsLoading(false);
       }
-
-      setMonthBookings(((data ?? []) as Array<Partial<FinanceEntry>>).map((row) => ({
-        id: row.id ?? null,
-        object_id: row.object_id == null ? null : String(row.object_id),
-        objekt_code: row.objekt_code ?? null,
-        entry_type: row.entry_type ?? null,
-        booking_date: row.booking_date ?? null,
-        amount: Number(row.amount) || 0,
-        category: row.category ?? null,
-        note: row.note ?? null,
-      })));
     }
 
     void loadCurrentMonthBookings();
@@ -1382,6 +1391,7 @@ export default function Mietuebersicht({
     let cancelled = false;
 
     async function loadPortfolioRentals() {
+      setPortfolioRentalsLoading(true);
       try {
         const [propertiesRes, rentalsRes] = await Promise.all([
           supabase.from("portfolio_properties").select("id,name,core_property_id"),
@@ -1411,6 +1421,8 @@ export default function Mietuebersicht({
         console.warn("Vermietungszeiträume konnten nicht geladen werden:", error);
         setPortfolioProperties([]);
         setPortfolioRentals([]);
+      } finally {
+        if (!cancelled) setPortfolioRentalsLoading(false);
       }
     }
 
@@ -1430,6 +1442,7 @@ export default function Mietuebersicht({
     let cancelled = false;
 
     async function loadVacancies() {
+      setVacanciesLoading(true);
       try {
         const propertyIds = sourceObjects.map((object) => object.id);
         const labelByPropertyId = Object.fromEntries(sourceObjects.map((object) => [object.id, object.label]));
@@ -1444,6 +1457,8 @@ export default function Mietuebersicht({
         if (cancelled) return;
         console.warn("Leerstände konnten nicht geladen werden:", error);
         setVacancies([]);
+      } finally {
+        if (!cancelled) setVacanciesLoading(false);
       }
     }
 
@@ -1524,6 +1539,7 @@ export default function Mietuebersicht({
     let cancelled = false;
 
     async function loadRentAdjustments() {
+      setRentAdjustmentsLoading(true);
       try {
         const { data, error } = await supabase
           .from("rent_adjustments")
@@ -1537,6 +1553,8 @@ export default function Mietuebersicht({
         if (cancelled) return;
         console.warn("Mietanpassungen konnten nicht geladen werden:", error);
         setRentAdjustments([]);
+      } finally {
+        if (!cancelled) setRentAdjustmentsLoading(false);
       }
     }
 
@@ -1550,6 +1568,13 @@ export default function Mietuebersicht({
       window.removeEventListener("koenen:rent-adjustments-changed", handler);
     };
   }, [displayedRange.start, displayedRange.end]);
+
+  const reportDataLoading = appData.loading
+    || bookingsLoading
+    || portfolioRentalsLoading
+    || vacanciesLoading
+    || tenantContractsLoading
+    || rentAdjustmentsLoading;
 
   const rows = useMemo<OverviewRow[]>(
     () =>
@@ -1798,7 +1823,7 @@ export default function Mietuebersicht({
   }), [annualRows]);
 
   useEffect(() => {
-    if (!onAnnualReportChange || tenantContractsLoading) return;
+    if (!onAnnualReportChange || reportDataLoading) return;
     onAnnualReportChange({
       year: selectedPeriod.year,
       objectFilter,
@@ -1812,7 +1837,7 @@ export default function Mietuebersicht({
       }), { paid: 0, expected: 0, open: 0, overpaid: 0 }),
       kpis: annualKpis,
     });
-  }, [annualKpis, annualPropertyTotals, annualReportRows, objectFilter, onAnnualReportChange, selectedPeriod.year, tenantContractsLoading]);
+  }, [annualKpis, annualPropertyTotals, annualReportRows, objectFilter, onAnnualReportChange, reportDataLoading, selectedPeriod.year]);
 
   const resetToRecommendedMonth = () => setSelectedPeriod(recommendedYearMonth());
   const shiftSelectedMonth = (offset: number) => setSelectedPeriod((value) => addMonthsToYearMonth(value.year, value.month, offset));
@@ -1914,9 +1939,9 @@ export default function Mietuebersicht({
         </aside> : null}
 
         <main className="tenant-card">
-          {tenantContractsLoading ? (
+          {reportDataLoading ? (
             <div role="status" className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-bold text-sky-800">
-              Mietverträge und Sollmieten werden geladen. Exporte sind gleich verfügbar.
+              Buchungen, Mietverträge, Mietanpassungen und Leerstände werden geladen. Exporte sind gleich verfügbar.
             </div>
           ) : null}
           <div className="tenant-card-head">
@@ -2001,7 +2026,7 @@ export default function Mietuebersicht({
                 <option value="vacant">Leerstand</option>
               </select>
             </label>
-            <button type="button" onClick={openFilteredPdf} disabled={tenantContractsLoading} className="tenant-mini-button tenant-export-button disabled:cursor-wait disabled:opacity-60">PDF exportieren</button>
+            <button type="button" onClick={openFilteredPdf} disabled={reportDataLoading} className="tenant-mini-button tenant-export-button disabled:cursor-wait disabled:opacity-60">PDF exportieren</button>
           </div> : null}
 
           {appData.error && <div className="tenant-message error">Fehler beim Laden: {appData.error}</div>}
