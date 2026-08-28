@@ -23,7 +23,8 @@ assert.match(app, /path="\/portfolio" element={<Navigate to="\/immobilienvermoeg
 const rentAdjustmentQuery = rentOverview.match(/\.from\("rent_adjustments"\)[\s\S]{0,500}?\.order\("effective_date"/)?.[0] ?? "";
 assert.doesNotMatch(rentAdjustmentQuery, /object_code/, "Mieteingang darf keine nicht vorhandene rent_adjustments.object_code-Spalte abfragen");
 assert.doesNotMatch(rentAdjustmentQuery, /unit_label/, "Mieteingang darf keine nicht vorhandene rent_adjustments.unit_label-Spalte abfragen");
-assert.match(rentOverview, /bookingsLoading/, "Mietkonto-Exporte müssen den Ladezustand der Buchungen kennen");
+assert.doesNotMatch(rentOverview, /\.from\("finance_entry"\)/, "Mieteingang darf Buchungen nicht parallel zur zentralen App-Datenquelle laden");
+assert.match(rentOverview, /const allKnownBookings = appData\.entries\.filter/, "Mieteingang muss ausschließlich die zentral geladenen Buchungen verwenden");
 assert.match(rentOverview, /portfolioRentalsLoading/, "Mietkonto-Exporte müssen den Ladezustand der Vermietungszeiträume kennen");
 assert.match(rentOverview, /vacanciesLoading/, "Mietkonto-Exporte müssen den Ladezustand der Leerstände kennen");
 assert.match(rentOverview, /tenantContractsLoading/, "Mietkonto-Exporte müssen den Ladezustand der Sollmieten kennen");
@@ -32,4 +33,4 @@ assert.match(rentOverview, /if \(!onAnnualReportChange \|\| reportDataLoading\) 
 assert.match(rentOverview, /disabled=\{reportDataLoading\}/, "PDF-Export muss bis zum Laden aller Reportquellen deaktiviert sein");
 assert.match(rentOverview, /Buchungen, Mietverträge, Mietanpassungen und Leerstände werden geladen/, "Die Oberfläche muss den gemeinsamen Ladezustand verständlich anzeigen");
 
-console.log("19 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("20 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

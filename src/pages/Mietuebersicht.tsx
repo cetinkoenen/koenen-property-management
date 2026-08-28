@@ -1315,12 +1315,10 @@ export default function Mietuebersicht({
     return displayedRange;
   }, [displayedRange, effectivePeriodMode, selectedPeriod.year]);
   const appData = useAppData();
-  const [monthBookings, setMonthBookings] = useState<FinanceEntry[]>([]);
   const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
   const [tenantInfo, setTenantInfo] = useState<Record<string, TenantInfo>>({});
   const [tenantContracts, setTenantContracts] = useState<Record<string, TenantContractInfo>>({});
   const [tenantContractRows, setTenantContractRows] = useState<TenantContractProfileRow[]>([]);
-  const [bookingsLoading, setBookingsLoading] = useState(true);
   const [portfolioRentalsLoading, setPortfolioRentalsLoading] = useState(true);
   const [vacanciesLoading, setVacanciesLoading] = useState(true);
   const [tenantContractsLoading, setTenantContractsLoading] = useState(true);
@@ -1336,56 +1334,6 @@ export default function Mietuebersicht({
     if (appData.objects.length) return appData.objects.map((object) => ({ id: object.id, code: object.code, label: object.label }));
     return appData.portfolioRows.map((row, index) => ({ id: row.property_id, code: `Objekt_${index + 1}`, label: row.property_name }));
   }, [appData.objects, appData.portfolioRows]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadCurrentMonthBookings() {
-      setBookingsLoading(true);
-      try {
-        const today = toIso(new Date());
-        const { data, error } = await supabase
-          .from("finance_entry")
-          .select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,is_deleted")
-          .eq("entry_type", "income")
-          .eq("is_deleted", false)
-          .gte("booking_date", "2023-12-25")
-          .lte("booking_date", today)
-          .order("booking_date", { ascending: false });
-
-        if (cancelled) return;
-
-        if (error) {
-          console.warn("Mieteingänge konnten nicht direkt geladen werden:", error);
-          setMonthBookings([]);
-          return;
-        }
-
-        setMonthBookings(((data ?? []) as Array<Partial<FinanceEntry>>).map((row) => ({
-          id: row.id ?? null,
-          object_id: row.object_id == null ? null : String(row.object_id),
-          objekt_code: row.objekt_code ?? null,
-          entry_type: row.entry_type ?? null,
-          booking_date: row.booking_date ?? null,
-          amount: Number(row.amount) || 0,
-          category: row.category ?? null,
-          note: row.note ?? null,
-        })));
-      } finally {
-        if (!cancelled) setBookingsLoading(false);
-      }
-    }
-
-    void loadCurrentMonthBookings();
-    const handler = () => void loadCurrentMonthBookings();
-    window.addEventListener("koenen:finance-entry-changed", handler);
-    window.addEventListener("focus", handler);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("koenen:finance-entry-changed", handler);
-      window.removeEventListener("focus", handler);
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1570,7 +1518,6 @@ export default function Mietuebersicht({
   }, [displayedRange.start, displayedRange.end]);
 
   const reportDataLoading = appData.loading
-    || bookingsLoading
     || portfolioRentalsLoading
     || vacanciesLoading
     || tenantContractsLoading
@@ -1580,7 +1527,7 @@ export default function Mietuebersicht({
     () =>
       sourceObjects.flatMap((object) => {
         const objectCandidateIds = candidatePropertyIdsForObject(object, appData.portfolioRows, portfolioProperties);
-        const allKnownBookings = [...monthBookings, ...appData.entries].filter((booking, index, list) => {
+        const allKnownBookings = appData.entries.filter((booking, index, list) => {
           const key = booking.id != null ? `id:${booking.id}` : `${booking.object_id ?? ""}|${booking.objekt_code ?? ""}|${booking.booking_date ?? ""}|${booking.amount}|${booking.category ?? ""}|${booking.note ?? ""}`;
           return list.findIndex((other) => (other.id != null ? `id:${other.id}` : `${other.object_id ?? ""}|${other.objekt_code ?? ""}|${other.booking_date ?? ""}|${other.amount}|${other.category ?? ""}|${other.note ?? ""}`) === key) === index;
         });
@@ -1695,7 +1642,7 @@ export default function Mietuebersicht({
           });
         });
       }),
-    [sourceObjects, appData, portfolioProperties, monthBookings, displayedPeriods, tenantInfo, tenantContracts, tenantContractRows, vacancies, portfolioRentals, rentAdjustments]
+    [sourceObjects, appData, portfolioProperties, displayedPeriods, tenantInfo, tenantContracts, tenantContractRows, vacancies, portfolioRentals, rentAdjustments]
   );
 
   const filteredRows = useMemo(() => {
