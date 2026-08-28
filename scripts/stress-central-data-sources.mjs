@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [app, investment, audit, resolver, migration] = await Promise.all([
+const [app, investment, audit, resolver, rentOverview, migration] = await Promise.all([
   read("src/App.tsx"),
   read("src/pages/InvestmentBericht.tsx"),
   read("src/services/auditLogService.ts"),
   read("src/services/property/resolvePropertyContext.ts"),
+  read("src/pages/Mietuebersicht.tsx"),
   read("supabase/migrations/20260827163000_property_id_aliases.sql"),
 ]);
 
@@ -19,5 +20,11 @@ assert.match(migration, /enable row level security/i, "Alias-Tabelle muss RLS ak
 assert.match(migration, /revoke all on public\.property_id_aliases from anon/i, "Alias-Tabelle darf für anon nicht freigegeben sein");
 assert.match(app, /path="\/exports" element={<Navigate to="\/buchhaltung\/berichte-exporte" replace \/>}/, "Alter Exportpfad muss zur zentralen Berichteseite führen");
 assert.match(app, /path="\/portfolio" element={<Navigate to="\/immobilienvermoegen" replace \/>}/, "Alter Portfoliopfad muss zur zentralen Immobilienseite führen");
+const rentAdjustmentQuery = rentOverview.match(/\.from\("rent_adjustments"\)[\s\S]{0,500}?\.order\("effective_date"/)?.[0] ?? "";
+assert.doesNotMatch(rentAdjustmentQuery, /object_code/, "Mieteingang darf keine nicht vorhandene rent_adjustments.object_code-Spalte abfragen");
+assert.doesNotMatch(rentAdjustmentQuery, /unit_label/, "Mieteingang darf keine nicht vorhandene rent_adjustments.unit_label-Spalte abfragen");
+assert.match(rentOverview, /tenantContractsLoading/, "Mietkonto-Exporte müssen den Ladezustand der Sollmieten kennen");
+assert.match(rentOverview, /if \(!onAnnualReportChange \|\| tenantContractsLoading\) return;/, "Ein noch leerer Jahresreport darf nicht als exportbereit gemeldet werden");
+assert.match(rentOverview, /disabled=\{tenantContractsLoading\}/, "PDF-Export muss während der Sollmieten-Ladephase deaktiviert sein");
 
-console.log("9 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("14 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

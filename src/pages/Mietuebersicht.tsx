@@ -1320,6 +1320,7 @@ export default function Mietuebersicht({
   const [tenantInfo, setTenantInfo] = useState<Record<string, TenantInfo>>({});
   const [tenantContracts, setTenantContracts] = useState<Record<string, TenantContractInfo>>({});
   const [tenantContractRows, setTenantContractRows] = useState<TenantContractProfileRow[]>([]);
+  const [tenantContractsLoading, setTenantContractsLoading] = useState(true);
   const [portfolioProperties, setPortfolioProperties] = useState<PortfolioPropertyRow[]>([]);
   const [portfolioRentals, setPortfolioRentals] = useState<PortfolioRentalRow[]>([]);
   const [rentAdjustments, setRentAdjustments] = useState<RentAdjustmentRow[]>([]);
@@ -1463,6 +1464,7 @@ export default function Mietuebersicht({
     let cancelled = false;
 
     async function loadTenantContracts() {
+      setTenantContractsLoading(true);
       try {
         const { data, error } = await supabase
           .from("tenant_contracts")
@@ -1507,6 +1509,8 @@ export default function Mietuebersicht({
           __global: "Mieterstammdaten konnten nicht geladen werden. Bitte tenant_profiles/tenant_contracts prüfen.",
         }));
         console.warn("Mietuebersicht tenant contract load failed:", error);
+      } finally {
+        if (!cancelled) setTenantContractsLoading(false);
       }
     }
 
@@ -1523,7 +1527,7 @@ export default function Mietuebersicht({
       try {
         const { data, error } = await supabase
           .from("rent_adjustments")
-          .select("id,property_id,object_label,object_code,unit_label,tenant_name,effective_date,effective_end_date,old_cold_rent,old_operating_costs,old_total_rent,new_cold_rent,new_operating_costs,new_total_rent,note,created_at")
+          .select("id,property_id,object_label,tenant_name,effective_date,effective_end_date,old_cold_rent,old_operating_costs,old_total_rent,new_cold_rent,new_operating_costs,new_total_rent,note,created_at")
           .order("effective_date", { ascending: false, nullsFirst: false });
 
         if (error) throw error;
@@ -1794,7 +1798,7 @@ export default function Mietuebersicht({
   }), [annualRows]);
 
   useEffect(() => {
-    if (!onAnnualReportChange) return;
+    if (!onAnnualReportChange || tenantContractsLoading) return;
     onAnnualReportChange({
       year: selectedPeriod.year,
       objectFilter,
@@ -1808,7 +1812,7 @@ export default function Mietuebersicht({
       }), { paid: 0, expected: 0, open: 0, overpaid: 0 }),
       kpis: annualKpis,
     });
-  }, [annualKpis, annualPropertyTotals, annualReportRows, objectFilter, onAnnualReportChange, selectedPeriod.year]);
+  }, [annualKpis, annualPropertyTotals, annualReportRows, objectFilter, onAnnualReportChange, selectedPeriod.year, tenantContractsLoading]);
 
   const resetToRecommendedMonth = () => setSelectedPeriod(recommendedYearMonth());
   const shiftSelectedMonth = (offset: number) => setSelectedPeriod((value) => addMonthsToYearMonth(value.year, value.month, offset));
@@ -1910,6 +1914,11 @@ export default function Mietuebersicht({
         </aside> : null}
 
         <main className="tenant-card">
+          {tenantContractsLoading ? (
+            <div role="status" className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-bold text-sky-800">
+              Mietverträge und Sollmieten werden geladen. Exporte sind gleich verfügbar.
+            </div>
+          ) : null}
           <div className="tenant-card-head">
             <div>
               <h2>{annualOverviewMode ? `Zahlungskalender ${selectedPeriod.year}` : effectivePeriodMode === "year" ? `Mieteingänge ${selectedPeriod.year}` : `Mieteingänge ${month.label}`}</h2>
@@ -1992,7 +2001,7 @@ export default function Mietuebersicht({
                 <option value="vacant">Leerstand</option>
               </select>
             </label>
-            <button type="button" onClick={openFilteredPdf} className="tenant-mini-button tenant-export-button">PDF exportieren</button>
+            <button type="button" onClick={openFilteredPdf} disabled={tenantContractsLoading} className="tenant-mini-button tenant-export-button disabled:cursor-wait disabled:opacity-60">PDF exportieren</button>
           </div> : null}
 
           {appData.error && <div className="tenant-message error">Fehler beim Laden: {appData.error}</div>}
