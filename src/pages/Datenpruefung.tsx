@@ -556,7 +556,7 @@ export default function Datenpruefung() {
             </div>
             <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">Backend-Qualitätschecks</h2>
             <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-600">
-              Supabase prüft jetzt zentral doppelte Objekte, Testdaten, fehlende Darlehens-Ledger, fehlende Dokumente, negative Cashflows und Abweichungen zwischen Master-View und alten Quellen.
+              Supabase prüft jetzt zentral Objektzuordnungen, Mietverträge, Mietanpassungen und Leerstände sowie fehlende Darlehens-Ledger, fehlende Dokumente und Buchungsdubletten. Portfolio-Allgemeinbuchungen und gültige Einheiten-IDs werden dabei bewusst nicht als Fehler gewertet.
             </p>
             <p className="mt-2 text-xs font-black text-slate-500">Server-Refresh aktualisiert die Finanzmaster-Views und lädt die Datenprüfung neu.</p>
           </div>
