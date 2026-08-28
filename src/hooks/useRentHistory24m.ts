@@ -25,7 +25,7 @@ type UseRentHistoryResult = {
 function normalizeError(err: unknown): string {
   if (!err) return "Unknown error";
   if (typeof err === "string") return err;
-  if (typeof err === "object" && err && "message" in err) return String((err as any).message);
+  if (typeof err === "object" && err && "message" in err) return String((err as { message: unknown }).message);
   return String(err);
 }
 

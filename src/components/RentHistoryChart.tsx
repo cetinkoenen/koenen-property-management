@@ -253,12 +253,15 @@ function buildPropertyChartData(rows: PropertyRentHistoryByUnitRow[]): {
 function buildUserChartData(data: unknown[]): UserChartPoint[] {
   const rows = Array.isArray(data) ? data : [];
 
-  return rows.map((row: any) => {
-    const hasCents = row?.rent_cents_total != null;
-    const raw = Number(row?.rent_cents_total ?? row?.rent ?? 0);
+  return rows.map((value) => {
+    const row = typeof value === "object" && value !== null
+      ? value as { month?: unknown; rent_cents_total?: unknown; rent?: unknown }
+      : {};
+    const hasCents = row.rent_cents_total != null;
+    const raw = Number(row.rent_cents_total ?? row.rent ?? 0);
 
     return {
-      month: String(row?.month ?? "").slice(0, 7),
+      month: String(row.month ?? "").slice(0, 7),
       rent: hasCents ? raw / 100 : raw,
     };
   });
@@ -314,14 +317,12 @@ export default function RentHistoryChart({
   portfolioPropertyId,
   fallbackPropertyIds = [],
 }: RentHistoryChartProps) {
-  const userHookResult: any = useRentHistory24m({ scopeType });
+  const userHookResult = useRentHistory24m({ scopeType });
 
   const userData = userHookResult?.data ?? [];
   const userError = userHookResult?.error ?? null;
   const userRequiresAuth = Boolean(userHookResult?.requiresAuth ?? false);
-  const userLoading = Boolean(
-    userHookResult?.loading ?? userHookResult?.isLoading ?? false
-  );
+  const userLoading = Boolean(userHookResult.loading);
 
   const [propertyRows, setPropertyRows] = useState<PropertyRentHistoryByUnitRow[]>([]);
   const [propertyLoading, setPropertyLoading] = useState(false);
@@ -527,7 +528,7 @@ export default function RentHistoryChart({
                 tickFormatter={(v) => formatMonthTick(String(v))}
                 interval="preserveStartEnd"
               />
-              <YAxis domain={yDomain as any} tickFormatter={(v) => formatEur(v)} />
+              <YAxis domain={yDomain} tickFormatter={(v) => formatEur(v)} />
               <Tooltip
                 labelFormatter={(label) => formatMonthTick(String(label))}
                 formatter={(value, name) => [formatEur(value), String(name)]}
@@ -555,7 +556,7 @@ export default function RentHistoryChart({
                 tickFormatter={(v) => formatMonthTick(String(v))}
                 interval="preserveStartEnd"
               />
-              <YAxis domain={yDomain as any} tickFormatter={(v) => formatEur(v)} />
+              <YAxis domain={yDomain} tickFormatter={(v) => formatEur(v)} />
               <Tooltip
                 labelFormatter={(label) => formatMonthTick(String(label))}
                 formatter={(value) => formatEur(value)}

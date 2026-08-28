@@ -133,7 +133,8 @@ function createDefaultWorkspace(year: number, object?: ObjectOption): BillingWor
     selectedApartmentId: id,
   };
 }
-function normalizeCost(row: any, index: number, object?: ObjectOption): CostRow { const defaults = costsForObject(object); const d = defaults[index % defaults.length] ?? DEFAULT_COSTS[index % DEFAULT_COSTS.length]; return { ...d, ...row, id: row?.id || createId(), totalKey: Number.isFinite(row?.totalKey) ? row.totalKey : (row?.allocationTotalKey ?? d.totalKey), apartmentKey: Number.isFinite(row?.apartmentKey) ? row.apartmentKey : (row?.allocationApartmentKey ?? d.apartmentKey), prorateByOccupancy: typeof row?.prorateByOccupancy === "boolean" ? row.prorateByOccupancy : d.prorateByOccupancy }; }
+type LegacyCostRow = Partial<CostRow> & { allocationTotalKey?: number; allocationApartmentKey?: number };
+function normalizeCost(row: LegacyCostRow | null | undefined, index: number, object?: ObjectOption): CostRow { const defaults = costsForObject(object); const d = defaults[index % defaults.length] ?? DEFAULT_COSTS[index % DEFAULT_COSTS.length]; return { ...d, ...(row ?? {}), id: row?.id || createId(), totalKey: Number.isFinite(row?.totalKey) ? Number(row?.totalKey) : (row?.allocationTotalKey ?? d.totalKey), apartmentKey: Number.isFinite(row?.apartmentKey) ? Number(row?.apartmentKey) : (row?.allocationApartmentKey ?? d.apartmentKey), prorateByOccupancy: typeof row?.prorateByOccupancy === "boolean" ? row.prorateByOccupancy : d.prorateByOccupancy }; }
 function applyColmarer2025Fixes(costs: CostRow[], year: number, object?: ObjectOption): CostRow[] {
   const objectText = `${object?.objekt_code ?? ""} ${object?.label ?? ""}`.toLowerCase();
   const isColmarer2025 = year === 2025 && objectText.includes("colmarer");
@@ -187,7 +188,7 @@ function applyColmarer2025Fixes(costs: CostRow[], year: number, object?: ObjectO
     return row;
   });
 }
-function normalizeWorkspace(raw: Partial<BillingWorkspace> | null | undefined, year: number, object?: ObjectOption): BillingWorkspace { const fb = createDefaultWorkspace(year, object); const apartments = Array.isArray(raw?.apartments) && raw.apartments.length ? raw.apartments.map((a: any, i) => ({ ...fb.apartments[0], ...a, id: a?.id || createId(), label: a?.label || `Wohnung ${i + 1}`, co2LandlordDeductionKalo: Number.isFinite(a?.co2LandlordDeductionKalo) ? a.co2LandlordDeductionKalo : 0, active: typeof a?.active === "boolean" ? a.active : true })) : fb.apartments; const costs = applyColmarer2025Fixes(Array.isArray(raw?.costs) && raw.costs.length ? raw.costs.map((row: any, index: number) => normalizeCost(row, index, object)) : fb.costs, year, object); return { meta: { ...fb.meta, ...(raw?.meta ?? {}), propertyCode: object?.objekt_code ?? raw?.meta?.propertyCode ?? fb.meta.propertyCode, propertyLabel: object?.label ?? raw?.meta?.propertyLabel ?? fb.meta.propertyLabel, billingYear: year, locked: Boolean(raw?.meta?.locked) }, apartments, costs, heating: { ...fb.heating, ...(raw?.heating ?? {}) }, selectedApartmentId: raw?.selectedApartmentId && apartments.some(a => a.id === raw.selectedApartmentId) ? raw.selectedApartmentId : apartments[0]?.id ?? null }; }
+function normalizeWorkspace(raw: Partial<BillingWorkspace> | null | undefined, year: number, object?: ObjectOption): BillingWorkspace { const fb = createDefaultWorkspace(year, object); const apartments = Array.isArray(raw?.apartments) && raw.apartments.length ? raw.apartments.map((a, i) => ({ ...fb.apartments[0], ...a, id: a?.id || createId(), label: a?.label || `Wohnung ${i + 1}`, co2LandlordDeductionKalo: Number.isFinite(a?.co2LandlordDeductionKalo) ? a.co2LandlordDeductionKalo : 0, active: typeof a?.active === "boolean" ? a.active : true })) : fb.apartments; const costs = applyColmarer2025Fixes(Array.isArray(raw?.costs) && raw.costs.length ? raw.costs.map((row, index) => normalizeCost(row, index, object)) : fb.costs, year, object); return { meta: { ...fb.meta, ...(raw?.meta ?? {}), propertyCode: object?.objekt_code ?? raw?.meta?.propertyCode ?? fb.meta.propertyCode, propertyLabel: object?.label ?? raw?.meta?.propertyLabel ?? fb.meta.propertyLabel, billingYear: year, locked: Boolean(raw?.meta?.locked) }, apartments, costs, heating: { ...fb.heating, ...(raw?.heating ?? {}) }, selectedApartmentId: raw?.selectedApartmentId && apartments.some(a => a.id === raw.selectedApartmentId) ? raw.selectedApartmentId : apartments[0]?.id ?? null }; }
 
 
 
@@ -273,16 +274,17 @@ function makePeriodName(w: BillingWorkspace) {
   return `${from} - ${to} · ${tenant}`;
 }
 function makeBillingRecord(workspace: BillingWorkspace, id = createId()): BillingRecord { return { id, name: makePeriodName(workspace), workspace }; }
-function asBillingCollection(raw: any, year: number, object?: ObjectOption): BillingCollection {
-  if (raw?.version === 2 && Array.isArray(raw?.billings) && raw.billings.length) {
-    const billings = raw.billings.map((b: any, i: number) => {
+function asBillingCollection(raw: unknown, year: number, object?: ObjectOption): BillingCollection {
+  const candidate = raw as (Partial<BillingCollection> & Partial<BillingWorkspace>) | null | undefined;
+  if (candidate?.version === 2 && Array.isArray(candidate.billings) && candidate.billings.length) {
+    const billings = candidate.billings.map((b, i) => {
       const workspace = normalizeWorkspace(b?.workspace ?? null, year, object);
       return { id: b?.id || createId(), name: b?.name || makePeriodName(workspace) || `Abrechnung ${i + 1}`, workspace };
     });
-    const selectedBillingId = raw.selectedBillingId && billings.some((b: BillingRecord) => b.id === raw.selectedBillingId) ? raw.selectedBillingId : billings[0].id;
+    const selectedBillingId = candidate.selectedBillingId && billings.some((b: BillingRecord) => b.id === candidate.selectedBillingId) ? candidate.selectedBillingId : billings[0].id;
     return cleanupBillingRecords(billings, selectedBillingId, year, object);
   }
-  const workspace = normalizeWorkspace(raw as Partial<BillingWorkspace> | null | undefined, year, object);
+  const workspace = normalizeWorkspace(candidate, year, object);
   const record = makeBillingRecord(workspace);
   return cleanupBillingRecords([record], record.id, year, object);
 }

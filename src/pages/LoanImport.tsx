@@ -2,6 +2,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { getErrorMessage } from "../lib/errorMessage";
+
+type PropertyOption = { id: string; name: string };
 
 type Parsed = {
   property_name: string;
@@ -80,7 +83,7 @@ export default function LoanImport() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [properties, setProperties] = useState<{ id: string; name: string }[]>([]);
+  const [properties, setProperties] = useState<PropertyOption[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -98,7 +101,7 @@ export default function LoanImport() {
         console.error(error);
         setProperties([]);
       } else {
-        setProperties((data ?? []) as any);
+        setProperties((data ?? []) as PropertyOption[]);
       }
     })();
 
@@ -160,9 +163,9 @@ export default function LoanImport() {
 
       if (!out.length) throw new Error("Keine gültigen Datenzeilen gefunden.");
       setParsed(out);
-    } catch (e: any) {
+    } catch (e: unknown) {
       setParsed([]);
-      setError(e?.message ?? "Parse Fehler");
+      setError(getErrorMessage(e, "Parse Fehler"));
     }
   }
 
@@ -258,9 +261,9 @@ export default function LoanImport() {
       } else {
         nav(`/immobilienvermoegen`);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      setError(e?.message ?? "Import Fehler");
+      setError(getErrorMessage(e, "Import Fehler"));
     } finally {
       setBusy(false);
     }

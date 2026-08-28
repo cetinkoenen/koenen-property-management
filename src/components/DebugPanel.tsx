@@ -1,6 +1,10 @@
 import { useState } from "react";
 
-export function DebugPanel({ ctx }: any) {
+type DebugPanelProps = {
+  ctx: unknown;
+};
+
+export function DebugPanel({ ctx }: DebugPanelProps) {
   const [open, setOpen] = useState(false);
 
   return (

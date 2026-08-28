@@ -12,6 +12,10 @@ type ObjectRow = {
   street: string | null;
 };
 
+type CategoryRow = {
+  category: string | null;
+};
+
 type EntryFormProps = {
   onCreated?: () => void;
   defaultObjectId?: string; // ✅ neu
@@ -96,8 +100,8 @@ export function EntryForm({ onCreated, defaultObjectId }: EntryFormProps) {
         return;
       }
 
-      const cats = (res.data ?? [])
-        .map((r: any) => canonicalizeFinanceCategory((r.category ?? "").trim()))
+      const cats = ((res.data ?? []) as CategoryRow[])
+        .map((row) => canonicalizeFinanceCategory((row.category ?? "").trim()))
         .filter(Boolean);
       setCategoryOptions(Array.from(new Set(cats)));
     }

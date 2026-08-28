@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { normalizeUuid } from "../lib/ids";
+import { getErrorMessage } from "../lib/errorMessage";
 
 type PropertyRow = { id: string; name: string };
 
@@ -157,9 +158,9 @@ export default function LoanEntryAdd() {
 
       // ✅ Go to the new, canonical route (no legacy)
       navigate(`/darlehensuebersicht/${safePropertyId}`);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      setError(e?.message ?? "Unbekannter Fehler");
+      setError(getErrorMessage(e));
     } finally {
       setSaving(false);
     }

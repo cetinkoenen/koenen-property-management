@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
+import { getErrorMessage } from "../lib/errorMessage";
 
 type EntryRow = {
   id: number;
@@ -12,6 +13,13 @@ type EntryRow = {
 };
 
 type PieRow = { name: string; value: number };
+type ObjectOption = { objekt_code: string; label: string };
+
+function isObjectOption(value: unknown): value is ObjectOption {
+  if (typeof value !== "object" || value === null) return false;
+  const row = value as Partial<ObjectOption>;
+  return typeof row.objekt_code === "string" && Boolean(row.objekt_code) && typeof row.label === "string" && Boolean(row.label);
+}
 
 function formatEUR(n: number) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
@@ -90,7 +98,7 @@ export default function Uebersicht() {
    * v_object_dropdown liefert alle Objekte (unabhängig von finance_entry)
    * und bereits den gewünschten Label-Text: "Objekt X – Straße".
    */
-  const [objects, setObjects] = useState<Array<{ objekt_code: string; label: string }>>([]);
+  const [objects, setObjects] = useState<ObjectOption[]>([]);
   const [objektCode, setObjektCode] = useState<string>("");
 
   const [incomeRows, setIncomeRows] = useState<EntryRow[]>([]);
@@ -116,10 +124,7 @@ export default function Uebersicht() {
         return;
       }
 
-      const list = (data ?? []).filter((x: any) => x?.objekt_code && x?.label) as Array<{
-        objekt_code: string;
-        label: string;
-      }>;
+      const list = (data ?? []).filter(isObjectOption);
 
       setObjects(list);
 
@@ -172,8 +177,8 @@ export default function Uebersicht() {
       setIncomeRows((incRes.data ?? []) as EntryRow[]);
       setExpenseRows((expRes.data ?? []) as EntryRow[]);
       setLoading(false);
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setErr(getErrorMessage(e));
       setIncomeRows([]);
       setExpenseRows([]);
       setLoading(false);

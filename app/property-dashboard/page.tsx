@@ -4,12 +4,25 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
-function eur(value: number | null | undefined) {
-  if (value === null || value === undefined || Number.isNaN(value)) return "—";
-  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(value);
+type DashboardSourceRow = {
+  property_id?: unknown;
+  property_name?: unknown;
+  first_year?: unknown;
+  last_year?: unknown;
+  last_balance_year?: unknown;
+  last_balance?: unknown;
+  interest_total?: unknown;
+  principal_total?: unknown;
+};
+
+function eur(value: unknown) {
+  if (value === null || value === undefined) return "—";
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return "—";
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(numberValue);
 }
 
-function yearOrDash(v: any) {
+function yearOrDash(v: unknown) {
   if (v === null || v === undefined) return "—";
   const s = String(v).trim();
   if (!s || s.toLowerCase() === "null" || s === "—") return "—";
@@ -39,9 +52,9 @@ export default async function Page() {
 
     if (qerr) throw qerr;
 
-    const safe = Array.isArray(data) ? data : [];
+    const safe = (Array.isArray(data) ? data : []) as DashboardSourceRow[];
 
-    rows = safe.map((r: any) => {
+    rows = safe.map((r) => {
       const hasLoanData =
         r.last_balance !== null ||
         r.interest_total !== null ||
@@ -78,8 +91,8 @@ export default async function Page() {
         refreshed_at: new Date().toISOString(),
       } satisfies Row;
     });
-  } catch (e: any) {
-    error = e?.message ?? "Unknown error";
+  } catch (e: unknown) {
+    error = e instanceof Error ? e.message : "Unknown error";
   }
 
   return <PropertyLoanDashboard rows={rows} error={error} />;

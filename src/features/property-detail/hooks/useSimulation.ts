@@ -1,19 +1,19 @@
 import { useCallback, useState } from "react";
 
 export interface UseSimulationResult {
-  simulation: any | null;
+  simulation: unknown;
   isLoading: boolean;
   error: Error | null;
-  runSimulation: (input?: any) => Promise<any>;
+  runSimulation: (input?: unknown) => Promise<unknown>;
   resetSimulation: () => void;
 }
 
 export function useSimulation(): UseSimulationResult {
-  const [simulation, setSimulation] = useState<any | null>(null);
+  const [simulation, setSimulation] = useState<unknown>(null);
   const [isLoading] = useState(false);
   const [error] = useState<Error | null>(null);
 
-  const runSimulation = useCallback(async (input?: any) => {
+  const runSimulation = useCallback(async (input?: unknown) => {
     const result = input ?? null;
     setSimulation(result);
     return result;

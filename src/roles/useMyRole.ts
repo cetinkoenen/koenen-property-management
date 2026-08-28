@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../auth/AuthProvider";
+import { getErrorMessage } from "../lib/errorMessage";
 
 export type Role = "viewer" | "admin" | "owner";
 
@@ -70,9 +71,9 @@ export function useMyRole(accountId: string | null): State {
         const safeRole = role && allowed.includes(role) ? role : null;
 
         setState({ loading: false, role: safeRole, error: undefined });
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!alive || seq !== seqRef.current) return;
-        const msg = e?.message ?? e?.details ?? String(e);
+        const msg = getErrorMessage(e);
         setState({ loading: false, role: null, error: msg });
       }
     }

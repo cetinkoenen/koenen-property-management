@@ -24,6 +24,10 @@ export type Row = {
   refreshed_at: string;
 };
 
+function isRepaymentStatus(value: string): value is Row["repayment_status"] {
+  return value === "red" || value === "yellow" || value === "green" || value === "grey";
+}
+
 function StatusDot({ status }: { status: Row["repayment_status"] }) {
   const cls =
     status === "red"
@@ -154,7 +158,7 @@ export default function PropertyLoanDashboard({
 
         <select
           value={status}
-          onChange={(e) => setStatus(e.target.value as any)}
+          onChange={(e) => setStatus(e.target.value === "all" || isRepaymentStatus(e.target.value) ? e.target.value : "all")}
           className="rounded-xl border px-3 py-2 text-sm"
         >
           <option value="all">Alle Status</option>
@@ -166,7 +170,7 @@ export default function PropertyLoanDashboard({
 
         <select
           value={sort}
-          onChange={(e) => setSort(e.target.value as any)}
+          onChange={(e) => setSort(e.target.value === "name" ? "name" : "status")}
           className="rounded-xl border px-3 py-2 text-sm"
         >
           <option value="status">Sortierung: Status</option>

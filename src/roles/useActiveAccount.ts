@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { useAuth } from "../auth/AuthProvider";
+import { getErrorMessage } from "../lib/errorMessage";
 
 type State = {
   loading: boolean;
@@ -64,9 +65,9 @@ export function useActiveAccount(): State {
 
         const accountId = data?.account_id ? String(data.account_id) : null;
         setState({ loading: false, accountId, error: undefined });
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!alive || seq !== seqRef.current) return;
-        const msg = e?.message ?? e?.details ?? String(e);
+        const msg = getErrorMessage(e);
         setState({ loading: false, accountId: null, error: msg });
       }
     }

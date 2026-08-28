@@ -26,11 +26,10 @@ Eine zusätzliche GitHub-Aktion ist lokal vorbereitet. Für deren Upload benöti
 
 ## Warnungsbudget
 
-Das aktuelle Budget liegt bei höchstens 52 Warnungen. Neue Änderungen dürfen diese Zahl nicht erhöhen. Laufzeitrelevante Warnungen der Regel `react-hooks/set-state-in-effect` wurden vollständig auf null reduziert.
+Das aktuelle Budget liegt bei höchstens 19 Warnungen. Neue Änderungen dürfen diese Zahl nicht erhöhen. Laufzeitrelevante Warnungen der Regel `react-hooks/set-state-in-effect` wurden vollständig auf null reduziert. In Phase 8 wurden alle 33 unsicheren `any`-Typstellen beseitigt und die gemeinsame Fehlerauswertung zentralisiert.
 
 Verbleibende Kategorien:
 
-- 33 ältere, noch zu typisierende `any`-Verwendungen
 - 9 Abhängigkeits-Hinweise für React-Hooks
 - 9 Entwicklungs-Hinweise zur Fast-Refresh-Dateistruktur
 - 1 Hinweis zur manuellen Memoisierung
