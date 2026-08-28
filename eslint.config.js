@@ -25,7 +25,10 @@ export default defineConfig([
       'no-empty': 'warn',
       'react-hooks/preserve-manual-memoization': 'warn',
       'react-hooks/set-state-in-effect': 'warn',
-      'react-refresh/only-export-components': 'warn',
+      'react-refresh/only-export-components': ['warn', {
+        // Next.js route conventions and our context hook are safe, intentional exports.
+        allowExportNames: ['metadata', 'dynamic', 'useAppData'],
+      }],
     },
   },
 ])

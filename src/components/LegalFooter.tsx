@@ -1,4 +1,4 @@
-import { openCookieSettings } from "./CookieConsent";
+import { openCookieSettings } from "../lib/cookieConsent";
 
 export default function LegalFooter() {
   return (

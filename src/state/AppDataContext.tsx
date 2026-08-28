@@ -1,7 +1,7 @@
 import { parseLocaleNumber, parseNullableLocaleNumber } from "@/utils/numberParser";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "../lib/supabase";
-import { APP_DATA_CACHE_KEY, clearAppDataCache } from "../lib/appCache";
+import { APP_DATA_CACHE_KEY } from "../lib/appCache";
 import { isPureRentBackPayment } from "../lib/financeCategories";
 
 export type AppObject = {
@@ -808,9 +808,4 @@ export function useAppData() {
   const ctx = useContext(AppDataContext);
   if (!ctx) throw new Error("useAppData muss innerhalb von AppDataProvider genutzt werden.");
   return ctx;
-}
-
-export function emitFinanceEntryChanged() {
-  clearAppDataCache();
-  window.dispatchEvent(new Event("koenen:finance-entry-changed"));
 }

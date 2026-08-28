@@ -1,6 +1,6 @@
 import { clearAppDataCache } from "../lib/appCache";
 import { supabase } from "../lib/supabase";
-import { emitFinanceEntryChanged } from "../state/AppDataContext";
+import { emitFinanceEntryChanged } from "../lib/appCache";
 import { isReadonlyApprovalEmail } from "../auth/accessControl";
 
 export type RuleEntryType = "income" | "expense";

@@ -18,7 +18,7 @@ import {
   isTelecommunicationCategory,
   parseTelecommunicationTaxDetails,
 } from "../lib/telecommunicationTax";
-import { emitFinanceEntryChanged } from "../state/AppDataContext";
+import { emitFinanceEntryChanged } from "../lib/appCache";
 
 type EntryType = "income" | "expense";
 type TypeFilter = "all" | EntryType;

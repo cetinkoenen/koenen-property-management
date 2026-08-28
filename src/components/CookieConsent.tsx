@@ -1,35 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
-
-type CookieConsentValue = {
-  necessary: true;
-  analytics: boolean;
-  marketing: boolean;
-  savedAt: string;
-  version: "v2";
-};
-
-const STORAGE_KEY = "koenen_cookie_consent_v2";
-
-export function getCookieConsent(): CookieConsentValue | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as CookieConsentValue) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function hasAnalyticsConsent(): boolean {
-  return Boolean(getCookieConsent()?.analytics);
-}
-
-export function hasMarketingConsent(): boolean {
-  return Boolean(getCookieConsent()?.marketing);
-}
-
-export function openCookieSettings() {
-  window.dispatchEvent(new Event("open-cookie-settings"));
-}
+import { getCookieConsent, saveCookieConsent, type CookieConsentValue } from "../lib/cookieConsent";
 
 export default function CookieConsent() {
   const [initialConsent] = useState<CookieConsentValue | null>(getCookieConsent);
@@ -60,7 +30,7 @@ export default function CookieConsent() {
       version: "v2",
     };
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    saveCookieConsent(payload);
     setAnalytics(choice.analytics);
     setMarketing(choice.marketing);
     setVisible(false);

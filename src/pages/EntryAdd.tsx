@@ -8,7 +8,7 @@ import { classifyTaxRelevance } from "../lib/taxClassification";
 import { buildBusinessMealNote, calculateBusinessMealDeductible, isBusinessMealCategory } from "../lib/businessMealTax";
 import { buildTelecommunicationNote, calculateTelecommunicationTax, isTelecommunicationCategory } from "../lib/telecommunicationTax";
 import { PORTFOLIO_GENERAL_LABEL, PORTFOLIO_GENERAL_OBJECT_CODE, PORTFOLIO_GENERAL_OBJECT_ID, isPortfolioGeneralReference } from "../lib/portfolioExpense";
-import { emitFinanceEntryChanged } from "../state/AppDataContext";
+import { emitFinanceEntryChanged } from "../lib/appCache";
 
 type DropdownRow = {
   /** Muss für finance_entry.object_id die UUID aus public.objects.id sein. */

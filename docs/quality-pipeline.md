@@ -26,10 +26,6 @@ Eine zusätzliche GitHub-Aktion ist lokal vorbereitet. Für deren Upload benöti
 
 ## Warnungsbudget
 
-Das aktuelle Budget liegt bei höchstens 9 Warnungen. Neue Änderungen dürfen diese Zahl nicht erhöhen. Laufzeitrelevante Warnungen der Regel `react-hooks/set-state-in-effect` wurden vollständig auf null reduziert. In Phase 8 wurden alle 33 unsicheren `any`-Typstellen beseitigt und die gemeinsame Fehlerauswertung zentralisiert. Phase 9 hat alle Hook-Abhängigkeits- und Memoisierungswarnungen behoben.
+Das aktuelle Budget liegt bei **0 Warnungen**. Neue Änderungen dürfen keine Warnung einführen. Laufzeitrelevante Warnungen der Regel `react-hooks/set-state-in-effect` wurden vollständig auf null reduziert. In Phase 8 wurden alle 33 unsicheren `any`-Typstellen beseitigt und die gemeinsame Fehlerauswertung zentralisiert. Phase 9 hat alle Hook-Abhängigkeits- und Memoisierungswarnungen behoben. Phase 10 hat Hilfsfunktionen und UI-Varianten aus Komponentendateien getrennt und die notwendigen Next.js-Exportkonventionen präzise freigegeben.
 
-Verbleibende Kategorien:
-
-- 9 Entwicklungs-Hinweise zur Fast-Refresh-Dateistruktur
-
-Diese Restpunkte sind für die nächste Bereinigungsphase dokumentiert. Das Warnungsbudget wird bei jeder Korrektur weiter abgesenkt und darf nicht wieder angehoben werden.
+Es bestehen keine verbleibenden Lint-Kategorien. Das Null-Budget wird lokal und vor jeder Vercel-Veröffentlichung erzwungen.

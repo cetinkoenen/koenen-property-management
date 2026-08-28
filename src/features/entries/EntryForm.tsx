@@ -2,7 +2,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { canonicalizeFinanceCategory, getFinanceCategoryOptions } from "../../lib/financeCategories";
-import { emitFinanceEntryChanged, useAppData } from "../../state/AppDataContext";
+import { useAppData } from "../../state/AppDataContext";
+import { emitFinanceEntryChanged } from "../../lib/appCache";
 
 type EntryType = "income" | "expense";
 
