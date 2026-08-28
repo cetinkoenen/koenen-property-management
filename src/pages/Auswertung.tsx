@@ -2172,7 +2172,7 @@ function PhaseTwoBAutomationCenter() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const today = new Date();
+  const today = useMemo(() => new Date(), []);
   const currentYear = today.getFullYear();
   const currentMonthKey = `${currentYear}-${String(today.getMonth() + 1).padStart(2, "0")}`;
   const startOfYear = `${currentYear}-01-01`;
@@ -2212,9 +2212,9 @@ function PhaseTwoBAutomationCenter() {
         setIncomeRows(financeRows.incomeRows);
         setExpenseRows(financeRows.expenseRows);
         setLoading(false);
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!alive) return;
-        setError(e?.message ?? String(e));
+        setError(e instanceof Error ? e.message : String(e));
         setIncomeRows([]);
         setExpenseRows([]);
         setObjects([]);
@@ -2581,8 +2581,8 @@ function PhaseTwoCReportingCenter() {
       const financeRows = splitFinanceEntries(mapFinanceEntryRows(result.data ?? []));
       setIncomeRows(financeRows.incomeRows);
       setExpenseRows(financeRows.expenseRows);
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
       setIncomeRows([]);
       setExpenseRows([]);
     } finally {
@@ -2591,7 +2591,8 @@ function PhaseTwoCReportingCenter() {
   }
 
   useEffect(() => {
-    void loadReportData();
+    const initialLoad = window.setTimeout(() => void loadReportData(), 0);
+    return () => window.clearTimeout(initialLoad);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, objektCode]);
 
@@ -2870,55 +2871,58 @@ function PhaseFourDProfessionalReportingSystem() {
   }, []);
 
   useEffect(() => {
-    const safeYear = Number(year);
-
-    if (!Number.isFinite(safeYear) || safeYear < 2000 || safeYear > 2100) {
-      setError("Bitte ein gültiges Jahr eingeben.");
-      setIncomeRows([]);
-      setExpenseRows([]);
-      return;
-    }
-
     let alive = true;
-    setLoading(true);
-    setError(null);
+    const initialLoad = window.setTimeout(() => {
+      const safeYear = Number(year);
 
-    const from = `${safeYear}-01-01`;
-    const to = `${safeYear + 1}-01-01`;
-
-    (async () => {
-      try {
-        let financeQuery = supabase
-          .from("finance_entry")
-          .select("id,objekt_code,booking_date,amount,category,note,entry_type")
-          .eq("is_deleted", false)
-          .gte("booking_date", from)
-          .lt("booking_date", to)
-          .in("entry_type", ["income", "expense"]);
-
-        if (objektCode !== "ALL") {
-          financeQuery = financeQuery.eq("objekt_code", objektCode);
-        }
-
-        const result = await financeQuery;
-        if (result.error) throw result.error;
-
-        if (!alive) return;
-        const financeRows = splitFinanceEntries(mapFinanceEntryRows(result.data ?? []));
-        setIncomeRows(financeRows.incomeRows);
-        setExpenseRows(financeRows.expenseRows);
-      } catch (e: any) {
-        if (!alive) return;
-        setError(e?.message ?? String(e));
+      if (!Number.isFinite(safeYear) || safeYear < 2000 || safeYear > 2100) {
+        setError("Bitte ein gültiges Jahr eingeben.");
         setIncomeRows([]);
         setExpenseRows([]);
-      } finally {
-        if (alive) setLoading(false);
+        return;
       }
-    })();
+
+      setLoading(true);
+      setError(null);
+
+      const from = `${safeYear}-01-01`;
+      const to = `${safeYear + 1}-01-01`;
+
+      void (async () => {
+        try {
+          let financeQuery = supabase
+            .from("finance_entry")
+            .select("id,objekt_code,booking_date,amount,category,note,entry_type")
+            .eq("is_deleted", false)
+            .gte("booking_date", from)
+            .lt("booking_date", to)
+            .in("entry_type", ["income", "expense"]);
+
+          if (objektCode !== "ALL") {
+            financeQuery = financeQuery.eq("objekt_code", objektCode);
+          }
+
+          const result = await financeQuery;
+          if (result.error) throw result.error;
+
+          if (!alive) return;
+          const financeRows = splitFinanceEntries(mapFinanceEntryRows(result.data ?? []));
+          setIncomeRows(financeRows.incomeRows);
+          setExpenseRows(financeRows.expenseRows);
+        } catch (e: unknown) {
+          if (!alive) return;
+          setError(e instanceof Error ? e.message : String(e));
+          setIncomeRows([]);
+          setExpenseRows([]);
+        } finally {
+          if (alive) setLoading(false);
+        }
+      })();
+    }, 0);
 
     return () => {
       alive = false;
+      window.clearTimeout(initialLoad);
     };
   }, [year, objektCode]);
 
@@ -3258,9 +3262,9 @@ function AuswertungCore() {
         return;
       }
 
-      const list = ((data ?? []).filter(
-        (x: any) => x?.objekt_code && x?.label
-      ) as DropdownRow[]).sort((a, b) => a.label.localeCompare(b.label, "de"));
+      const list = ((data ?? []) as Partial<DropdownRow>[])
+        .filter((row): row is DropdownRow => Boolean(row.objekt_code && row.label))
+        .sort((a, b) => a.label.localeCompare(b.label, "de"));
 
       setObjects(list);
     })();
@@ -3318,8 +3322,8 @@ function AuswertungCore() {
       setIncomeRows(rows.filter((row) => row.entry_type === "income"));
       setExpenseRows(rows.filter((row) => row.entry_type === "expense"));
       setLoading(false);
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
       setIncomeRows([]);
       setExpenseRows([]);
       setLoading(false);
@@ -3327,7 +3331,8 @@ function AuswertungCore() {
   }
 
   useEffect(() => {
-    void load();
+    const initialLoad = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(initialLoad);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objektCode]);
 
@@ -4216,7 +4221,10 @@ function PhaseFiveBBackendBindingCenter() {
   }, [app.objects, selectedPropertyId]);
 
   useEffect(() => {
-    if (!selectedPropertyId && app.objects[0]?.id) setSelectedPropertyId(app.objects[0].id);
+    const syncSelection = window.setTimeout(() => {
+      if (!selectedPropertyId && app.objects[0]?.id) setSelectedPropertyId(app.objects[0].id);
+    }, 0);
+    return () => window.clearTimeout(syncSelection);
   }, [app.objects, selectedPropertyId]);
 
   const selectedPropertyName = selectedProperty?.label ?? "Immobilie";
@@ -4255,7 +4263,8 @@ function PhaseFiveBBackendBindingCenter() {
   }, [selectedProperty]);
 
   useEffect(() => {
-    void loadBackendData();
+    const initialLoad = window.setTimeout(() => void loadBackendData(), 0);
+    return () => window.clearTimeout(initialLoad);
   }, [loadBackendData]);
 
   const handleUpload = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {

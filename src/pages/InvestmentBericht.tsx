@@ -697,7 +697,8 @@ export default function InvestmentBericht() {
   }, [appData.portfolioRows]);
 
   useEffect(() => {
-    void refreshInvestmentRequests();
+    const initialLoad = window.setTimeout(() => void refreshInvestmentRequests(), 0);
+    return () => window.clearTimeout(initialLoad);
   }, []);
 
   const hasZipPackage = useMemo(() => files.some(isZipPackage), [files]);

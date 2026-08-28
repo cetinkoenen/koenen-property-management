@@ -46,7 +46,8 @@ export default function Mahnwesen() {
   }
 
   useEffect(() => {
-    void load();
+    const initialLoad = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(initialLoad);
   }, []);
 
   const reminderCandidates = useMemo(

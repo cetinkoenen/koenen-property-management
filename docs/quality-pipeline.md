@@ -1,0 +1,36 @@
+# Automatische Qualitätsprüfung
+
+Stand: 28.08.2026
+
+Der zentrale Befehl für die vollständige lokale Prüfung lautet:
+
+```bash
+npm run verify
+```
+
+Er führt neun Prüfschritte aus:
+
+1. TypeScript- und Produktions-Build
+2. Lint-Warnungsbudget
+3. Mietentwicklung und Leerstand
+4. Immobilienvermögen
+5. Historische Objekt-ID-Aliase
+6. Zentrale Datenquellen und Navigationspfade
+7. Datenqualität und Objektzuordnung
+8. Berichtsexporte
+9. RLS-, Rollen- und Storage-Grundschutz
+
+Die GitHub-Aktion `.github/workflows/quality.yml` startet dieselbe Prüfung bei jedem Pull Request nach `main` und bei jedem Push auf `main`.
+
+## Warnungsbudget
+
+Das aktuelle Budget liegt bei höchstens 52 Warnungen. Neue Änderungen dürfen diese Zahl nicht erhöhen. Laufzeitrelevante Warnungen der Regel `react-hooks/set-state-in-effect` wurden vollständig auf null reduziert.
+
+Verbleibende Kategorien:
+
+- 33 ältere, noch zu typisierende `any`-Verwendungen
+- 9 Abhängigkeits-Hinweise für React-Hooks
+- 9 Entwicklungs-Hinweise zur Fast-Refresh-Dateistruktur
+- 1 Hinweis zur manuellen Memoisierung
+
+Diese Restpunkte sind für die nächste Bereinigungsphase dokumentiert. Das Warnungsbudget wird bei jeder Korrektur weiter abgesenkt und darf nicht wieder angehoben werden.

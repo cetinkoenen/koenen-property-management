@@ -525,7 +525,8 @@ export default function Monate() {
   }
 
   useEffect(() => {
-    void loadEntries();
+    const initialLoad = window.setTimeout(() => void loadEntries(), 0);
+    return () => window.clearTimeout(initialLoad);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objektCode, year, month, periodMode]);
 
@@ -611,15 +612,17 @@ export default function Monate() {
   }, [filteredRows, sortKey, sortDirection, objectLabelMap]);
 
   useEffect(() => {
-    setCurrentPage(1);
+    const resetPage = window.setTimeout(() => setCurrentPage(1), 0);
+    return () => window.clearTimeout(resetPage);
   }, [search, typeFilter, categoryFilter, objektCode, year, month, periodMode, sortKey, sortDirection]);
 
   const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
 
   useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
+    const clampPage = window.setTimeout(() => {
+      if (currentPage > totalPages) setCurrentPage(totalPages);
+    }, 0);
+    return () => window.clearTimeout(clampPage);
   }, [currentPage, totalPages]);
 
   const paginatedRows = useMemo(() => {
@@ -641,7 +644,10 @@ export default function Monate() {
 
   useEffect(() => {
     const validKeys = new Set(sortedRows.map((r) => rowSelectionKey(r)));
-    setSelectedKeys((prev) => prev.filter((key) => validKeys.has(key)));
+    const syncSelection = window.setTimeout(() => {
+      setSelectedKeys((prev) => prev.filter((key) => validKeys.has(key)));
+    }, 0);
+    return () => window.clearTimeout(syncSelection);
   }, [sortedRows]);
 
   const totals = useMemo(() => {
@@ -1218,9 +1224,10 @@ export default function Monate() {
     : null;
 
   useEffect(() => {
-    if (editTaxRule?.locked && editTaxRelevant) {
-      setEditTaxRelevant(false);
-    }
+    const syncTaxRule = window.setTimeout(() => {
+      if (editTaxRule?.locked && editTaxRelevant) setEditTaxRelevant(false);
+    }, 0);
+    return () => window.clearTimeout(syncTaxRule);
   }, [editTaxRelevant, editTaxRule?.locked]);
 
   return (

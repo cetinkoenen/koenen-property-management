@@ -93,7 +93,8 @@ export default function Leerstand() {
   }
 
   useEffect(() => {
-    void loadRows();
+    const initialLoad = window.setTimeout(() => void loadRows(), 0);
+    return () => window.clearTimeout(initialLoad);
   }, [propertyFilter, statusFilter]);
 
   function updateField(event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {

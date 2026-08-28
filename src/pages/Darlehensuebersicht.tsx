@@ -333,7 +333,8 @@ function PropertyLoanCard(props: {
 
   useEffect(() => {
     if (!open || ledgerLoaded || ledgerLoading) return;
-    void reloadLedger();
+    const initialLoad = window.setTimeout(() => void reloadLedger(), 0);
+    return () => window.clearTimeout(initialLoad);
   }, [open, props.propertyId, ledgerLoaded, ledgerLoading]);
 
   const yearlyMetrics = useMemo(() => {
@@ -513,7 +514,8 @@ export default function Darlehensuebersicht() {
   }
 
   useEffect(() => {
-    void load();
+    const initialLoad = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(initialLoad);
   }, []);
 
   const filteredRows = useMemo(() => {

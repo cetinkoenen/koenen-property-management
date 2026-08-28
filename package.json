@@ -8,6 +8,7 @@
     "typecheck": "tsc -b --noEmit",
     "build": "npm run typecheck && vite build",
     "lint": "eslint .",
+    "lint:budget": "node scripts/check-lint-budget.mjs 52",
     "stress:rent-vacancy": "node scripts/stress-rent-vacancy.mjs",
     "stress:wealth-dashboard": "node scripts/stress-wealth-dashboard.mjs",
     "stress:property-aliases": "node scripts/stress-property-id-aliases.mjs",
@@ -15,6 +16,7 @@
     "stress:data-quality": "node scripts/stress-data-quality-source.mjs",
     "stress:report-exports": "node scripts/stress-report-exports.mjs",
     "stress:security": "node scripts/stress-security-baseline.mjs",
+    "verify": "node scripts/verify-project.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -129,7 +129,8 @@ export default function EntryAdd() {
   const effectiveAmountNumber = isTelecommunication ? telecomDetails.totalAmount : amountNumber;
 
   useEffect(() => {
-    setTaxRelevant(taxRule.taxRelevant);
+    const syncTaxRule = window.setTimeout(() => setTaxRelevant(taxRule.taxRelevant), 0);
+    return () => window.clearTimeout(syncTaxRule);
   }, [taxRule.taxRelevant, taxRule.locked, resolvedCategory, kind]);
 
   useEffect(() => {

@@ -167,7 +167,8 @@ export default function EinAuszug() {
   }
 
   useEffect(() => {
-    void loadData();
+    const initialLoad = window.setTimeout(() => void loadData(), 0);
+    return () => window.clearTimeout(initialLoad);
   }, []);
 
   function selectContract(contractId: string) {
