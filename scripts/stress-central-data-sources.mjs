@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [app, investment, audit, resolver, rentOverview, migration] = await Promise.all([
+const [app, investment, audit, resolver, rentOverview, migration, vercelConfig] = await Promise.all([
   read("src/App.tsx"),
   read("src/pages/InvestmentBericht.tsx"),
   read("src/services/auditLogService.ts"),
   read("src/services/property/resolvePropertyContext.ts"),
   read("src/pages/Mietuebersicht.tsx"),
   read("supabase/migrations/20260827163000_property_id_aliases.sql"),
+  read("vercel.json"),
 ]);
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
@@ -32,5 +33,6 @@ assert.match(rentOverview, /rentAdjustmentsLoading/, "Mietkonto-Exporte müssen 
 assert.match(rentOverview, /if \(!onAnnualReportChange \|\| reportDataLoading\) return;/, "Ein noch unvollständiger Jahresreport darf nicht als exportbereit gemeldet werden");
 assert.match(rentOverview, /disabled=\{reportDataLoading\}/, "PDF-Export muss bis zum Laden aller Reportquellen deaktiviert sein");
 assert.match(rentOverview, /Buchungen, Mietverträge, Mietanpassungen und Leerstände werden geladen/, "Die Oberfläche muss den gemeinsamen Ladezustand verständlich anzeigen");
+assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
-console.log("20 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("21 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

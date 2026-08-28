@@ -20,7 +20,9 @@ Er führt neun Prüfschritte aus:
 8. Berichtsexporte
 9. RLS-, Rollen- und Storage-Grundschutz
 
-Die GitHub-Aktion `.github/workflows/quality.yml` startet dieselbe Prüfung bei jedem Pull Request nach `main` und bei jedem Push auf `main`.
+Vercel führt durch `vercel.json` denselben Befehl vor jeder Veröffentlichung aus. Eine fehlerhafte Version kann dadurch nicht als neue Produktionsversion bereitgestellt werden.
+
+Eine zusätzliche GitHub-Aktion ist lokal vorbereitet. Für deren Upload benötigt die GitHub-Anmeldung einmalig die Berechtigung `workflow`; bis dahin ist die verpflichtende Vercel-Prüfung die aktive automatische Schutzschicht.
 
 ## Warnungsbudget
 
