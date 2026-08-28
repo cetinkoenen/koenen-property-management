@@ -162,7 +162,7 @@ function download(filename: string, content: string, type = "text/csv;charset=ut
 
 export function AutomationAnalytics({ embedded = false }: { embedded?: boolean } = {}) {
   const app = useAppData();
-  const today = new Date();
+  const today = useMemo(() => new Date(), []);
   const currentYear = today.getFullYear();
   const [year, setYear] = useState(currentYear);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("all");
@@ -208,7 +208,10 @@ export function AutomationAnalytics({ embedded = false }: { embedded?: boolean }
     }).filter((row) => row.income || row.expenses || row.rentIncome);
   }, [app, year, today]);
 
-  const visibleRows = selectedPropertyId === "all" ? rows : rows.filter((row) => row.propertyId === selectedPropertyId);
+  const visibleRows = useMemo(
+    () => selectedPropertyId === "all" ? rows : rows.filter((row) => row.propertyId === selectedPropertyId),
+    [rows, selectedPropertyId],
+  );
   const totals = visibleRows.reduce((acc, row) => ({
     income: acc.income + row.income,
     expenses: acc.expenses + row.expenses,

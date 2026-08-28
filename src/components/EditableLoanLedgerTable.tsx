@@ -49,13 +49,12 @@ function formatPlain(value: unknown): string {
 }
 
 function useIsMobile(breakpoint = 768) {
-  const getIsMobile = () =>
+  const [isMobile, setIsMobile] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.innerWidth < breakpoint : false
-
-  const [isMobile, setIsMobile] = useState<boolean>(getIsMobile)
+  )
 
   useEffect(() => {
-    const onResize = () => setIsMobile(getIsMobile())
+    const onResize = () => setIsMobile(window.innerWidth < breakpoint)
     onResize()
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)

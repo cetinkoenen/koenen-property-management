@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { safeInternalPath } from "../lib/navigation";
@@ -57,7 +57,7 @@ export default function MFA() {
   const [error, setError] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
 
-  async function ensureLoggedIn(): Promise<boolean> {
+  const ensureLoggedIn = useCallback(async (): Promise<boolean> => {
     const { data, error } = await supabase.auth.getSession();
 
     if (error) throw error;
@@ -68,9 +68,9 @@ export default function MFA() {
     }
 
     return true;
-  }
+  }, [from, navigate]);
 
-  async function getAalLevel(): Promise<"aal1" | "aal2" | null> {
+  const getAalLevel = useCallback(async (): Promise<"aal1" | "aal2" | null> => {
     const { data, error } =
       await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
 
@@ -81,9 +81,9 @@ export default function MFA() {
     }
 
     return null;
-  }
+  }, []);
 
-  async function redirectIfAal2(): Promise<boolean> {
+  const redirectIfAal2 = useCallback(async (): Promise<boolean> => {
     const level = await getAalLevel();
 
     if (level === "aal2") {
@@ -92,9 +92,9 @@ export default function MFA() {
     }
 
     return false;
-  }
+  }, [from, getAalLevel, navigate]);
 
-  async function refreshAndWaitForAal2(): Promise<boolean> {
+  const refreshAndWaitForAal2 = useCallback(async (): Promise<boolean> => {
     const { error } = await supabase.auth.refreshSession();
 
     if (error) {
@@ -108,9 +108,9 @@ export default function MFA() {
     }
 
     return false;
-  }
+  }, [getAalLevel]);
 
-  async function startChallenge(factorId: string) {
+  const startChallenge = useCallback(async (factorId: string) => {
     setError(null);
     setChallengeId(null);
 
@@ -128,9 +128,9 @@ export default function MFA() {
     }
 
     setChallengeId(id);
-  }
+  }, []);
 
-  async function enrollTotpAndChallenge() {
+  const enrollTotpAndChallenge = useCallback(async () => {
     setError(null);
     setEnroll(null);
     setChallengeId(null);
@@ -203,9 +203,9 @@ export default function MFA() {
 
     setEnroll({ factorId, qr, uri });
     await startChallenge(factorId);
-  }
+  }, [startChallenge]);
 
-  async function loadAndDecide() {
+  const loadAndDecide = useCallback(async () => {
     const alreadyDone = await redirectIfAal2();
     if (alreadyDone) return;
 
@@ -229,7 +229,7 @@ export default function MFA() {
       "Richte 2FA ein: QR-Code scannen und danach den 6-stelligen Code eingeben."
     );
     await enrollTotpAndChallenge();
-  }
+  }, [enrollTotpAndChallenge, redirectIfAal2, startChallenge]);
 
   async function onVerify() {
     setBusy(true);
@@ -337,7 +337,7 @@ export default function MFA() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [ensureLoggedIn, loadAndDecide]);
 
   if (loading) {
     return <div style={{ padding: 24 }}>Lädt…</div>;

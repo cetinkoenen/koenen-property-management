@@ -697,8 +697,27 @@ export default function InvestmentBericht() {
   }, [appData.portfolioRows]);
 
   useEffect(() => {
-    const initialLoad = window.setTimeout(() => void refreshInvestmentRequests(), 0);
-    return () => window.clearTimeout(initialLoad);
+    let cancelled = false;
+    const initialLoad = window.setTimeout(() => {
+      void (async () => {
+        setRequestsLoading(true);
+        try {
+          const rows = await listInvestmentRequests();
+          if (!cancelled) setInvestmentRequests(rows);
+        } catch (error) {
+          if (!cancelled) {
+            const message = error instanceof Error ? error.message : "Investment-Anfragen konnten nicht geladen werden.";
+            setRequestSaveState(message);
+          }
+        } finally {
+          if (!cancelled) setRequestsLoading(false);
+        }
+      })();
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(initialLoad);
+    };
   }, []);
 
   const hasZipPackage = useMemo(() => files.some(isZipPackage), [files]);

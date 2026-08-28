@@ -319,9 +319,9 @@ export default function RentHistoryChart({
 }: RentHistoryChartProps) {
   const userHookResult = useRentHistory24m({ scopeType });
 
-  const userData = userHookResult?.data ?? [];
-  const userError = userHookResult?.error ?? null;
-  const userRequiresAuth = Boolean(userHookResult?.requiresAuth ?? false);
+  const userData = userHookResult.data;
+  const userError = userHookResult.error;
+  const userRequiresAuth = userHookResult.requiresAuth;
   const userLoading = Boolean(userHookResult.loading);
 
   const [propertyRows, setPropertyRows] = useState<PropertyRentHistoryByUnitRow[]>([]);

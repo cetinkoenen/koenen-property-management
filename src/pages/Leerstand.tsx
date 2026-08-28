@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { Building2, Filter, Pencil, Save, Trash2, X } from "lucide-react";
 
 import { useAppData } from "../state/AppDataContext";
@@ -78,7 +78,7 @@ export default function Leerstand() {
     [appData.objects, form.propertyId],
   );
 
-  async function loadRows() {
+  const loadRows = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -90,12 +90,12 @@ export default function Leerstand() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [propertyFilter, statusFilter]);
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void loadRows(), 0);
     return () => window.clearTimeout(initialLoad);
-  }, [propertyFilter, statusFilter]);
+  }, [loadRows]);
 
   function updateField(event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
     const { name, value } = event.target;

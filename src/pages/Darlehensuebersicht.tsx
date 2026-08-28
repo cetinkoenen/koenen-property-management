@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import EditableLoanLedgerTable from "@/components/EditableLoanLedgerTable";
 import { useIncome } from "@/features/property-detail/hooks/useIncome";
 import { calculateYearlyFinanceMetrics } from "@/services/financeService";
@@ -287,7 +287,7 @@ function PropertyLoanCard(props: {
   const [projectionStatus, setProjectionStatus] = useState<string | null>(null);
   const [projectionLoading, setProjectionLoading] = useState(false);
 
-  async function reloadLedger() {
+  const reloadLedger = useCallback(async () => {
     try {
       setLedgerLoading(true);
       setLedgerError(null);
@@ -302,7 +302,7 @@ function PropertyLoanCard(props: {
     } finally {
       setLedgerLoading(false);
     }
-  }
+  }, [props.propertyId]);
 
   async function createProjection() {
     const last = ledgerRows.at(-1);
@@ -335,7 +335,7 @@ function PropertyLoanCard(props: {
     if (!open || ledgerLoaded || ledgerLoading) return;
     const initialLoad = window.setTimeout(() => void reloadLedger(), 0);
     return () => window.clearTimeout(initialLoad);
-  }, [open, props.propertyId, ledgerLoaded, ledgerLoading]);
+  }, [open, ledgerLoaded, ledgerLoading, reloadLedger]);
 
   const yearlyMetrics = useMemo(() => {
     return calculateYearlyFinanceMetrics({

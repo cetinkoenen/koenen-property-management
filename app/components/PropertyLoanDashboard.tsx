@@ -61,7 +61,7 @@ export default function PropertyLoanDashboard({
   rows?: Row[];
   error?: string | null;
 }) {
-  const rows = Array.isArray(rowsProp) ? rowsProp : [];
+  const rows = useMemo(() => (Array.isArray(rowsProp) ? rowsProp : []), [rowsProp]);
 
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<"all" | Row["repayment_status"]>("all");
