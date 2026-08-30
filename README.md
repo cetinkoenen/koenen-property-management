@@ -15,7 +15,7 @@ A modern real estate web application built with **React**, **Vite**, **TypeScrip
 The project focuses on a clean frontend architecture, modern tooling, and a production-ready deployment workflow.
 
 ## 🚀 Live Demo
-👉 https://koenen-immobilien.vercel.app
+👉 https://koenen-investment.com
 
 ## ✨ Features
 - Modern React frontend with TypeScript

@@ -67,7 +67,7 @@ export default function BackupButton() {
       const { data: authData } = await supabase.auth.getUser();
       const payload: BackupPayload = {
         meta: {
-          app: "koenen-immobilien-finanzuebersicht",
+          app: "koenen-property-management",
           created_at: new Date().toISOString(),
           created_by: authData.user?.email ?? null,
           version: 1,
