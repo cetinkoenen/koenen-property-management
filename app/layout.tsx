@@ -48,8 +48,9 @@ export default function RootLayout({
             <Image
               src="/logo/koenen.png"
               alt="Koenen Property Management"
-              width={150}
-              height={38}
+              width={180}
+              height={72}
+              style={{ width: 180, height: "auto", objectFit: "contain" }}
               priority
             />
 

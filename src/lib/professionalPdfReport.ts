@@ -1,3 +1,5 @@
+import brandLogo from "../assets/koenen-brand-logo.webp";
+
 export type PdfReportMetric = {
   label: string;
   value: string;
@@ -163,6 +165,15 @@ export function openProfessionalPdfReport(options: PdfReportOptions) {
       font-weight: 900;
       letter-spacing: 0.18em;
       text-transform: uppercase;
+    }
+    .brand-logo {
+      display: block;
+      width: 240px;
+      height: auto;
+      max-height: 96px;
+      object-fit: contain;
+      object-position: left center;
+      margin-bottom: 18px;
     }
     h1 {
       margin: 12px 0 0;
@@ -333,6 +344,7 @@ export function openProfessionalPdfReport(options: PdfReportOptions) {
 <body>
   <main class="page">
     <section class="hero">
+      <img class="brand-logo" src="${brandLogo}" alt="Koenen Property Management Logo" />
       <div class="eyebrow">Koenen Property Management · PDF-Bericht</div>
       <h1>${escapeHtml(options.title)}</h1>
       ${options.subtitle ? `<p class="subtitle">${escapeHtml(options.subtitle)}</p>` : ""}

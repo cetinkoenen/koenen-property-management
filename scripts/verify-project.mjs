@@ -9,6 +9,7 @@ const checks = [
   ["Zentrale Datenquellen", "npm", ["run", "stress:central-data"]],
   ["Datenqualität", "npm", ["run", "stress:data-quality"]],
   ["Berichtsexporte", "npm", ["run", "stress:report-exports"]],
+  ["Logos in App und PDF-Berichten", "npm", ["run", "stress:report-logos"]],
   ["Sicherheitsbasis", "npm", ["run", "stress:security"]],
   ["Marke und Projektname", "npm", ["run", "stress:branding"]],
 ];

@@ -1167,7 +1167,7 @@ export default function InvestmentBericht() {
     @page { size: A4; margin: 18mm; }
     body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; line-height: 1.45; }
     .cover { border: 1px solid #dbe3ef; border-radius: 18px; padding: 28px; margin-bottom: 28px; }
-    .logo { width: 88px; height: 88px; object-fit: cover; border-radius: 16px; border: 1px solid #dbe3ef; }
+    .logo { width: 260px; height: auto; max-height: 104px; object-fit: contain; object-position: left center; }
     .eyebrow { color: #2563eb; font-size: 11px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; margin-top: 22px; }
     h1 { font-size: 30px; margin: 8px 0 12px; }
     h2 { font-size: 20px; margin: 26px 0 10px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
@@ -1752,8 +1752,8 @@ export default function InvestmentBericht() {
       <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
         <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-            <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[22px] border border-slate-200 bg-slate-50">
-              <img src={logo} alt="Koenen Property Management Logo" className="h-full w-full object-cover" />
+            <div className="flex h-24 w-64 shrink-0 items-center justify-center overflow-hidden rounded-[22px] border border-slate-200 bg-white px-3">
+              <img src={logo} alt="Koenen Property Management Logo" className="h-full w-full object-contain" />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Deckblatt</p>

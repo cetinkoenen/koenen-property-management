@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import brandLogo from "../assets/koenen-brand-logo.webp";
 import { supabase } from "../lib/supabase";
 import { MIETBESTANDTEIL_NK_CATEGORY, isPureRentBackPayment } from "../lib/financeEntryLabels";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
@@ -1824,6 +1825,7 @@ export default function Mietuebersicht({
     printWindow.document.open();
     printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"/><title>Mieteingang ${escapeHtml(month.label)}</title><style>
       body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;padding:28px}
+      .brand-logo{display:block;width:240px;height:auto;max-height:96px;object-fit:contain;object-position:left center;margin:0 0 18px}
       h1{margin:0 0 6px;font-size:22px} .meta{color:#475569;margin-bottom:18px}
       table{width:100%;border-collapse:collapse;font-size:12px} th,td{padding:8px;border-bottom:1px solid #dbe3ee;text-align:left;vertical-align:top}
       th{background:#f1f5f9;font-size:11px;text-transform:uppercase;letter-spacing:.06em}.right{text-align:right}
@@ -1831,6 +1833,7 @@ export default function Mietuebersicht({
       @media print{body{padding:0}.no-print{display:none}}
     </style></head><body>
       <button class="no-print" onclick="window.print()" style="margin-bottom:16px;padding:8px 12px">Als PDF speichern / drucken</button>
+      <img class="brand-logo" src="${brandLogo}" alt="Koenen Property Management Logo" />
       <h1>Mieteingang ${escapeHtml(month.label)}</h1>
       <div class="meta">Filter: Objekt "${escapeHtml(objectFilter || "Alle")}" · Status "${escapeHtml(statusFilter === "all" ? "Alle" : statusLabel(statusFilter))}"</div>
       <div class="kpis">

@@ -72,6 +72,7 @@ import {
   type PropertyTaskStatus,
 } from "./services/workflowTaskService";
 import logo from "./assets/koenen-brand-logo.webp";
+import { createPdfLogoObject, drawPdfLogo } from "./lib/pdfLogo";
 import { AppDataProvider, useAppData, type FinanceEntry } from "./state/AppDataContext";
 import { EmptyState, InfoList, KpiCard, ModuleCard, PageHeader, SectionPanel } from "./components/ui/professional";
 import { isPortfolioGeneralEntry, PORTFOLIO_GENERAL_LABEL } from "./lib/portfolioExpense";
@@ -1600,10 +1601,8 @@ function createSimplePdf(title: string, lines: string[]): Blob {
 
   function drawChrome() {
     rect(0, pageHeight - 76, pageWidth, 76, color.soft);
-    rect(marginX, pageHeight - 56, 44, 34, color.teal);
-    text("KOENEN", marginX + 7, pageHeight - 37, 7, "F2", color.white);
-    text("INVESTMENT", marginX + 7, pageHeight - 47, 6, "F2", color.white);
-    text("Steuer- und Finanzreport", marginX + 58, pageHeight - 35, 10, "F2", color.slate);
+    current.push(...drawPdfLogo(marginX, pageHeight - 64, 118));
+    text("Steuer- und Finanzreport", marginX + 132, pageHeight - 35, 10, "F2", color.slate);
     text(`Erstellt: ${generatedAt}`, pageWidth - 206, pageHeight - 35, 9, "F1", color.slate);
     divider(pageHeight - 82);
     text("Cetin Koenen | Hohenloher Str. 78/1, 74243 Langenbrettach | info.koenen@gmail.com", marginX, 34, 8, "F1", color.slate);
@@ -1722,14 +1721,15 @@ function createSimplePdf(title: string, lines: string[]): Blob {
   });
 
   pageStreams.push(current.join("\n"));
-  const pageKids = pageStreams.map((_, index) => `${5 + index * 2} 0 R`).join(" ");
+  const pageKids = pageStreams.map((_, index) => `${6 + index * 2} 0 R`).join(" ");
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     `<< /Type /Pages /Kids [${pageKids}] /Count ${pageStreams.length} >>`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+    createPdfLogoObject(),
     ...pageStreams.flatMap((content, index) => [
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${6 + index * 2} 0 R >>`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << /BrandLogo 5 0 R >> >> /Contents ${7 + index * 2} 0 R >>`,
       `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
     ]),
   ];
@@ -3573,17 +3573,18 @@ function AppShell() {
   return (
     <ReadOnlyInteractionGuard enabled={isReadOnly}>
     <div className={["min-h-screen text-slate-950", isReadOnly ? "app-readonly" : ""].filter(Boolean).join(" ")}>
+      <img src={logo} alt="Koenen Property Management Logo" className="app-global-print-logo" />
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[286px] flex-col border-r border-white/10 bg-[linear-gradient(180deg,#102535_0%,#132a38_48%,#0d1824_100%)] text-white shadow-[18px_0_52px_rgba(15,23,42,0.20)] xl:flex">
         <NavLink
           to="/dashboard/finanz-kennzahlen"
           className="flex items-center gap-3 border-b border-white/10 px-5 py-5 no-underline"
           title="Zum Dashboard"
         >
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white shadow-sm">
+          <div className="flex h-12 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white px-1.5 shadow-sm">
             <img
               src={logo}
               alt="Koenen Property Management"
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain"
               onError={(event) => {
                 if (!event.currentTarget.src.endsWith("/logo/koenen.png")) {
                   event.currentTarget.src = "/logo/koenen.png";
@@ -3679,11 +3680,11 @@ function AppShell() {
               className="flex min-w-0 items-center gap-3"
               title="Zum Dashboard"
             >
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/70 bg-white/80 shadow-sm sm:h-14 sm:w-14">
+              <div className="flex h-10 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/70 bg-white/80 px-1.5 shadow-sm sm:h-12 sm:w-28">
                 <img
                   src={logo}
                   alt="Koenen Property Management"
-                  className="h-full w-full object-cover"
+                  className="h-full w-full object-contain"
                   onError={(event) => {
                     if (!event.currentTarget.src.endsWith("/logo/koenen.png")) {
                       event.currentTarget.src = "/logo/koenen.png";

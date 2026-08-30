@@ -2561,3 +2561,22 @@ button.portfolio-object-media.small,
 .hover\:bg-slate-800:hover {
   background-color: #254f60 !important;
 }
+/* Central brand mark for every in-app browser print/PDF operation. */
+.app-global-print-logo {
+  display: none;
+}
+
+@media print {
+  .app-global-print-logo {
+    display: block !important;
+    visibility: visible !important;
+    position: fixed !important;
+    top: 4mm !important;
+    right: 6mm !important;
+    width: 42mm !important;
+    height: auto !important;
+    max-height: 18mm !important;
+    object-fit: contain !important;
+    z-index: 2147483647 !important;
+  }
+}

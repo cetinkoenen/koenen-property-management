@@ -2,6 +2,7 @@ import type {
   RentAnnualKpiLabel,
   RentAnnualReportSnapshot,
 } from "../pages/Mietuebersicht";
+import { createPdfLogoObject, drawPdfLogo } from "./pdfLogo";
 
 const PAGE_WIDTH = 842;
 const PAGE_HEIGHT = 595;
@@ -78,14 +79,15 @@ function kpiStyle(label: RentAnnualKpiLabel): { fill: string; text: string; shor
 }
 
 function assemblePdf(pageStreams: string[]): Blob {
-  const pageKids = pageStreams.map((_, index) => `${5 + index * 2} 0 R`).join(" ");
+  const pageKids = pageStreams.map((_, index) => `${6 + index * 2} 0 R`).join(" ");
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     `<< /Type /Pages /Kids [${pageKids}] /Count ${pageStreams.length} >>`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
+    createPdfLogoObject(),
     ...pageStreams.flatMap((content, index) => [
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${6 + index * 2} 0 R >>`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << /BrandLogo 5 0 R >> >> /Contents ${7 + index * 2} 0 R >>`,
       `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
     ]),
   ];
@@ -124,11 +126,9 @@ export function createRentAccountPdf(
     };
 
     rect(0, PAGE_HEIGHT - 62, PAGE_WIDTH, 62, colors.soft, colors.soft);
-    rect(24, PAGE_HEIGHT - 46, 46, 30, colors.teal, colors.teal);
-    text("KOENEN", 31, PAGE_HEIGHT - 29, 7, true, colors.white);
-    text("INVEST", 31, PAGE_HEIGHT - 39, 6, true, colors.white);
-    text("Mietkonto-Check & Offene Zahlungen", 82, PAGE_HEIGHT - 28, 16, true);
-    text(subtitle, 82, PAGE_HEIGHT - 43, 8, false, colors.slate);
+    commands.push(...drawPdfLogo(24, PAGE_HEIGHT - 52, 112));
+    text("Mietkonto-Check & Offene Zahlungen", 150, PAGE_HEIGHT - 28, 16, true);
+    text(subtitle, 150, PAGE_HEIGHT - 43, 8, false, colors.slate);
     text(`Erstellt ${generatedAt}`, PAGE_WIDTH - 172, PAGE_HEIGHT - 28, 8, false, colors.slate);
     line(24, PAGE_HEIGHT - 68, PAGE_WIDTH - 24, PAGE_HEIGHT - 68);
     text(`Hauptquelle: Mieteingang / Zahlungskalender ${report.year}`, 24, 22, 7.5, false, colors.slate);
