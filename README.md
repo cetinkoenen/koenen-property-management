@@ -9,6 +9,20 @@ This package was cleaned for safer sharing and deployment:
 
 Before running locally, create your own `.env.local` with `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
 
+## Lokal starten (macOS)
+
+Die Datei `Koenen Property Management lokal starten.command` doppelklicken. Sie startet den lokalen Entwicklungsserver und öffnet anschließend automatisch:
+
+`http://127.0.0.1:5173/`
+
+Alternativ im Terminal:
+
+```bash
+npm run dev:local
+```
+
+Das Terminalfenster muss während der lokalen Nutzung geöffnet bleiben. Zum Beenden `Ctrl + C` drücken.
+
 # Koenen Property Management
 
 A modern real estate web application built with **React**, **Vite**, **TypeScript**, and **Supabase**.  
