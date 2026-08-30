@@ -1,5 +1,5 @@
 -- =========================================================
--- Koenen Investment · Phase 5G Full Repair FIXED
+-- Koenen Property Management · Phase 5G Full Repair FIXED
 -- Zweck:
 --   - trennt sauber objects.id (Buchungen) und properties.id (Objektakte/Loans/Dokumente)
 --   - stellt kompatible Backend-Views/RPCs für Auswertung, BI, Risikoampel,

@@ -8,7 +8,7 @@ Der zentrale Befehl für die vollständige lokale Prüfung lautet:
 npm run verify
 ```
 
-Er führt neun Prüfschritte aus:
+Er führt zehn Prüfschritte aus:
 
 1. TypeScript- und Produktions-Build
 2. Lint-Warnungsbudget
@@ -19,6 +19,7 @@ Er führt neun Prüfschritte aus:
 7. Datenqualität und Objektzuordnung
 8. Berichtsexporte
 9. RLS-, Rollen- und Storage-Grundschutz
+10. Einheitlicher Marken- und Projektname bei unveränderter Produktionsdomain
 
 Vercel führt durch `vercel.json` denselben Befehl vor jeder Veröffentlichung aus. Eine fehlerhafte Version kann dadurch nicht als neue Produktionsversion bereitgestellt werden.
 

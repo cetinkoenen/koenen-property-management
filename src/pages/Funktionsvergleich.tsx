@@ -245,7 +245,7 @@ export default function Funktionsvergleich() {
       <PageHeader
         eyebrow="Nahaus-Vorlage"
         title="Funktionsvergleich"
-        description="Vergleich der Nahaus-Funktionsstruktur mit der Koenen-App. Diese Seite ist eine Roadmap- und Qualitätsübersicht; vorhandene Fachmodule bleiben die Datenquelle."
+        description="Vergleich der Nahaus-Funktionsstruktur mit der Koenen Property Management. Diese Seite ist eine Roadmap- und Qualitätsübersicht; vorhandene Fachmodule bleiben die Datenquelle."
         meta={[
           { label: "Abdeckung", value: `${readyCount}/${allRows.length}` },
           { label: "Teilweise", value: partialCount },
@@ -308,7 +308,7 @@ export default function Funktionsvergleich() {
       <SectionPanel
         eyebrow="Bewertung"
         title="Kurzfazit"
-        description="Die Koenen-App deckt Kernbereiche wie Portfolio, Mieteingang, Buchhaltung, Nebenkosten, Darlehen, Steuer, Auswertung, Read-only und MFA bereits ab. Der groesste Hebel liegt jetzt bei Prozessmodulen: Fristen, Kommunikation, Bewerber, Zaehler und Bankintegration."
+        description="Die Koenen Property Management deckt Kernbereiche wie Portfolio, Mieteingang, Buchhaltung, Nebenkosten, Darlehen, Steuer, Auswertung, Read-only und MFA bereits ab. Der groesste Hebel liegt jetzt bei Prozessmodulen: Fristen, Kommunikation, Bewerber, Zaehler und Bankintegration."
       >
         <InfoList
           items={[

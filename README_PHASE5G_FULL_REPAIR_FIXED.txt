@@ -1,4 +1,4 @@
-Koenen Investment · Phase 5G Full Repair FIXED
+Koenen Property Management · Phase 5G Full Repair FIXED
 
 Diese ZIP enthält die korrigierte SQL-Migration:
   supabase/migrations/20260519190000_phase5g_full_repair_fixed.sql

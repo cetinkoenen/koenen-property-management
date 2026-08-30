@@ -1,4 +1,4 @@
-Koenen Investment – Phase 5B Frontend-Backend-Anbindung
+Koenen Property Management – Phase 5B Frontend-Backend-Anbindung
 
 Umgesetzt:
 - Auswertung enthält neuen Bereich "Backend 5B".

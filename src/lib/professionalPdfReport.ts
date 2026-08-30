@@ -333,7 +333,7 @@ export function openProfessionalPdfReport(options: PdfReportOptions) {
 <body>
   <main class="page">
     <section class="hero">
-      <div class="eyebrow">Koenen Investment · PDF-Bericht</div>
+      <div class="eyebrow">Koenen Property Management · PDF-Bericht</div>
       <h1>${escapeHtml(options.title)}</h1>
       ${options.subtitle ? `<p class="subtitle">${escapeHtml(options.subtitle)}</p>` : ""}
       <div class="meta-row">

@@ -1,4 +1,4 @@
-Koenen Investment – Phase 5E: Datenprüfung & Reparatur-Center
+Koenen Property Management – Phase 5E: Datenprüfung & Reparatur-Center
 
 Umgesetzt:
 - neue Supabase-RPC get_koenen_data_quality_checks(p_year)

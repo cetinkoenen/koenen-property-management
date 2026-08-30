@@ -1,4 +1,4 @@
-Koenen Investment – Phase 5A Backend-Finalisierung
+Koenen Property Management – Phase 5A Backend-Finalisierung
 ============================================
 
 Dieses Update ergänzt die echte Supabase-/Backend-Grundlage für Dokumente, Aufgaben und Audit-Log.

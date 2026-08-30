@@ -797,7 +797,7 @@ type AdvisorExportPayload = {
 
 function advisorExportText(payload: AdvisorExportPayload): string {
   const lines = [
-    "Koenen Investment - Steuerberater-Jahresakte",
+    "Koenen Property Management - Steuerberater-Jahresakte",
     `Dokument: steuerberater-jahresakte-${payload.year}`,
     `Jahr: ${payload.year}`,
     `Objekt: ${payload.objectLabel}`,

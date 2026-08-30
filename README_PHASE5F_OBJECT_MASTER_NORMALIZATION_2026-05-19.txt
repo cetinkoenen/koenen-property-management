@@ -1,4 +1,4 @@
-Koenen Investment – Phase 5F Objekt-Master-Normalisierung
+Koenen Property Management – Phase 5F Objekt-Master-Normalisierung
 Stand: 2026-05-19
 
 Umgesetzt:

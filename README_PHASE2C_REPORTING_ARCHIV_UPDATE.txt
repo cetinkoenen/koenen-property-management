@@ -1,4 +1,4 @@
-# Koenen Investment – Phase 2C Reporting, Archiv & Audit
+# Koenen Property Management – Phase 2C Reporting, Archiv & Audit
 
 Dieses Update erweitert das Auswertungscenter um die neue Ebene „Reporting & Archiv 2C“.
 

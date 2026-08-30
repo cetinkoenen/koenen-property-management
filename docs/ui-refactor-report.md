@@ -30,7 +30,7 @@ Stand: 2026-07-12
 ## Phase 3: Nahaus-Funktionsvergleich
 
 - Neue Seite `/funktionsvergleich` ergänzt
-- Nahaus-Funktionsstruktur als Vorlage gegen die vorhandene Koenen-App gemappt
+- Nahaus-Funktionsstruktur als Vorlage gegen die vorhandene Koenen Property Management gemappt
 - Status je Funktionsblock ergänzt: `Vorhanden`, `Teilweise`, `Ausbau`
 - Priorisierte Ausbauschritte sichtbar gemacht: Fristen/Erinnerungen, Vorlagen/Anschreiben, Bewerber-Pipeline, Zählerverwaltung, Bankintegration
 - Keine Businesslogik, Datenmodelle oder vorhandenen Fachseiten geändert

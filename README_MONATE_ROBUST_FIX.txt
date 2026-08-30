@@ -1,4 +1,4 @@
-Koenen Investment · Monate robust Ladefix
+Koenen Property Management · Monate robust Ladefix
 
 Geändert:
 - Nur src/pages/Monate.tsx

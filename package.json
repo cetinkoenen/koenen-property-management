@@ -1,5 +1,5 @@
 {
-  "name": "koenen-investment",
+  "name": "koenen-property-management",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -16,6 +16,7 @@
     "stress:data-quality": "node scripts/stress-data-quality-source.mjs",
     "stress:report-exports": "node scripts/stress-report-exports.mjs",
     "stress:security": "node scripts/stress-security-baseline.mjs",
+    "stress:branding": "node scripts/stress-branding.mjs",
     "verify": "node scripts/verify-project.mjs",
     "preview": "vite preview"
   },

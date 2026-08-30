@@ -1,4 +1,4 @@
--- Koenen Investment – Phase 5E
+-- Koenen Property Management – Phase 5E
 -- Datenprüfung & Reparatur-Center
 -- Reparierte Basisversion: kein UNION-ORDER-BY-Ausdruck und keine objects.name-Abhängigkeit.
 -- Phase 5F überschreibt diese Funktion anschließend mit Objekt-Alias-Normalisierung.

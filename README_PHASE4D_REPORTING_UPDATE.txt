@@ -1,4 +1,4 @@
-Koenen Investment – Phase 4D Reporting/PDF Update
+Koenen Property Management – Phase 4D Reporting/PDF Update
 
 Umgesetzt:
 - Neuer Bereich Auswertung -> Reporting/PDF 4D

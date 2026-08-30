@@ -1,4 +1,4 @@
--- Koenen Investment: Konsistente Buchungsquellen
+-- Koenen Property Management: Konsistente Buchungsquellen
 -- Gelöschte Buchungen dürfen in Jahres-/Mietviews nicht mehr mitgezählt werden.
 
 create or replace view public.v_objekt_finanz_summary_jahr as

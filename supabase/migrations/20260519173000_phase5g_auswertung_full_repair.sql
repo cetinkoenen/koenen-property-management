@@ -1,5 +1,5 @@
 -- =========================================================
--- Koenen Investment · Phase 5G Auswertung Full Repair
+-- Koenen Property Management · Phase 5G Auswertung Full Repair
 -- Zweck:
 -- 1) alle alten/falschen Objekt-UUIDs auf die 6 echten properties.id umhängen
 -- 2) v_object_dropdown wieder frontend-kompatibel mit value,label,objekt_code bereitstellen

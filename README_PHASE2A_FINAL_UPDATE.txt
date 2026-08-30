@@ -1,4 +1,4 @@
-Koenen Investment – Phase 2A finaler Ausbau
+Koenen Property Management – Phase 2A finaler Ausbau
 
 Umgesetzt in diesem Update:
 - Zentrale Objektakte Phase 2A als eigener Arbeitsbereich in Auswertungen

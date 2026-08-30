@@ -1,5 +1,5 @@
 -- =========================================================
--- Koenen Investment · Phase 5F Backend Compatibility Repair
+-- Koenen Property Management · Phase 5F Backend Compatibility Repair
 -- Fixes:
 -- 1) v_object_dropdown again exposes value, label AND objekt_code
 -- 2) Backend finance master no longer depends on legacy object views

@@ -3123,7 +3123,7 @@ function PhaseFourDProfessionalReportingSystem() {
         <div style={{ border: "1px solid #e2e8f0", borderRadius: 22, padding: 18, background: "linear-gradient(180deg,#ffffff,#f8fafc)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", borderBottom: "1px solid #e2e8f0", paddingBottom: 14 }}>
             <div>
-              <div style={{ fontSize: 12, fontWeight: 950, color: "#2563eb", textTransform: "uppercase", letterSpacing: ".12em" }}>Koenen Investment</div>
+              <div style={{ fontSize: 12, fontWeight: 950, color: "#2563eb", textTransform: "uppercase", letterSpacing: ".12em" }}>Koenen Property Management</div>
               <div style={{ marginTop: 6, fontSize: 24, fontWeight: 950, color: "#0f172a" }}>{selectedReport.title}</div>
               <div style={{ marginTop: 5, fontSize: 13, color: "#64748b", fontWeight: 800 }}>{selectedObjectLabel} · Berichtsjahr {year}</div>
             </div>

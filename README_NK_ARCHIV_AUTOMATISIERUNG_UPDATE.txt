@@ -1,4 +1,4 @@
-Koenen Investment – NK Automatisierung/Archiv Update
+Koenen Property Management – NK Automatisierung/Archiv Update
 
 Neu ergänzt:
 1. Vollautomatische Zuordnung neuer Buchungen bleibt aktiv über „Buchungen importieren“.

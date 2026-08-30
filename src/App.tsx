@@ -1691,7 +1691,7 @@ function createSimplePdf(title: string, lines: string[]): Blob {
     text(line, marginX, y, index === 0 ? 24 : 18, "F2");
     y -= index === 0 ? 27 : 22;
   });
-  paragraph("Professionell formatierter Export aus Koenen Investment. Die Buchhaltung und gepflegten Stammdaten bleiben die fachliche Quelle.", { size: 10, fill: color.slate, maxLength: 84 });
+  paragraph("Professionell formatierter Export aus Koenen Property Management. Die Buchhaltung und gepflegten Stammdaten bleiben die fachliche Quelle.", { size: 10, fill: color.slate, maxLength: 84 });
   y -= 8;
   rect(marginX, y - 42, contentWidth, 48, color.mint, "0.74 0.9 0.82 rg");
   text("REPORT-METADATEN", marginX + 14, y - 8, 8, "F2", color.teal);
@@ -3582,7 +3582,7 @@ function AppShell() {
           <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white shadow-sm">
             <img
               src={logo}
-              alt="Koenen Investment"
+              alt="Koenen Property Management"
               className="h-full w-full object-cover"
               onError={(event) => {
                 if (!event.currentTarget.src.endsWith("/logo/koenen.png")) {
@@ -3593,10 +3593,10 @@ function AppShell() {
           </div>
           <div className="min-w-0">
             <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9fb5bc]">
-              Koenen Investment
+              Koenen Property Management
             </div>
             <div className="mt-1 truncate text-base font-black leading-tight text-white">
-              Investment-Verwaltung
+              Immobilienverwaltung
             </div>
           </div>
         </NavLink>
@@ -3682,7 +3682,7 @@ function AppShell() {
               <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/70 bg-white/80 shadow-sm sm:h-14 sm:w-14">
                 <img
                   src={logo}
-                  alt="Koenen Investment"
+                  alt="Koenen Property Management"
                   className="h-full w-full object-cover"
                   onError={(event) => {
                     if (!event.currentTarget.src.endsWith("/logo/koenen.png")) {
@@ -3693,10 +3693,10 @@ function AppShell() {
               </div>
               <div className="min-w-0">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 sm:text-xs sm:tracking-[0.18em]">
-                  Koenen Investment
+                  Koenen Property Management
                 </div>
                 <div className="max-w-[220px] truncate text-base font-semibold leading-tight text-slate-950 sm:max-w-none sm:text-2xl">
-                  Investment-Finanzübersicht
+                  Immobilien-Finanzübersicht
                 </div>
               </div>
             </NavLink>

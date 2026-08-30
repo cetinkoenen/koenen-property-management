@@ -1,4 +1,4 @@
-Koenen Investment – Phase 2 Professional Upgrade
+Koenen Property Management – Phase 2 Professional Upgrade
 
 Umgesetzt:
 - Neuer Auswertungs-Tab: Objektakte & Workflows

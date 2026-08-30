@@ -868,7 +868,7 @@ export default function NebenkostenWohnungen() {
         <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.25em] text-slate-500">Koenen Investment</div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.25em] text-slate-500">Koenen Property Management</div>
               <h1 className="mt-1 text-2xl font-bold">NK-Abrechnungen Wohnungen</h1>
               <p className="mt-1 text-sm text-slate-500">Bearbeitung links, Ergebnis und Druckansicht unten. Der Druck gibt nur die fertige Abrechnung aus.</p>
             </div>

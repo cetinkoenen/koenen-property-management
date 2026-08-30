@@ -1,4 +1,4 @@
-Calculation fix patch for koenen-investment
+Calculation fix patch for koenen-property-management
 
 Replace these files in the project:
 - src/state/AppDataContext.tsx

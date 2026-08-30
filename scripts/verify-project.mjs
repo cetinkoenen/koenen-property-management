@@ -10,6 +10,7 @@ const checks = [
   ["Datenqualität", "npm", ["run", "stress:data-quality"]],
   ["Berichtsexporte", "npm", ["run", "stress:report-exports"]],
   ["Sicherheitsbasis", "npm", ["run", "stress:security"]],
+  ["Marke und Projektname", "npm", ["run", "stress:branding"]],
 ];
 
 for (const [label, command, args] of checks) {

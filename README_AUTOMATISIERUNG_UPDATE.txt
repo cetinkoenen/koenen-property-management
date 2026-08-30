@@ -1,4 +1,4 @@
-Koenen Investment – Automatisierung & Prüfcenter Update
+Koenen Property Management – Automatisierung & Prüfcenter Update
 
 Dieses Update ergänzt eine neue interne Seite:
 /automatisierung

@@ -1,4 +1,4 @@
-Koenen Investment – Update: Buchungen → automatische Nebenkostenabrechnung
+Koenen Property Management – Update: Buchungen → automatische Nebenkostenabrechnung
 
 Umgesetzt:
 - Neues Modul in NebenkostenWohnungen: „Buchungen → automatische NK-Abrechnung“.

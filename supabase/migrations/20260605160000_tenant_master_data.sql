@@ -1,4 +1,4 @@
--- Koenen Investment: zentrale Mieter-Stammdaten
+-- Koenen Property Management: zentrale Mieter-Stammdaten
 -- Sicherer erster Schritt: neue Tabellen, keine Änderung bestehender Buchungen/Charts/Darlehen.
 
 create extension if not exists pgcrypto;

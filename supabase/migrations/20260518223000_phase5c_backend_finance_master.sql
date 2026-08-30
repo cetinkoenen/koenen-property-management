@@ -1,4 +1,4 @@
--- Koenen Investment – Phase 5C
+-- Koenen Property Management – Phase 5C
 -- Backend-Finanzlogik / Single Source of Truth
 -- Ziel: Restschuld, Einnahmen, Ausgaben, Capex und Datenprüfung serverseitig vereinheitlichen.
 

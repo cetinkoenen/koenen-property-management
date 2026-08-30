@@ -20,8 +20,8 @@ if (!destinationDirectory || !path.isAbsolute(destinationDirectory)) {
 const pad = (value) => String(value).padStart(2, "0");
 const now = new Date();
 const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
-const archiveName = `koenen-app-quellcode-${stamp}.tar.gz`;
-const temporaryDirectory = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(path.join(tmpdir(), "koenen-app-backup-")));
+const archiveName = `koenen-property-management-quellcode-${stamp}.tar.gz`;
+const temporaryDirectory = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(path.join(tmpdir(), "koenen-property-management-backup-")));
 const temporaryArchive = path.join(temporaryDirectory, archiveName);
 const destinationArchive = path.join(destinationDirectory, archiveName);
 const partialDestination = `${destinationArchive}.partial`;
@@ -54,7 +54,7 @@ function isoWeekKey(date) {
 }
 
 function parseArchive(entry) {
-  const match = /^koenen-app-quellcode-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})\.tar\.gz$/.exec(entry);
+  const match = /^koenen-property-management-quellcode-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})\.tar\.gz$/.exec(entry);
   if (!match) return null;
   const [, year, month, day, hour, minute] = match;
   const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
