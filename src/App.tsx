@@ -3577,10 +3577,10 @@ function AppShell() {
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-[286px] flex-col border-r border-white/10 bg-[linear-gradient(180deg,#102535_0%,#132a38_48%,#0d1824_100%)] text-white shadow-[18px_0_52px_rgba(15,23,42,0.20)] xl:flex">
         <NavLink
           to="/dashboard/finanz-kennzahlen"
-          className="flex items-center gap-3 border-b border-white/10 px-5 py-5 no-underline"
+          className="flex flex-col items-stretch gap-2 border-b border-white/10 px-5 py-4 no-underline"
           title="Zum Dashboard"
         >
-          <div className="flex h-12 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white px-1.5 shadow-sm">
+          <div className="flex h-20 w-full shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white px-3 shadow-sm">
             <img
               src={logo}
               alt="Koenen Property Management"
@@ -3592,11 +3592,8 @@ function AppShell() {
               }}
             />
           </div>
-          <div className="min-w-0">
-            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9fb5bc]">
-              Koenen Property Management
-            </div>
-            <div className="mt-1 truncate text-base font-black leading-tight text-white">
+          <div className="min-w-0 text-center">
+            <div className="truncate text-sm font-black uppercase tracking-[0.13em] text-[#d5e2e4]">
               Immobilienverwaltung
             </div>
           </div>
@@ -3680,7 +3677,7 @@ function AppShell() {
               className="flex min-w-0 items-center gap-3"
               title="Zum Dashboard"
             >
-              <div className="flex h-10 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/70 bg-white/80 px-1.5 shadow-sm sm:h-12 sm:w-28">
+              <div className="flex h-12 w-28 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/70 bg-white/80 px-1.5 shadow-sm sm:h-14 sm:w-36">
                 <img
                   src={logo}
                   alt="Koenen Property Management"
