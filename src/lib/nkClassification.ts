@@ -5,6 +5,7 @@ export type NkClassificationInput = {
   entry_type: "income" | "expense";
   category?: string | null;
   note?: string | null;
+  objectLabel?: string | null;
 };
 
 export type NkClassificationResult = {
@@ -120,11 +121,19 @@ export function inferNkRelevant(entry: NkClassificationInput): boolean {
 }
 
 export function classifyNkRelevance(entry: NkClassificationInput): NkClassificationResult {
-  const text = normalizeNkText(`${entry.category ?? ""} ${entry.note ?? ""}`);
+  const text = normalizeNkText(`${entry.category ?? ""} ${entry.note ?? ""} ${entry.objectLabel ?? ""}`);
   if (!text) {
     return {
       nkRelevant: false,
       reason: "Keine Kategorie oder Notiz erkennbar. Ohne Nebenkostenbezug bleibt NK-Abr. aus.",
+    };
+  }
+
+
+  if (text.includes("hohenloher") || text.includes("brettach") || text.includes("langenbrettach")) {
+    return {
+      nkRelevant: false,
+      reason: "Hohenloher Str. 78 ist selbstgenutzt und gehört nicht in eine Mieter-Nebenkostenabrechnung.",
     };
   }
 

@@ -1,8 +1,9 @@
 import type { AppObject, FinanceEntry, LoanChartPoint, LoanDashboardRow, PortfolioLoanRow, YearlyFinanceSummaryRow } from "@/state/AppDataContext";
 import { canonicalizeFinanceCategory, isPureRentBackPayment, normalizeFinanceCategoryText, type FinanceEntryType } from "@/lib/financeCategories";
-import { isPortfolioExpenseCategory, isPortfolioGeneralEntry, isPortfolioGeneralReference, PORTFOLIO_GENERAL_LABEL } from "@/lib/portfolioExpense";
+import { isAllocatablePortfolioExpenseEntry, isPortfolioExpenseCategory, isPortfolioGeneralEntry, isPortfolioGeneralReference, PORTFOLIO_GENERAL_LABEL } from "@/lib/portfolioExpense";
 import { classifyTaxRelevance } from "@/lib/taxClassification";
-import { isAnlageVEligible, isSection35aProfile, resolveEntryTaxProfile, TAX_OBJECT_PROFILES, type TaxReportObjectOption } from "@/services/taxReportEngine";
+import { classifyNkRelevance } from "@/lib/nkClassification";
+import { isAnlageVEligible, isRosensteinSharedExpense, isSection35aProfile, resolveEntryTaxProfile, TAX_OBJECT_PROFILES, type TaxReportObjectOption } from "@/services/taxReportEngine";
 
 export type ConsistencySeverity = "ok" | "warning" | "critical";
 export type ConsistencyCheck = {
@@ -175,6 +176,7 @@ function appObjectsToTaxOptions(objects: AppObject[]): TaxReportObjectOption[] {
     code: object.code,
     label: object.label,
     aliases: object.aliases,
+    livingAreaM2: object.livingAreaM2,
   }));
 }
 
@@ -196,8 +198,7 @@ function addSteuerberichtSourceChecks(
   const stEntries = yearEntries.filter((entry) => entry.tax_relevant === true);
   const portfolioRows = yearEntries.filter((entry) => (
     isExpense(entry)
-    && isPortfolioGeneralEntry(entry)
-    && isPortfolioExpenseCategory(canonicalizeFinanceCategory(entry.category, "expense"))
+    && isAllocatablePortfolioExpenseEntry({ ...entry, category: canonicalizeFinanceCategory(entry.category, "expense") })
   ));
   const stPortfolioRows = portfolioRows.filter((entry) => entry.tax_relevant === true);
   const anlageVProfiles = TAX_OBJECT_PROFILES.filter(isAnlageVEligible);
@@ -264,7 +265,7 @@ function addSteuerberichtSourceChecks(
 
     if (isPortfolio) continue;
 
-    if (!profile) {
+    if (!profile && !isRosensteinSharedExpense(entry, taxObjects)) {
       addCheck(checks, {
         id: `tax-report-unresolved-${entry.id ?? entry.booking_date ?? "unknown"}`,
         severity: "critical",
@@ -533,6 +534,28 @@ export function buildFinanceConsistencySummary(input: ConsistencyInput): Consist
         detail: `Buchung "${entry.category ?? "ohne Kategorie"}" ist als St markiert, obwohl die Regel eine Prüfung oder private Behandlung empfiehlt.`,
         repairHint: taxDecision.hint,
       });
+    }
+
+
+    if (entry.entry_type === "income" || entry.entry_type === "expense") {
+      const nkDecision = classifyNkRelevance({
+        entry_type: entry.entry_type,
+        category: entry.category,
+        note: entry.note,
+        objectLabel: propertyName,
+      });
+      const explicitNk = typeof entry.nk_relevant === "boolean" ? entry.nk_relevant : null;
+      if (explicitNk !== nkDecision.nkRelevant) {
+        addCheck(checks, {
+          id: `nk-mismatch-${entry.id ?? key}`,
+          severity: "warning",
+          area: "Buchungen",
+          propertyId: entry.object_id ? String(entry.object_id) : null,
+          propertyName,
+          detail: `Buchung "${entry.category ?? "ohne Kategorie"}" hat NK-Abr. ${explicitNk === true ? "gesetzt" : "nicht gesetzt"}, erwartet wird ${nkDecision.nkRelevant ? "gesetzt" : "nicht gesetzt"}.`,
+          repairHint: nkDecision.reason,
+        });
+      }
     }
 
     if (noteContains(entry, ["handy internet", "telefon internet", "telekommunikation"]) && !noteContains(entry, ["telekommunikation steuerlich", "ehepartner a", "ehepartner b", "festnetz"])) {

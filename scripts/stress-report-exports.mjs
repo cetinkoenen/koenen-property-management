@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 
 const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 const taxEngine = await readFile(new URL("../src/services/taxReportEngine.ts", import.meta.url), "utf8");
+const portfolioExpense = await readFile(new URL("../src/lib/portfolioExpense.ts", import.meta.url), "utf8");
+const appData = await readFile(new URL("../src/state/AppDataContext.tsx", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -32,5 +34,8 @@ assert.match(taxEngine, /Hausgeld - Aufteilung erforderlich[\s\S]*reviewStatus: 
 assert.match(taxEngine, /Anlage V Zeile 20/, "Nebenkostenvorauszahlungen müssen der amtlichen Formularzeile zugeordnet werden");
 assert.match(taxEngine, /Anlage V Zeilen 46-48/, "Schuldzinsen müssen der amtlichen Formularzeile zugeordnet werden");
 assert.match(taxEngine, /bankAccountFlatFee: 0/, "Pauschale Kontoführungsgebühren dürfen das Zufluss-/Abflussprinzip nicht verletzen");
+assert.match(portfolioExpense, /isPersonalMovingExpense[\s\S]*umzugskosten/, "Private Umzugskosten müssen aus der pauschalen Portfolio-Verteilung ausgeschlossen sein");
+assert.match(taxEngine, /isRosensteinSharedExpense[\s\S]*Anteil 1\/3/, "Gemeinsame Rosenstein-Kosten müssen ausschließlich auf die drei Stellplätze verteilt werden");
+assert.match(appData, /property_extra_info[\s\S]*wealth_profile[\s\S]*totalArea/, "Der Steuerreport muss die Wohnfläche aus den zentralen Immobilienvermögen-Details übernehmen");
 
-console.log("28 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("31 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");

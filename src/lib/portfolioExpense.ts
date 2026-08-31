@@ -34,3 +34,19 @@ export function isPortfolioExpenseCategory(category: unknown): boolean {
   const canonical = canonicalizeFinanceCategory(String(category ?? ""), "expense");
   return PORTFOLIO_EXPENSE_CATEGORIES.has(canonical);
 }
+
+export function isPersonalMovingExpense(entry: { category?: unknown; note?: unknown }): boolean {
+  const text = normalizeFinanceCategoryText(`${String(entry.category ?? "")} ${String(entry.note ?? "")}`);
+  return text.includes("umzugskosten") || text.includes("umzugsunternehmen") || text.includes("privater umzug");
+}
+
+export function isAllocatablePortfolioExpenseEntry(entry: {
+  object_id?: unknown;
+  objekt_code?: unknown;
+  note?: unknown;
+  category?: unknown;
+}): boolean {
+  return isPortfolioGeneralEntry(entry)
+    && isPortfolioExpenseCategory(entry.category)
+    && !isPersonalMovingExpense(entry);
+}

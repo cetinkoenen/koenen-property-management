@@ -1,7 +1,7 @@
 import { MIETE_NACHZAHLUNG_CATEGORY, canonicalizeFinanceCategory, normalizeFinanceCategoryText, type FinanceEntryType } from "./financeCategories";
 import { isHohenloherMietbestandteilNk, MIETBESTANDTEIL_NK_CATEGORY } from "./financeEntryLabels";
 import { isBusinessMealCategory } from "./businessMealTax";
-import { isPortfolioGeneralEntry, isPortfolioExpenseCategory } from "./portfolioExpense";
+import { isAllocatablePortfolioExpenseEntry, isPersonalMovingExpense } from "./portfolioExpense";
 
 export type TaxRuleDecision = {
   taxRelevant: boolean;
@@ -128,6 +128,26 @@ export function classifyTaxRelevance(entry: TaxRuleEntry, objectLabel?: string |
     };
   }
 
+  if (canonicalCategory === "Kaution") {
+    return {
+      taxRelevant: false,
+      relevance: "private",
+      group: "Kaution / Rückzahlung (steuerneutral)",
+      hint: "Kautionen und Kautionsrückzahlungen sind grundsätzlich keine Werbungskosten. Nur ein nachweislich einbehaltener oder verrechneter Betrag wird gesondert geprüft.",
+      locked: true,
+    };
+  }
+
+  if (isPersonalMovingExpense(entry)) {
+    return {
+      taxRelevant: false,
+      relevance: "private",
+      group: "Private Umzugskosten (keine pauschale Anlage-V-Verteilung)",
+      hint: "Umzugskosten dürfen nicht pauschal auf Mietobjekte verteilt werden. Ohne belegten unmittelbaren Zusammenhang mit einem konkreten Vermietungsobjekt bleibt St ausgeschaltet.",
+      locked: true,
+    };
+  }
+
   if (isAcquisitionSideCost(text)) {
     return {
       taxRelevant: false,
@@ -161,10 +181,10 @@ export function classifyTaxRelevance(entry: TaxRuleEntry, objectLabel?: string |
   if (isHohenloher) {
     return {
       taxRelevant: false,
-      relevance: "check",
-      group: "Selbstgenutzt / WEG steuerlich prüfen",
-      hint: "Hohenloher Str. 78 ist keine Anlage-V-Immobilie. Ausgabe bitte fuer §35a, Erwerbsnebenkosten, Homeoffice oder private Lebensfuehrung gezielt pruefen.",
-      locked: false,
+      relevance: "private",
+      group: "Selbstgenutzt / WEG (keine Anlage V)",
+      hint: "Hohenloher Str. 78 ist selbstgenutzt. Nur eindeutig dokumentierte §35a-Arbeits-/Fahrtkosten werden steuerlich berücksichtigt; gewöhnliche Verwaltungs-, Grundsteuer- und Finanzierungsvorgänge bleiben ohne St.",
+      locked: true,
     };
   }
 
@@ -188,7 +208,7 @@ export function classifyTaxRelevance(entry: TaxRuleEntry, objectLabel?: string |
     };
   }
 
-  if (isPortfolioGeneralEntry(entry) && isPortfolioExpenseCategory(canonicalCategory)) {
+  if (isAllocatablePortfolioExpenseEntry({ ...entry, category: canonicalCategory })) {
     return {
       taxRelevant: true,
       relevance: "tax",

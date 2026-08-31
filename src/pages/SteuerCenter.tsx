@@ -6,6 +6,7 @@ import { classifyTaxRelevance, canonicalCategoryForTax } from "../lib/taxClassif
 import { calculateBusinessMealDeductible, isBusinessMealCategory } from "../lib/businessMealTax";
 import { downloadTextReport, openProfessionalPdfReport, type PdfReportSection } from "../lib/professionalPdfReport";
 import { isTelecommunicationCategory, parseTelecommunicationTaxDetails } from "../lib/telecommunicationTax";
+import { classifyNkRelevance } from "../lib/nkClassification";
 import {
   buildAnlageVReportLines,
   buildSection35aReportLines,
@@ -36,6 +37,7 @@ type EntryRow = {
   note: string | null;
   entry_type: EntryType;
   tax_relevant: boolean | null;
+  nk_relevant: boolean | null;
 };
 
 type LoanTaxRow = {
@@ -81,7 +83,7 @@ async function loadAllFinanceEntriesForTaxRules(): Promise<EntryRow[]> {
   while (true) {
     const { data, error } = await supabase
       .from("finance_entry")
-      .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,is_deleted")
+      .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,nk_relevant,is_deleted")
       .eq("is_deleted", false)
       .in("entry_type", ["income", "expense"])
       .order("booking_date", { ascending: false })
@@ -101,6 +103,7 @@ async function loadAllFinanceEntriesForTaxRules(): Promise<EntryRow[]> {
         note: item.note ?? null,
         entry_type: entryType,
         tax_relevant: typeof item.tax_relevant === "boolean" ? item.tax_relevant : null,
+        nk_relevant: typeof item.nk_relevant === "boolean" ? item.nk_relevant : null,
       };
     });
 
@@ -1072,7 +1075,7 @@ export default function SteuerCenter() {
 
       let query = supabase
         .from("finance_entry")
-        .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,is_deleted")
+        .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,nk_relevant,is_deleted")
         .eq("is_deleted", false)
         .gte("booking_date", range.from)
         .lt("booking_date", range.to)
@@ -1097,6 +1100,7 @@ export default function SteuerCenter() {
           note: item.note ?? null,
           entry_type: item.entry_type === "expense" ? "expense" : "income",
           tax_relevant: typeof item.tax_relevant === "boolean" ? item.tax_relevant : null,
+          nk_relevant: typeof item.nk_relevant === "boolean" ? item.nk_relevant : null,
         };
       });
 
@@ -1214,9 +1218,10 @@ export default function SteuerCenter() {
 
   async function applyTaxRulesToCurrentSelection() {
     const confirmed = window.confirm(
-      "Steuerrelevanz fuer alle Buchungen nach Anlage-V-/§35a-Regeln aktualisieren?\n\n" +
+      "Steuer- und NK-Kennzeichen fuer alle Buchungen nach Anlage-V-/§35a-/Nebenkostenregeln aktualisieren?\n\n" +
         "Miete, Garage, Mietbestandteil-NK und klare Werbungskosten werden als St markiert. " +
-        "Laufende Kreditraten werden bewusst ohne St gespeichert. Unklare Faelle bleiben Prueffaelle.",
+        "Laufende Kreditraten, Kautionen, private Umzugskosten und selbstgenutzte Hohenloher-Positionen bleiben ohne St. " +
+        "NK-Abr. wird nur bei umlagefaehigen Mieter-Nebenkosten gesetzt. Unklare Faelle bleiben Prueffaelle.",
     );
     if (!confirmed) return;
 
@@ -1238,6 +1243,12 @@ export default function SteuerCenter() {
             ? repairObjectLabelByCode.get(entry.objekt_code) ?? entry.objekt_code
             : "Ohne Objekt";
           const rule = classifyTaxRelevance(entry, objectLabel);
+          const nkRule = classifyNkRelevance({
+            entry_type: entry.entry_type,
+            category: entry.category,
+            note: entry.note,
+            objectLabel,
+          });
           const canonicalCategory = canonicalCategoryForTax(entry, objectLabel);
           let nextValue: boolean | null = entry.tax_relevant;
 
@@ -1256,10 +1267,10 @@ export default function SteuerCenter() {
               ? canonicalCategory
               : null;
 
-          if (nextValue === entry.tax_relevant && (!nextCategory || nextCategory === entry.category)) return null;
-          return { id: entry.id, tax_relevant: nextValue, category: nextCategory };
+          if (nextValue === entry.tax_relevant && nkRule.nkRelevant === entry.nk_relevant && (!nextCategory || nextCategory === entry.category)) return null;
+          return { id: entry.id, tax_relevant: nextValue, nk_relevant: nkRule.nkRelevant, category: nextCategory };
         })
-        .filter((item): item is { id: number; tax_relevant: boolean; category: string | null } => Boolean(item));
+        .filter((item): item is { id: number; tax_relevant: boolean; nk_relevant: boolean; category: string | null } => Boolean(item));
 
       if (updates.length === 0) {
         setTaxRepairStatus("Keine Aenderung noetig. Alle Buchungen passen bereits zu den Steuerregeln.");
@@ -1272,6 +1283,7 @@ export default function SteuerCenter() {
             .from("finance_entry")
             .update({
               tax_relevant: update.tax_relevant,
+              nk_relevant: update.nk_relevant,
               ...(update.category ? { category: update.category } : {}),
             })
             .eq("id", update.id)
@@ -1283,7 +1295,7 @@ export default function SteuerCenter() {
       if (failed?.error) throw failed.error;
 
       await loadEntries();
-      setTaxRepairStatus(`${updates.length} Buchung(en) im Gesamtbestand nach Steuerregeln aktualisiert.`);
+      setTaxRepairStatus(`${updates.length} Buchung(en) im Gesamtbestand nach Steuer- und NK-Regeln aktualisiert.`);
     } catch (repairError) {
       setError(getLoadErrorMessage(repairError, "Steuerregeln konnten nicht angewendet werden."));
     } finally {
@@ -1579,7 +1591,7 @@ export default function SteuerCenter() {
               }}
             >
               <RefreshCw size={16} />
-              {repairingTaxRules ? "St-Regeln laufen" : "St-Regeln anwenden"}
+              {repairingTaxRules ? "St-/NK-Regeln laufen" : "St-/NK-Regeln anwenden"}
             </button>
             <button type="button" onClick={() => window.print()} style={styles.button}>
               <Printer size={16} />

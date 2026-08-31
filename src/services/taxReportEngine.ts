@@ -2,7 +2,7 @@ import { canonicalCategoryForTax, isCreditRateEntry } from "../lib/taxClassifica
 import { MIETE_NACHZAHLUNG_CATEGORY, normalizeFinanceCategoryText } from "../lib/financeCategories";
 import { calculateBusinessMealDeductible, isBusinessMealCategory, parseBusinessMealDetails } from "../lib/businessMealTax";
 import { isTelecommunicationCategory, parseTelecommunicationTaxDetails } from "../lib/telecommunicationTax";
-import { isPortfolioExpenseCategory, isPortfolioGeneralEntry } from "../lib/portfolioExpense";
+import { isAllocatablePortfolioExpenseEntry, isPortfolioGeneralEntry } from "../lib/portfolioExpense";
 import { splitSection35aTripCosts } from "../lib/travelTax";
 import { MILEAGE_RATE_EUR, type MileageTripRow } from "./mileageTripService";
 
@@ -381,6 +381,22 @@ export function resolveEntryTaxProfile(entry: TaxReportEntry, objects: TaxReport
   return getTaxObjectProfileForLabel(`${object?.label ?? ""} ${object?.code ?? ""} ${object?.id ?? ""} ${object?.aliases?.join(" ") ?? ""} ${entry.objekt_code ?? ""} ${entry.note ?? ""}`);
 }
 
+function entryObjectLabel(entry: TaxReportEntry, objects: TaxReportObjectOption[]) {
+  const object = objects.find((item) => {
+    const ids = [item.id, item.code, ...(item.aliases ?? [])].map(normalize).filter(Boolean);
+    const entryIds = [entry.object_id, entry.objekt_code].map(normalize).filter(Boolean);
+    return ids.some((id) => entryIds.some((entryId) => id === entryId || id.includes(entryId) || entryId.includes(id)));
+  });
+  return `${object?.label ?? ""} ${object?.code ?? ""} ${entry.objekt_code ?? ""}`;
+}
+
+export function isRosensteinSharedExpense(entry: TaxReportEntry, objects: TaxReportObjectOption[] = []): boolean {
+  if (entry.entry_type !== "expense" || isPortfolioGeneralEntry(entry) || resolveEntryTaxProfile(entry, objects)) return false;
+  const text = normalize(`${entryObjectLabel(entry, objects)} ${entry.note ?? ""}`);
+  const hasSpecificUnit = includesAny(text, ["p250", "p253", "p254", "e008440000121", "e008440000122", "e008440000123"]);
+  return !hasSpecificUnit && includesAny(text, ["rosenstein"]);
+}
+
 export function isAnlageVEligible(profile: TaxObjectProfile | null): boolean {
   return profile?.usage === "rented_residential" || profile?.usage === "rented_parking";
 }
@@ -559,7 +575,17 @@ function isCraftsmanTrip(trip: MileageTripRow) {
 }
 
 function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[], loans: TaxReportLoanRow[], trips: MileageTripRow[], objects: TaxReportObjectOption[], year: number): AnlageVReport {
-  const profileEntries = entries.filter((entry) => entryYear(entry) === year && resolveEntryTaxProfile(entry, objects)?.key === profile.key);
+  const directProfileEntries = entries.filter((entry) => entryYear(entry) === year && resolveEntryTaxProfile(entry, objects)?.key === profile.key);
+  const sharedRosensteinEntries = profile.usage === "rented_parking"
+    ? entries
+      .filter((entry) => entryYear(entry) === year && isRosensteinSharedExpense(entry, objects))
+      .map((entry) => ({
+        ...entry,
+        amount: roundCurrency(amount(entry.amount) / 3),
+        note: `${entry.note ?? entry.category ?? "Gemeinsame Rosenstein-Ausgabe"} | gemeinsamer Beleg, Anteil 1/3`,
+      }))
+    : [];
+  const profileEntries = [...directProfileEntries, ...sharedRosensteinEntries];
   const livingAreaM2 = livingAreaForProfile(profile, objects);
   const bookingRows = profileEntries.map((entry) => buildBookingExportRow(entry, profile, livingAreaM2, year));
   const blockedEntries = profileEntries.filter((_, index) => bookingRows[index]?.reviewStatus === "Blockiert");
@@ -567,8 +593,7 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
   const portfolioAdministrationRows = entries.filter((entry) => (
     entryYear(entry) === year
     && entry.entry_type === "expense"
-    && isPortfolioGeneralEntry(entry)
-    && isPortfolioExpenseCategory(canonicalCategoryForTax(entry, profile.label))
+    && isAllocatablePortfolioExpenseEntry({ ...entry, category: canonicalCategoryForTax(entry, profile.label) })
   ));
   const portfolioAdministrationShare = sumCurrency(portfolioAdministrationRows, (entry) => amount(entry.amount) / rentedObjectCount);
   const telecommunicationRows = entries.filter((entry) => entryYear(entry) === year && entry.entry_type === "expense" && isTelecommunicationCategory(canonicalCategoryForTax(entry)));
@@ -779,6 +804,7 @@ export function buildTaxAdvisorDashboard(params: {
     entryYear(entry) === params.year
     && entry.tax_relevant !== false
     && !isPortfolioGeneralEntry(entry)
+    && !isRosensteinSharedExpense(entry, objects)
     && !resolveEntryTaxProfile(entry, objects)
   ));
   const warnings = [
