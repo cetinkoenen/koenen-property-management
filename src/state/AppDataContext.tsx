@@ -8,6 +8,7 @@ export type AppObject = {
   id: string;
   code: string | null;
   label: string;
+  livingAreaM2?: number | null;
   /** Phase 5F: alle bekannten technischen IDs/Codes/Namen, die zu derselben Immobilie gehören. */
   aliases?: string[];
 };
@@ -131,6 +132,15 @@ type FinanceEntryRow = {
   note: string | null;
   tax_relevant: boolean | null;
   nk_relevant: boolean | null;
+};
+
+type PropertyMasterAreaRow = {
+  id: string | null;
+  property_id: string | null;
+  name: string | null;
+  title: string | null;
+  address: string | null;
+  living_area_m2: unknown;
 };
 
 type PortfolioLoanSourceRow = {
@@ -520,11 +530,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     setLoading(!hydrated);
     setError(null);
     try {
-      const [objectsRes, entriesRes, portfolioRes, loanRes] = await Promise.all([
+      const [objectsRes, entriesRes, portfolioRes, loanRes, propertyMasterRes] = await Promise.all([
         supabase.from("v_object_dropdown").select("value,objekt_code,label,object_id,property_id").order("label", { ascending: true }),
         supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,tax_relevant,nk_relevant").eq("is_deleted", false).order("booking_date", { ascending: false }).limit(5000),
         supabase.from("vw_property_loan_dashboard_portfolio_v2").select("property_id,portfolio_property_id,property_name,last_balance,principal_total,interest_total,repaid_percent,repayment_status,repayment_label").order("property_name", { ascending: true }),
         supabase.from("vw_property_loan_dashboard_dedup").select("property_id,property_name,first_year,last_year,last_balance_year,last_balance,interest_total,principal_total,repaid_percent,repaid_percent_display,repayment_status,repayment_label,refreshed_at").order("property_name", { ascending: true }),
+        supabase.from("properties").select("id,property_id,name,title,address,living_area_m2"),
       ]);
 
       // Objekt- und Buchungsdaten sind die Pflichtquelle fuer die App.
@@ -534,8 +545,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       if (firstBlockingError) throw firstBlockingError;
       if (portfolioRes.error) console.warn("Portfolio-Darlehensdaten konnten nicht geladen werden:", portfolioRes.error.message);
       if (loanRes.error) console.warn("Darlehensdashboard konnte nicht geladen werden:", loanRes.error.message);
+      if (propertyMasterRes.error) console.warn("Wohnflächen-Stammdaten konnten nicht geladen werden:", propertyMasterRes.error.message);
 
-      const mappedObjects = dedupeObjectsByCanonicalName(((objectsRes.data ?? []) as ObjectDropdownRow[])
+      const baseObjects = dedupeObjectsByCanonicalName(((objectsRes.data ?? []) as ObjectDropdownRow[])
         .filter((row) => row.value)
         .map((row) => ({
           // AppObject.id muss zur Buchungstabelle passen: finance_entry.object_id -> public.objects.id.
@@ -545,6 +557,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           label: cleanDisplayName(row.label ?? row.objekt_code ?? row.value, "Unbenanntes Objekt"),
           aliases: uniqueClean([row.object_id, row.property_id, row.value, row.objekt_code, row.label]),
         })));
+
+      const propertyMasterRows = (propertyMasterRes.error ? [] : propertyMasterRes.data ?? []) as PropertyMasterAreaRow[];
+      const mappedObjects = baseObjects.map((object) => {
+        const master = propertyMasterRows.find((row) => {
+          const ids = uniqueClean([row.id, row.property_id]);
+          const names = uniqueClean([row.name, row.title, row.address]);
+          return ids.some((id) => id === object.id || object.aliases?.includes(id))
+            || names.some((name) => namesMatch(name, object.label) || object.aliases?.some((alias) => namesMatch(name, alias)));
+        });
+        return {
+          ...object,
+          livingAreaM2: parseMaybeNumber(master?.living_area_m2),
+        };
+      });
 
       const mappedEntries = ((entriesRes.data ?? []) as FinanceEntryRow[]).map((row) => ({
         id: row.id ?? null,

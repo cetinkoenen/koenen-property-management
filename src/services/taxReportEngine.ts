@@ -10,6 +10,7 @@ export type TaxObjectUsage = "rented_residential" | "rented_parking" | "self_use
 
 export type TaxObjectProfile = {
   key: string;
+  taxObjectId: string;
   label: string;
   reportLabel: string;
   usage: TaxObjectUsage;
@@ -31,6 +32,7 @@ export type TaxReportEntry = {
   category?: string | null;
   note?: string | null;
   tax_relevant?: boolean | null;
+  nk_relevant?: boolean | null;
   labor_amount?: number | null;
   material_amount?: number | null;
   travel_amount?: number | null;
@@ -55,6 +57,24 @@ export type TaxReportObjectOption = {
   code?: string | null;
   label: string;
   aliases?: string[];
+  livingAreaM2?: number | null;
+};
+
+export type AnlageVBookingExportRow = {
+  recordType: "Buchung" | "Darlehenszins" | "Fahrtkosten" | "Portfolio-Kosten";
+  taxYear: number;
+  objectId: string;
+  objectName: string;
+  livingAreaM2: number | null;
+  bookingDate: string;
+  categoryName: string;
+  officialFormLine: string;
+  bookingText: string;
+  incomeAmount: number;
+  expenseAmount: number;
+  apportionableStatus: "Ja" | "Nein" | "Nicht anwendbar";
+  paymentStatus: "Bezahlt" | "Offen";
+  reviewStatus: "Exportiert" | "Blockiert" | "Prüfung erforderlich";
 };
 
 export type AnlageVReport = {
@@ -64,6 +84,7 @@ export type AnlageVReport = {
   buildingAfa: number;
   inventoryAfa: number;
   loanInterest: number;
+  moneyProcurementCosts: number;
   maintenance: number;
   maintenanceDistributionYears: number;
   runningCosts: number;
@@ -83,6 +104,9 @@ export type AnlageVReport = {
   net: number;
   warnings: string[];
   entries: TaxReportEntry[];
+  livingAreaM2: number | null;
+  bookingRows: AnlageVBookingExportRow[];
+  blockedEntries: TaxReportEntry[];
 };
 
 export type Section35aReport = {
@@ -112,6 +136,7 @@ export type TaxAdvisorDashboard = {
 export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
   {
     key: "lilienthaler",
+    taxObjectId: "LILIENTHALER-STR-54",
     label: "Lilienthaler Str. 54",
     reportLabel: "Lilienthaler Str. 54",
     usage: "rented_residential",
@@ -124,6 +149,7 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
   },
   {
     key: "elsasser",
+    taxObjectId: "ELSASSER-STR-52",
     label: "Elsasser Str. 52",
     reportLabel: "Elsasser Str. 52",
     usage: "rented_residential",
@@ -136,6 +162,7 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
   },
   {
     key: "colmarer",
+    taxObjectId: "COLMARER-STR-45",
     label: "Colmarer Str. 45",
     reportLabel: "Colmarer Str. 45",
     usage: "rented_residential",
@@ -148,6 +175,7 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
   },
   {
     key: "fuerther",
+    taxObjectId: "FUERTHER-STR-74",
     label: "Fürther Str. 74",
     reportLabel: "Fürther Str. 74",
     usage: "rented_residential",
@@ -159,19 +187,47 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     homeOfficePercentage: 0,
   },
   {
-    key: "rosenstein",
+    key: "rosenstein-p250",
+    taxObjectId: "P250-E008440000121",
     label: "Rosensteinstr. 25",
-    reportLabel: "3 TG-Stellplätze in Stuttgart",
+    reportLabel: "Rosensteinstr. 25 - P250-E008440000121",
     usage: "rented_parking",
-    aliases: ["rosenstein", "rosenstein str", "rosensteinstr", "rosensteinstr. 25", "p250", "p253", "p254", "e008440000121", "e008440000122", "e008440000123", "stuttgart"],
+    aliases: ["p250", "p250-e008440000121", "p250 e008440000121", "e008440000121"],
     buildingYear: 1960,
-    acquisitionPrice: 61219.26,
+    acquisitionPrice: 20406.42,
     afaRate: 0.02,
-    bankAccountFlatFee: 16,
+    bankAccountFlatFee: 5.33,
+    homeOfficePercentage: 0,
+  },
+  {
+    key: "rosenstein-p253",
+    taxObjectId: "P253-E008440000122",
+    label: "Rosensteinstr. 25",
+    reportLabel: "Rosensteinstr. 25 - P253-E008440000122",
+    usage: "rented_parking",
+    aliases: ["p253", "p253-e008440000122", "p253 e008440000122", "e008440000122"],
+    buildingYear: 1960,
+    acquisitionPrice: 20406.42,
+    afaRate: 0.02,
+    bankAccountFlatFee: 5.33,
+    homeOfficePercentage: 0,
+  },
+  {
+    key: "rosenstein-p254",
+    taxObjectId: "P254-E008440000123",
+    label: "Rosensteinstr. 25",
+    reportLabel: "Rosensteinstr. 25 - P254-E008440000123",
+    usage: "rented_parking",
+    aliases: ["p254", "p254-e008440000123", "p254 e008440000123", "e008440000123"],
+    buildingYear: 1960,
+    acquisitionPrice: 20406.42,
+    afaRate: 0.02,
+    bankAccountFlatFee: 5.34,
     homeOfficePercentage: 0,
   },
   {
     key: "hohenloher",
+    taxObjectId: "HOHENLOHER-STR-78",
     label: "Hohenloher Str. 78",
     reportLabel: "Hohenloher Str. 78",
     usage: "self_used_weg",
@@ -206,6 +262,43 @@ const ADMINISTRATION_CATEGORIES = [
   "Büro / Porto",
   "Porto",
   "Büro",
+];
+
+const MONEY_PROCUREMENT_CATEGORIES = [
+  "Geldbeschaffungskosten",
+  "Grundschuld",
+  "Darlehensgebühr",
+  "Darlehensgebuehr",
+  "Bankbearbeitungsgebühr",
+  "Bankbearbeitungsgebuehr",
+];
+
+const RESERVE_CONTRIBUTION_CATEGORIES = [
+  "Instandhaltungsrücklage",
+  "Instandhaltungsruecklage",
+  "Erhaltungsrücklage",
+  "Erhaltungsruecklage",
+  "Rücklagenzuführung",
+  "Ruecklagenzufuehrung",
+  "Zuführung Rücklage",
+  "Zufuehrung Ruecklage",
+];
+
+const EXPLICIT_HAUSGELD_SPLIT_CATEGORIES = [
+  ...RUNNING_COST_CATEGORIES.filter((category) => category !== "Hausgeld"),
+  ...ADMINISTRATION_CATEGORIES,
+  "Reparatur",
+  "Instandhaltung",
+  "Handwerker",
+  "Renovierung",
+  "Wartung",
+  ...RESERVE_CONTRIBUTION_CATEGORIES,
+  "umlagefähig",
+  "umlagefaehig",
+  "nicht umlagefähig",
+  "nicht umlagefaehig",
+  "Rücklagenentnahme",
+  "Ruecklagenentnahme",
 ];
 
 const MAINTENANCE_CATEGORIES = ["Reparatur", "Instandhaltung", "Handwerker", "Renovierung", "Wartung"];
@@ -268,7 +361,13 @@ export function getTaxObjectProfileForLabel(value: string | null | undefined): T
   const text = normalize(value);
   if (!text) return null;
   return TAX_OBJECT_PROFILES.find((profile) => {
-    const candidates = [profile.label, profile.reportLabel, profile.key, ...profile.aliases].map(normalize);
+    const candidates = [
+      ...(profile.usage === "rented_parking" ? [] : [profile.label]),
+      profile.reportLabel,
+      profile.taxObjectId,
+      profile.key,
+      ...profile.aliases,
+    ].map(normalize);
     return candidates.some((candidate) => candidate && (text.includes(candidate) || candidate.includes(text)));
   }) ?? null;
 }
@@ -312,6 +411,106 @@ function categoryMatches(entry: TaxReportEntry, categories: string[], profile: T
 
 function isAcquisitionSideCostEntry(entry: TaxReportEntry, profile: TaxObjectProfile) {
   return categoryMatches(entry, ACQUISITION_SIDE_COST_KEYWORDS, profile);
+}
+
+function isReserveContribution(entry: TaxReportEntry, profile: TaxObjectProfile) {
+  return categoryMatches(entry, RESERVE_CONTRIBUTION_CATEGORIES, profile);
+}
+
+function isUnsplitHausgeld(entry: TaxReportEntry, profile: TaxObjectProfile) {
+  const text = entryText(entry, profile.label);
+  return text.includes(normalize("Hausgeld")) && !includesAny(text, EXPLICIT_HAUSGELD_SPLIT_CATEGORIES);
+}
+
+function livingAreaForProfile(profile: TaxObjectProfile, objects: TaxReportObjectOption[]) {
+  if (profile.usage === "rented_parking") return 0;
+  const object = objects.find((item) => {
+    const resolved = getTaxObjectProfileForLabel(`${item.label} ${item.code ?? ""} ${item.id ?? ""} ${(item.aliases ?? []).join(" ")}`);
+    return resolved?.key === profile.key;
+  });
+  const value = Number(object?.livingAreaM2 ?? 0);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+type ClassifiedBooking = Omit<AnlageVBookingExportRow, "recordType" | "taxYear" | "objectId" | "objectName" | "livingAreaM2" | "bookingDate" | "bookingText" | "paymentStatus">;
+
+function classifyBookingForAnlageV(entry: TaxReportEntry, profile: TaxObjectProfile): ClassifiedBooking {
+  const category = canonicalCategoryForTax(entry, profile.label);
+  const text = entryText(entry, profile.label);
+  const value = amount(entry.amount);
+  const isSettlement = category === MIETE_NACHZAHLUNG_CATEGORY || includesAny(text, ["mietnachzahlung", "nebenkostenabrechnung", "betriebskostenabrechnung", "erstattung"]);
+
+  if (entry.entry_type === "income") {
+    if (category === "Mietbestandteil-NK" || includesAny(text, ["nebenkostenvorauszahlung", "mietbestandteil nk", "betriebskostenvorauszahlung"])) {
+      return { categoryName: "Nebenkostenvorauszahlung", officialFormLine: "Anlage V Zeile 20", incomeAmount: value, expenseAmount: 0, apportionableStatus: "Nicht anwendbar", reviewStatus: "Exportiert" };
+    }
+    if (isSettlement) {
+      return { categoryName: "Mietnachzahlungen & Erstattungen", officialFormLine: "Anlage V Zeile 21", incomeAmount: value, expenseAmount: 0, apportionableStatus: "Nicht anwendbar", reviewStatus: "Exportiert" };
+    }
+    if (isIncomeForAnlageV(entry, profile)) {
+      return {
+        categoryName: "Kaltmiete",
+        officialFormLine: profile.usage === "rented_parking" ? "Anlage V Zeilen 16-18 (andere Räume)" : "Anlage V Zeilen 13-15 (Wohnraum)",
+        incomeAmount: value,
+        expenseAmount: 0,
+        apportionableStatus: "Nicht anwendbar",
+        reviewStatus: "Exportiert",
+      };
+    }
+  }
+
+  if (entry.entry_type === "expense" && isSettlement) {
+    return { categoryName: "Mietnachzahlungen & Erstattungen", officialFormLine: "Anlage V Zeile 21", incomeAmount: -value, expenseAmount: 0, apportionableStatus: "Nicht anwendbar", reviewStatus: "Exportiert" };
+  }
+
+  if (entry.entry_type === "expense") {
+    if (isCreditRateEntry(entry, profile.label)) {
+      return { categoryName: "Tilgung / Kreditrate", officialFormLine: "Nicht abzugsfähig", incomeAmount: 0, expenseAmount: 0, apportionableStatus: "Nein", reviewStatus: "Blockiert" };
+    }
+    if (isReserveContribution(entry, profile)) {
+      return { categoryName: "Instandhaltungsrücklage - Zuführung", officialFormLine: "Blockiert bis tatsächliche Rücklagenentnahme", incomeAmount: 0, expenseAmount: 0, apportionableStatus: "Nein", reviewStatus: "Blockiert" };
+    }
+    if (isUnsplitHausgeld(entry, profile)) {
+      return { categoryName: "Hausgeld - Aufteilung erforderlich", officialFormLine: "Keine Formularzeile bis Aufteilung", incomeAmount: 0, expenseAmount: 0, apportionableStatus: "Nein", reviewStatus: "Blockiert" };
+    }
+    if (includesAny(text, ["disagio", "damnum", "erbbauzins"])) {
+      return { categoryName: "Schuldzinsen", officialFormLine: "Anlage V Zeilen 46-48", incomeAmount: 0, expenseAmount: value, apportionableStatus: "Nein", reviewStatus: "Exportiert" };
+    }
+    if (categoryMatches(entry, MONEY_PROCUREMENT_CATEGORIES, profile)) {
+      return { categoryName: "Geldbeschaffungskosten", officialFormLine: "Anlage V Zeilen 49-51", incomeAmount: 0, expenseAmount: value, apportionableStatus: "Nein", reviewStatus: "Exportiert" };
+    }
+    if (entry.nk_relevant === true) {
+      return { categoryName: "Umlagefähige Betriebskosten", officialFormLine: "Anlage V Zeilen 73-75", incomeAmount: 0, expenseAmount: value, apportionableStatus: "Ja", reviewStatus: "Exportiert" };
+    }
+    if (categoryMatches(entry, MAINTENANCE_CATEGORIES, profile) || includesAny(text, ["rücklagenentnahme", "ruecklagenentnahme"])) {
+      return { categoryName: "Erhaltungsaufwand", officialFormLine: "Anlage V Zeilen 55-72", incomeAmount: 0, expenseAmount: value / getDistributionYears(entry), apportionableStatus: "Nein", reviewStatus: "Exportiert" };
+    }
+    if (categoryMatches(entry, RUNNING_COST_CATEGORIES.filter((item) => item !== "Hausgeld"), profile)) {
+      return { categoryName: "Umlagefähige Betriebskosten", officialFormLine: "Anlage V Zeilen 73-75", incomeAmount: 0, expenseAmount: value, apportionableStatus: "Ja", reviewStatus: "Exportiert" };
+    }
+    if (categoryMatches(entry, ADMINISTRATION_CATEGORIES, profile)) {
+      return { categoryName: "Nicht umlagefähige Kosten / Verwaltung", officialFormLine: "Anlage V Zeilen 76-78", incomeAmount: 0, expenseAmount: value, apportionableStatus: "Nein", reviewStatus: "Exportiert" };
+    }
+    if (entry.tax_relevant === true) {
+      return { categoryName: "Nicht zugeordnet - Prüfung erforderlich", officialFormLine: "Formularzeile prüfen", incomeAmount: 0, expenseAmount: value, apportionableStatus: "Nein", reviewStatus: "Prüfung erforderlich" };
+    }
+  }
+
+  return { categoryName: "Nicht steuerrelevant", officialFormLine: "Nicht exportiert", incomeAmount: 0, expenseAmount: 0, apportionableStatus: "Nein", reviewStatus: "Blockiert" };
+}
+
+function buildBookingExportRow(entry: TaxReportEntry, profile: TaxObjectProfile, livingAreaM2: number | null, year: number): AnlageVBookingExportRow {
+  return {
+    recordType: "Buchung",
+    taxYear: year,
+    objectId: profile.taxObjectId,
+    objectName: profile.reportLabel,
+    livingAreaM2,
+    bookingDate: entry.booking_date ?? "",
+    bookingText: entry.note ?? entry.category ?? "",
+    paymentStatus: "Bezahlt",
+    ...classifyBookingForAnlageV(entry, profile),
+  };
 }
 
 function getDistributionYears(entry: TaxReportEntry) {
@@ -361,6 +560,9 @@ function isCraftsmanTrip(trip: MileageTripRow) {
 
 function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[], loans: TaxReportLoanRow[], trips: MileageTripRow[], objects: TaxReportObjectOption[], year: number): AnlageVReport {
   const profileEntries = entries.filter((entry) => entryYear(entry) === year && resolveEntryTaxProfile(entry, objects)?.key === profile.key);
+  const livingAreaM2 = livingAreaForProfile(profile, objects);
+  const bookingRows = profileEntries.map((entry) => buildBookingExportRow(entry, profile, livingAreaM2, year));
+  const blockedEntries = profileEntries.filter((_, index) => bookingRows[index]?.reviewStatus === "Blockiert");
   const rentedObjectCount = TAX_OBJECT_PROFILES.filter(isAnlageVEligible).length;
   const portfolioAdministrationRows = entries.filter((entry) => (
     entryYear(entry) === year
@@ -374,7 +576,7 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
     const details = parseTelecommunicationTaxDetails({ ...entry, rentedObjectCount });
     return details?.allocatedPerRentedObject ?? 0;
   });
-  const income = sumCurrency(profileEntries.filter((entry) => isIncomeForAnlageV(entry, profile)), (entry) => amount(entry.amount));
+  const income = sumCurrency(bookingRows, (row) => row.incomeAmount);
   const buildingAfa = profile.buildingYear <= 2021 ? roundCurrency(profile.acquisitionPrice * profile.afaRate) : 0;
   const inventoryAfa = sumCurrency(
     profileEntries.filter((entry) => entry.entry_type === "expense" && categoryMatches(entry, INVENTORY_CATEGORIES, profile)),
@@ -383,17 +585,13 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
       return value <= 800 ? value : value / 10;
     },
   );
-  const loanInterest = loanInterestForProfile(loans, profile, year);
-  const maintenanceRows = profileEntries.filter((entry) => entry.entry_type === "expense" && categoryMatches(entry, MAINTENANCE_CATEGORIES, profile));
-  const maintenance = sumCurrency(maintenanceRows, (entry) => amount(entry.amount) / getDistributionYears(entry));
-  const runningCosts = sumCurrency(
-    profileEntries.filter((entry) => entry.entry_type === "expense" && categoryMatches(entry, RUNNING_COST_CATEGORIES, profile)),
-    (entry) => amount(entry.amount),
-  );
-  const administrationCostsFromEntries = sumCurrency(
-    profileEntries.filter((entry) => entry.entry_type === "expense" && categoryMatches(entry, ADMINISTRATION_CATEGORIES, profile)),
-    (entry) => amount(entry.amount),
-  );
+  const ledgerLoanInterest = loanInterestForProfile(loans, profile, year);
+  const loanInterest = roundCurrency(ledgerLoanInterest + sumCurrency(bookingRows.filter((row) => row.categoryName === "Schuldzinsen"), (row) => row.expenseAmount));
+  const moneyProcurementCosts = sumCurrency(bookingRows.filter((row) => row.categoryName === "Geldbeschaffungskosten"), (row) => row.expenseAmount);
+  const maintenanceRows = profileEntries.filter((_, index) => bookingRows[index]?.categoryName === "Erhaltungsaufwand");
+  const maintenance = sumCurrency(bookingRows.filter((row) => row.categoryName === "Erhaltungsaufwand"), (row) => row.expenseAmount);
+  const runningCosts = sumCurrency(bookingRows.filter((row) => row.categoryName === "Umlagefähige Betriebskosten"), (row) => row.expenseAmount);
+  const administrationCostsFromEntries = sumCurrency(bookingRows.filter((row) => row.categoryName === "Nicht umlagefähige Kosten / Verwaltung"), (row) => row.expenseAmount);
   const businessMealRows = profileEntries.filter((entry) => entry.entry_type === "expense" && isBusinessMealCategory(canonicalCategoryForTax(entry, profile.label)));
   const businessMealDeductible = sumCurrency(businessMealRows, (entry) => calculateBusinessMealDeductible(amount(entry.amount)));
   const mileageRows = trips.filter((trip) => trip.steuerjahr === year && matchesProfileTrip(trip, profile));
@@ -401,10 +599,14 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
   const mileageVmaCosts = sumCurrency(mileageRows, (trip) => amount(trip.vma_betrag));
   const mileageHotelCosts = sumCurrency(mileageRows, (trip) => amount(trip.hotelkosten_brutto));
   const mileageCosts = sumCurrency(mileageRows, tripTotalAmount);
-  const administrationCosts = roundCurrency(administrationCostsFromEntries + portfolioAdministrationShare + businessMealDeductible + telecommunicationDeductible + mileageCosts + profile.bankAccountFlatFee);
-  const net = roundCurrency(income - buildingAfa - inventoryAfa - loanInterest - maintenance - runningCosts - administrationCosts);
+  const administrationCosts = roundCurrency(administrationCostsFromEntries + portfolioAdministrationShare + businessMealDeductible + telecommunicationDeductible + mileageCosts);
+  const net = roundCurrency(income - buildingAfa - inventoryAfa - loanInterest - moneyProcurementCosts - maintenance - runningCosts - administrationCosts);
   const warnings = [
     profile.acquisitionPrice <= 0 ? "AfA-Grundlage fehlt oder ist 0 EUR. Bitte Anschaffungspreis pruefen." : "",
+    profile.usage === "rented_residential" && livingAreaM2 === null ? "Wohnfläche fehlt. Bitte in den Immobilien-Stammdaten ergänzen." : "",
+    blockedEntries.some((entry) => isReserveContribution(entry, profile)) ? "Zuführung zur Instandhaltungsrücklage wurde blockiert. Abzug erst bei tatsächlicher Verwendung für Erhaltungsmaßnahmen." : "",
+    blockedEntries.some((entry) => isUnsplitHausgeld(entry, profile)) ? "Mindestens eine Hausgeldzahlung ist nicht in umlagefähige Kosten, nicht umlagefähige Kosten und Rücklage aufgeteilt und wurde blockiert." : "",
+    ledgerLoanInterest > 0 ? "Schuldzinsen stammen als Jahressumme aus dem Darlehens-Ledger. Einzelne Zahlungstage bitte anhand des Darlehenskontos belegen." : "",
     maintenanceRows.some((entry) => getDistributionYears(entry) > 1) ? "Erhaltungsaufwand wird teilweise ueber mehrere Jahre verteilt." : "",
     businessMealRows.some((entry) => {
       const details = parseBusinessMealDetails({ ...entry, objectLabel: profile.label });
@@ -421,6 +623,7 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
     buildingAfa,
     inventoryAfa,
     loanInterest,
+    moneyProcurementCosts,
     maintenance,
     maintenanceDistributionYears: Math.max(1, ...maintenanceRows.map(getDistributionYears)),
     runningCosts,
@@ -436,10 +639,63 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
     mileageVmaCosts,
     mileageHotelCosts,
     mileageRows,
-    bankAccountFlatFee: profile.bankAccountFlatFee,
+    bankAccountFlatFee: 0,
     net,
     warnings,
     entries: profileEntries,
+    livingAreaM2,
+    bookingRows: [
+      ...bookingRows,
+      ...(ledgerLoanInterest > 0 ? [{
+        recordType: "Darlehenszins" as const,
+        taxYear: year,
+        objectId: profile.taxObjectId,
+        objectName: profile.reportLabel,
+        livingAreaM2,
+        bookingDate: "",
+        categoryName: "Schuldzinsen",
+        officialFormLine: "Anlage V Zeilen 46-48",
+        bookingText: `Darlehensmodul - Jahressumme ${year}, ausschließlich Zinsanteil, keine Tilgung; Einzelzahlungstage anhand Darlehenskonto prüfen`,
+        incomeAmount: 0,
+        expenseAmount: ledgerLoanInterest,
+        apportionableStatus: "Nein" as const,
+        paymentStatus: "Bezahlt" as const,
+        reviewStatus: "Prüfung erforderlich" as const,
+      }] : []),
+      ...mileageRows.map((trip) => ({
+        recordType: "Fahrtkosten" as const,
+        taxYear: year,
+        objectId: profile.taxObjectId,
+        objectName: profile.reportLabel,
+        livingAreaM2,
+        bookingDate: trip.datum,
+        categoryName: "Fahrtkosten",
+        officialFormLine: "Anlage V Zeilen 80-82 (sonstige Kosten)",
+        bookingText: `${trip.grund} | ${trip.start_adresse} -> ${trip.zieladresse}`,
+        incomeAmount: 0,
+        expenseAmount: tripTotalAmount(trip),
+        apportionableStatus: "Nein" as const,
+        paymentStatus: "Bezahlt" as const,
+        reviewStatus: "Exportiert" as const,
+      })),
+      ...portfolioAdministrationRows.map((entry) => ({
+        recordType: "Portfolio-Kosten" as const,
+        taxYear: year,
+        objectId: profile.taxObjectId,
+        objectName: profile.reportLabel,
+        livingAreaM2,
+        bookingDate: entry.booking_date ?? "",
+        categoryName: "Nicht umlagefähige Kosten / Verwaltung",
+        officialFormLine: "Anlage V Zeilen 76-78",
+        bookingText: `${entry.category ?? "Portfolio-Kosten"} | ${entry.note ?? ""}`,
+        incomeAmount: 0,
+        expenseAmount: roundCurrency(amount(entry.amount) / rentedObjectCount),
+        apportionableStatus: "Nein" as const,
+        paymentStatus: "Bezahlt" as const,
+        reviewStatus: "Exportiert" as const,
+      })),
+    ],
+    blockedEntries,
   };
 }
 
@@ -519,9 +775,18 @@ export function buildTaxAdvisorDashboard(params: {
     .filter(isAnlageVEligible)
     .map((profile) => buildAnlageVReport(profile, entries, loans, mileageTrips, objects, params.year));
   const section35aReport = buildSection35aReport(entries, mileageTrips, objects, params.year);
+  const unresolvedTaxEntries = entries.filter((entry) => (
+    entryYear(entry) === params.year
+    && entry.tax_relevant !== false
+    && !isPortfolioGeneralEntry(entry)
+    && !resolveEntryTaxProfile(entry, objects)
+  ));
   const warnings = [
     ...AnlageVReports.flatMap((report) => report.warnings.map((warning) => `${report.profile.reportLabel}: ${warning}`)),
     ...section35aReport.warnings.map((warning) => `${section35aReport.profile.reportLabel}: ${warning}`),
+    ...(unresolvedTaxEntries.length
+      ? [`${unresolvedTaxEntries.length} steuerlich mögliche Buchung(en) konnten keinem Steuerobjekt zugeordnet werden. Bei Rosenstein muss P250, P253 oder P254 im Objektcode stehen.`]
+      : []),
   ];
   return { year: params.year, AnlageVReports, section35aReport, warnings };
 }
@@ -532,8 +797,10 @@ export function formatTaxCurrency(value: number): string {
 
 export function buildAnlageVReportLines(report: AnlageVReport): string[] {
   return [
+    `Objekt-ID: ${report.profile.taxObjectId}`,
     `Objekt: ${report.profile.reportLabel}`,
     `Status: ${report.profile.usage === "rented_parking" ? "Vermietet - isolierte Stellplaetze" : "Vermietet - Wohnung"}`,
+    `Wohn-/Nutzfläche: ${report.profile.usage === "rented_parking" ? "0 m² Wohnfläche (Stellplatz)" : report.livingAreaM2 === null ? "fehlt - Stammdaten ergänzen" : `${report.livingAreaM2.toLocaleString("de-DE")} m²`}`,
     `Baujahr: ${report.profile.buildingYear}`,
     `AfA-Satz: ${(report.profile.afaRate * 100).toLocaleString("de-DE")} %`,
     "",
@@ -541,6 +808,7 @@ export function buildAnlageVReportLines(report: AnlageVReport): string[] {
     `Feld 2 - Gebaeude-/Teileigentum-AfA: ${formatTaxCurrency(report.buildingAfa)}`,
     `Feld 3 - Einbaukuechen & Inventar-AfA: ${formatTaxCurrency(report.inventoryAfa)}`,
     `Feld 4 - Schuldzinsen: ${formatTaxCurrency(report.loanInterest)}`,
+    `Feld 4a - Geldbeschaffungskosten: ${formatTaxCurrency(report.moneyProcurementCosts)}`,
     `Feld 5 - Erhaltungsaufwand: ${formatTaxCurrency(report.maintenance)}`,
     `Feld 6 - Laufende Betriebs- & Nebenkosten: ${formatTaxCurrency(report.runningCosts)}`,
     `Feld 7 - Verwaltungskosten & Pauschalen: ${formatTaxCurrency(report.administrationCosts)}`,
@@ -551,7 +819,14 @@ export function buildAnlageVReportLines(report: AnlageVReport): string[] {
     `    Fahrt/Taxi/Bahn (${MILEAGE_RATE_EUR.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}/km bei eigenem Auto): ${formatTaxCurrency(report.mileageTravelCosts)}`,
     `    Verpflegungsmehraufwand: ${formatTaxCurrency(report.mileageVmaCosts)}`,
     `    Hotelkosten: ${formatTaxCurrency(report.mileageHotelCosts)}`,
-    `  Kontoführungsgebühr-Pauschale: ${formatTaxCurrency(report.bankAccountFlatFee)}`,
+    "  Kontoführungsgebühren: nur tatsächlich bezahlte Buchungen im Steuerjahr; keine Pauschale",
+    ...(report.blockedEntries.length
+      ? [
+          "",
+          "Blockierte Buchungen (nicht steuerlich abgezogen):",
+          ...report.blockedEntries.map((entry) => `- ${entry.booking_date ?? "-"} | ${entry.category ?? "-"} | ${formatTaxCurrency(amount(entry.amount))} | ${classifyBookingForAnlageV(entry, report.profile).categoryName}`),
+        ]
+      : []),
     ...(report.mileageRows.length
       ? [
           "",
@@ -595,6 +870,12 @@ export function buildAnlageVReportLines(report: AnlageVReport): string[] {
     `Vorlaeufiges steuerliches Ergebnis: ${formatTaxCurrency(report.net)}`,
     ...(report.warnings.length ? ["", "Pruefhinweise:", ...report.warnings.map((warning) => `- ${warning}`)] : []),
   ];
+}
+
+export function buildAnlageVBookingExportRows(dashboard: TaxAdvisorDashboard): AnlageVBookingExportRow[] {
+  return dashboard.AnlageVReports
+    .flatMap((report) => report.bookingRows)
+    .sort((left, right) => left.objectName.localeCompare(right.objectName, "de") || left.bookingDate.localeCompare(right.bookingDate));
 }
 
 export function buildSection35aReportLines(report: Section35aReport): string[] {

@@ -914,7 +914,7 @@ function openAdvisorPdf(payload: AdvisorExportPayload) {
       },
       {
         title: "Exportbereich A · Anlage-V-Export",
-        subtitle: "Fünf getrennte Objektberichte: vier Wohnungen plus Rosensteinstr. 25 als isolierte TG-Stellplatz-Vermietung.",
+        subtitle: "Sieben getrennte Steuerobjekte: vier Wohnungen plus die Rosenstein-Stellplätze P250, P253 und P254.",
         paragraphs: ["Hohenloher Str. 78 bleibt für Anlage V gesperrt und wird im §35a-Bereich geführt."],
       },
       ...AnlageVSections,
@@ -1737,7 +1737,7 @@ export default function SteuerCenter() {
                 <div style={styles.metaLabel}>Exportbereich A</div>
                 <h3 style={styles.exportTitle}>Anlage-V-Export</h3>
               </div>
-              <TonePill label="5 separate Berichte" tone="green" />
+              <TonePill label="7 separate Berichte" tone="green" />
             </div>
             <div style={styles.AnlageVReportGrid}>
               {taxAdvisorDashboard.AnlageVReports.map((report) => (

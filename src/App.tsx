@@ -57,10 +57,14 @@ import { createRentAccountPdf } from "./lib/rentAccountPdf";
 import { isVacancyInRange, listVacancies, type UnitVacancy } from "./services/vacancyService";
 import { listMileageTrips, type MileageTripRow } from "./services/mileageTripService";
 import {
+  buildAnlageVBookingExportRows,
   buildAnlageVReportLines,
   buildSection35aReportLines,
   buildTaxAdvisorDashboard,
   formatTaxCurrency,
+  getTaxObjectProfileForLabel,
+  type AnlageVBookingExportRow,
+  type TaxReportLoanRow,
 } from "./services/taxReportEngine";
 import {
   deletePropertyTask,
@@ -1424,6 +1428,10 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
 
 type ReportKind = "tax" | "advisor" | "anlage-v-package" | "section35a" | "rent-account" | "utilities" | "wealth" | "handover" | "vacancy" | "tax-data-package";
 type ReportFormat = "pdf" | "csv" | "excel" | "zip";
+type AnlageVReportDataRow = Omit<AnlageVBookingExportRow, "recordType" | "paymentStatus"> & {
+  recordType: AnlageVBookingExportRow["recordType"] | "Leerstand" | "Offene Miete";
+  paymentStatus: AnlageVBookingExportRow["paymentStatus"] | "Nicht anwendbar";
+};
 
 function slugifyReportPart(value: string): string {
   return value
@@ -1934,6 +1942,9 @@ function ReportsExportsPage() {
   const [mileageTrips, setMileageTrips] = useState<MileageTripRow[]>([]);
   const [mileageError, setMileageError] = useState<string | null>(null);
   const [mileageLoadedYear, setMileageLoadedYear] = useState<number | null>(null);
+  const [taxLoanRows, setTaxLoanRows] = useState<TaxReportLoanRow[]>([]);
+  const [taxLoanError, setTaxLoanError] = useState<string | null>(null);
+  const [taxLoanLoadedYear, setTaxLoanLoadedYear] = useState<number | null>(null);
   const [rentAnnualReport, setRentAnnualReport] = useState<RentAnnualReportSnapshot | null>(null);
   const [activeExport, setActiveExport] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
@@ -1992,13 +2003,14 @@ function ReportsExportsPage() {
   const taxAdvisorDashboard = buildTaxAdvisorDashboard({
     year: selectedYear,
     entries: yearEntries,
-    loans: loanRows,
+    loans: taxLoanRows,
     mileageTrips,
     objects,
   });
   const rentReportReady = getReadyRentReport() !== null;
   const vacancyReportReady = vacancyLoadedRange === vacancyRangeKey;
   const mileageReportReady = mileageLoadedYear === selectedYear;
+  const taxLoanReportReady = taxLoanLoadedYear === selectedYear;
 
   useEffect(() => {
     let alive = true;
@@ -2046,12 +2058,49 @@ function ReportsExportsPage() {
     };
   }, [selectedYear]);
 
+  useEffect(() => {
+    let alive = true;
+
+    async function loadTaxLoanRows() {
+      try {
+        setTaxLoanError(null);
+        const { data, error } = await supabase
+          .from("property_loan_ledger")
+          .select("property_id,year,interest,principal")
+          .eq("year", selectedYear);
+        if (error) throw error;
+        if (alive) {
+          setTaxLoanRows((data ?? []).map((row) => ({
+            property_id: String(row.property_id ?? ""),
+            property_name: getPropertyName(String(row.property_id ?? "")),
+            year: Number(row.year ?? selectedYear),
+            interest: Number(row.interest ?? 0),
+            principal: Number(row.principal ?? 0),
+          })));
+        }
+      } catch (error) {
+        if (!alive) return;
+        setTaxLoanRows([]);
+        setTaxLoanError(error instanceof Error ? error.message : String(error));
+      } finally {
+        if (alive) setTaxLoanLoadedYear(selectedYear);
+      }
+    }
+
+    void loadTaxLoanRows();
+    return () => {
+      alive = false;
+    };
+  }, [getPropertyName, selectedYear]);
+
   function reportActionReady(kind: ReportKind): boolean {
     if (appDataLoading) return false;
     if (kind === "rent-account") return rentReportReady;
     if (kind === "vacancy") return vacancyReportReady;
-    if (kind === "section35a" || kind === "anlage-v-package") return mileageReportReady;
-    if (kind === "tax-data-package") return rentReportReady && vacancyReportReady && mileageReportReady;
+    if (kind === "section35a") return mileageReportReady;
+    if (kind === "anlage-v-package") return mileageReportReady && taxLoanReportReady;
+    if (kind === "tax") return objectFilter === "all" && rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady;
+    if (kind === "tax-data-package") return rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady;
     return true;
   }
 
@@ -2163,15 +2212,100 @@ function ReportsExportsPage() {
     ) ? rentAnnualReport : null;
   }
 
+  function buildAnlageVReportDataRows(): AnlageVReportDataRow[] {
+    const bookingRows: AnlageVReportDataRow[] = buildAnlageVBookingExportRows(taxAdvisorDashboard);
+    const readyRentReport = getReadyRentReport();
+    const openPaymentRows: AnlageVReportDataRow[] = readyRentReport
+      ? readyRentReport.rows.flatMap((rentRow) => {
+          const profile = getTaxObjectProfileForLabel(`${rentRow.objectLabel} ${rentRow.unitLabel}`);
+          if (!profile || profile.usage === "self_used_weg") return [];
+          const taxReport = taxAdvisorDashboard.AnlageVReports.find((report) => report.profile.key === profile.key);
+          return rentRow.months
+            .filter((month) => month.open > 0)
+            .map((month) => ({
+              recordType: "Offene Miete" as const,
+              taxYear: selectedYear,
+              objectId: profile.taxObjectId,
+              objectName: profile.reportLabel,
+              livingAreaM2: taxReport?.livingAreaM2 ?? (profile.usage === "rented_parking" ? 0 : null),
+              bookingDate: "",
+              categoryName: "Kaltmiete",
+              officialFormLine: profile.usage === "rented_parking" ? "Anlage V Zeilen 16-18 (andere Räume)" : "Anlage V Zeilen 13-15 (Wohnraum)",
+              bookingText: `${month.monthLabel} ${selectedYear} | Soll ${formatCurrency(month.expected)} | offen ${formatCurrency(month.open)} | ${rentRow.tenantName}`,
+              incomeAmount: 0,
+              expenseAmount: 0,
+              apportionableStatus: "Nicht anwendbar" as const,
+              paymentStatus: "Offen" as const,
+              reviewStatus: "Exportiert" as const,
+            }));
+        })
+      : [];
+
+    const vacancyRows: AnlageVReportDataRow[] = scopedVacancies.flatMap((vacancy) => {
+      const profile = getTaxObjectProfileForLabel(`${vacancy.object_label ?? ""} ${vacancy.object_code ?? ""} ${vacancy.unit_label ?? ""}`);
+      if (!profile || profile.usage === "self_used_weg") return [];
+      const taxReport = taxAdvisorDashboard.AnlageVReports.find((report) => report.profile.key === profile.key);
+      return [{
+        recordType: "Leerstand" as const,
+        taxYear: selectedYear,
+        objectId: profile.taxObjectId,
+        objectName: profile.reportLabel,
+        livingAreaM2: taxReport?.livingAreaM2 ?? (profile.usage === "rented_parking" ? 0 : null),
+        bookingDate: vacancy.start_date,
+        categoryName: "Leerstand",
+        officialFormLine: "Zusatzbericht - Nachweis der Vermietungsabsicht",
+        bookingText: `${formatDate(vacancy.start_date)} bis ${vacancy.end_date ? formatDate(vacancy.end_date) : "offen"} | ${vacancy.reason ?? "-"} | ${vacancy.notes ?? ""}`,
+        incomeAmount: 0,
+        expenseAmount: 0,
+        apportionableStatus: "Nicht anwendbar" as const,
+        paymentStatus: "Nicht anwendbar" as const,
+        reviewStatus: "Exportiert" as const,
+      }];
+    });
+
+    return [...bookingRows, ...openPaymentRows, ...vacancyRows]
+      .sort((left, right) => left.objectName.localeCompare(right.objectName, "de") || left.bookingDate.localeCompare(right.bookingDate));
+  }
+
   function buildReportLines(kind: ReportKind): string[] {
     if (kind === "tax-data-package") {
       return buildTaxDataPackageLines();
     }
 
+    if (kind === "tax") {
+      const dataRows = buildAnlageVReportDataRows();
+      const blockedCount = dataRows.filter((row) => row.reviewStatus === "Blockiert").length;
+      const reviewCount = dataRows.filter((row) => row.reviewStatus === "Prüfung erforderlich").length;
+      return [
+        `Steuer-Report Anlage V ${selectedYear}`,
+        "Datenbasis: Buchungen, Darlehensmodul, Fahrtenbuch, Mieteingang, Leerstand und Immobilien-Stammdaten.",
+        "Zeitraumregel: Es werden ausschließlich tatsächliche Zahlungsdaten vom 01.01. bis 31.12. des Steuerjahres berücksichtigt (§ 11 EStG).",
+        "Ausschluss: Hohenloher Str. 78 ist selbstgenutzt und vollständig aus Anlage V ausgeschlossen.",
+        "Hausgeldregel: Rücklagenzuführungen und nicht aufgeschlüsselte Hausgeldzahlungen werden nicht als Werbungskosten abgezogen.",
+        "Formularzeilen: Zuordnung nach amtlicher ELSTER-Hilfe zur Anlage V 2025; für spätere Steuerjahre vor Abgabe mit dem dann gültigen Formular abgleichen.",
+        "",
+        `Steuerobjekte: ${taxAdvisorDashboard.AnlageVReports.length} (4 Wohnungen und 3 getrennte TG-Stellplätze)`,
+        `Datensätze: ${dataRows.length}`,
+        `Blockiert: ${blockedCount}`,
+        `Prüfung erforderlich: ${reviewCount}`,
+        taxLoanError ? `Hinweis Darlehenszinsen: ${taxLoanError}` : "",
+        mileageError ? `Hinweis Fahrtenbuch: ${mileageError}` : "",
+        vacancyError ? `Hinweis Leerstand: ${vacancyError}` : "",
+        "",
+        ...taxAdvisorDashboard.AnlageVReports.flatMap((report, index) => [
+          `${index + 1}. ${report.profile.reportLabel}`,
+          ...buildAnlageVReportLines(report).map((line) => (line ? `  ${line}` : "")),
+          "",
+        ]),
+        "Detailnachweis je Buchung:",
+        ...dataRows.map((row) => `${row.bookingDate || "-"} | ${row.objectId} | ${row.categoryName} | ${row.officialFormLine} | Einnahme ${formatCurrency(row.incomeAmount)} | Ausgabe ${formatCurrency(row.expenseAmount)} | umlagefähig ${row.apportionableStatus} | Zahlung ${row.paymentStatus} | ${row.reviewStatus} | ${row.bookingText}`),
+      ];
+    }
+
     if (kind === "anlage-v-package") {
       return [
         `Steuerjahr: ${period}`,
-        "Exportbereich A: Anlage V - 5 separate Objektberichte",
+        "Exportbereich A: Anlage V - 7 separate Steuerobjekte",
         "",
         ...taxAdvisorDashboard.AnlageVReports.flatMap((report, index) => [
           `${index + 1}. ${report.profile.reportLabel}`,
@@ -2276,6 +2410,40 @@ function ReportsExportsPage() {
   }
 
   function buildReportCsv(kind: ReportKind): string {
+    if (kind === "tax") {
+      return buildCsv([
+        "Datensatztyp",
+        "Steuerjahr",
+        "Objekt_ID",
+        "Objekt_Name",
+        "Wohnflaeche_qm",
+        "Buchungsdatum_Zahlung",
+        "Kategorie_Name",
+        "Amtliche_Formularzeile",
+        "Buchungstext_Verwendungszweck",
+        "Einnahme_Betrag",
+        "Ausgabe_Betrag",
+        "Umlagefaehig_Status",
+        "Zahlungsstatus",
+        "Pruefstatus",
+      ], buildAnlageVReportDataRows().map((row) => [
+        row.recordType,
+        row.taxYear,
+        row.objectId,
+        row.objectName,
+        row.livingAreaM2 ?? "",
+        row.bookingDate,
+        row.categoryName,
+        row.officialFormLine,
+        row.bookingText,
+        row.incomeAmount,
+        row.expenseAmount,
+        row.apportionableStatus,
+        row.paymentStatus,
+        row.reviewStatus,
+      ]));
+    }
+
     if (kind === "tax-data-package") {
       return buildCsv(["Bereich", "Datei", "Format", "Beschreibung"], [
         ["Anlage V", `anlage-v/steuerberater-jahresakte-${period}.pdf`, "PDF", "Zusammengefuehrter Objektbericht mit Verwaltungskosten & Pauschalen"],
@@ -2509,7 +2677,9 @@ function ReportsExportsPage() {
       return;
     }
 
-    const baseName = `${slugifyReportPart(reportTitle(kind))}-${reportSlug}`;
+    const baseName = kind === "tax"
+      ? `Steuer-Report_Anlage_V_${period}`
+      : `${slugifyReportPart(reportTitle(kind))}-${reportSlug}`;
     if (kind === "anlage-v-package" && format === "zip") {
       const rentedReportCount = taxAdvisorDashboard.AnlageVReports.length || 1;
       const portfolioExpenseRows = taxAdvisorDashboard.AnlageVReports.flatMap((report) =>
@@ -2528,7 +2698,7 @@ function ReportsExportsPage() {
       const portfolioExpenseText = [
         `Portfolio-Ausgaben fuer Anlage V ${period}`,
         "Quelle: Buchhaltung, Zuordnung Allgemein / Portfolio-Ausgabe.",
-        "Diese Positionen werden nicht einer einzelnen Immobilie direkt zugeordnet, sondern anteilig auf die 5 vermieteten Anlage-V-Objekte verteilt. Hohenloher Str. 78 bleibt ausgeschlossen.",
+        "Diese Positionen werden nicht einer einzelnen Immobilie direkt zugeordnet, sondern anteilig auf die 7 vermieteten Anlage-V-Steuerobjekte verteilt. Hohenloher Str. 78 bleibt ausgeschlossen.",
         "",
         "Typische Kategorien: Steuerberater, Software, Kontofuehrungsgebuehr, Buero / Porto, Verwaltungskosten.",
         "",
@@ -2570,7 +2740,7 @@ function ReportsExportsPage() {
           ];
         }),
         { name: "anlage-v/gesamtuebersicht.csv", content: buildReportCsv("anlage-v-package") },
-        { name: "hinweis.txt", content: `Anlage V: Hohenloher Str. 78 ist wegen Status Selbstgenutzt / WEG technisch ausgeschlossen. Rosenstein wird als isolierte Stellplatz-Vermietung getrennt ausgewiesen.\n\nSteuerberater-, Software-, Kontofuehrungs- und sonstige Portfolio-Ausgaben finden Sie in anlage-v/portfolio-ausgaben-steuerberater-${period}.csv sowie im jeweiligen Objektbericht unter Feld 7.` },
+        { name: "hinweis.txt", content: `Anlage V: Hohenloher Str. 78 ist wegen Status Selbstgenutzt / WEG technisch ausgeschlossen. Die drei Rosenstein-Stellplätze P250, P253 und P254 werden als getrennte Steuerobjekte ausgewiesen.\n\nSteuerberater-, Software-, Kontofuehrungs- und sonstige Portfolio-Ausgaben finden Sie in anlage-v/portfolio-ausgaben-steuerberater-${period}.csv sowie im jeweiligen Objektbericht unter Feld 7.` },
       ];
       downloadBlob(`${baseName}.zip`, createZip(files));
       return;
@@ -2612,7 +2782,7 @@ function ReportsExportsPage() {
     },
     {
       title: "Anlage-V-Paket für Steuerberater",
-      description: "Erzeugt 5 getrennte Objektberichte: 4 Wohnungen plus Rosensteinstr. 25 als isolierte TG-Stellplatz-Vermietung. Hohenloher bleibt gesperrt.",
+      description: "Erzeugt 7 getrennte Steuerobjekte: 4 Wohnungen plus die Rosenstein-Stellplätze P250, P253 und P254. Hohenloher bleibt gesperrt.",
       icon: FileText,
       actions: [
         { label: "Anlage-V-Paket ZIP", kind: "anlage-v-package", format: "zip", primary: true },
@@ -2623,7 +2793,7 @@ function ReportsExportsPage() {
     },
     {
       title: "Steuer-Report (Anlage V)",
-      description: "Allgemeine Jahresübersicht aus Buchungen. Für die Steuerabgabe bitte bevorzugt das neue Anlage-V-Paket verwenden.",
+      description: "Fachlicher Detailreport für alle Immobilien nach Zahlungsdatum mit Formularzeile, Wohnfläche, getrennten Miet-/Kostenarten, Hausgeld-Sperre, Leerstand und offenen Mieten. Objektfilter: Alle Objekte.",
       icon: Euro,
       actions: [
         { label: "PDF herunterladen", kind: "tax", format: "pdf", primary: true },

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
+const taxEngine = await readFile(new URL("../src/services/taxReportEngine.ts", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -13,9 +14,23 @@ assert.match(app, /application\/vnd\.ms-excel;charset=utf-8/, "Excel-kompatible 
 assert.match(app, /function reportActionReady\(kind: ReportKind\)/, "Alle Berichtsschaltflächen müssen eine zentrale Bereitschaftsprüfung verwenden");
 assert.match(app, /kind === "rent-account"\) return rentReportReady/, "Mietkonto-Exporte dürfen erst nach dem Jahresreport freigegeben werden");
 assert.match(app, /kind === "vacancy"\) return vacancyReportReady/, "Leerstandsexporte dürfen erst nach der Leerstandsquelle freigegeben werden");
-assert.match(app, /kind === "tax-data-package"\) return rentReportReady && vacancyReportReady && mileageReportReady/, "Das Steuerberaterpaket muss auf alle enthaltenen Zusatzquellen warten");
+assert.match(app, /kind === "tax-data-package"\) return rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady/, "Das Steuerberaterpaket muss auf alle enthaltenen Zusatzquellen warten");
 assert.match(app, /disabled=\{!reportActionReady\(action\.kind\) \|\| activeExport !== null\}/, "Nicht bereite oder bereits laufende Exporte müssen deaktiviert sein");
 assert.match(app, /aria-busy=\{busy \|\| undefined\}/, "Laufende Exporte müssen barrierefrei als beschäftigt markiert sein");
 assert.match(app, /role="status"/, "Die App muss den Exportstatus sichtbar melden");
+assert.match(app, /kind === "tax"\) return objectFilter === "all" && rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady/, "Anlage V muss auf Alle Objekte, Mieteingang, Leerstand, Fahrtenbuch und Jahreszinsen warten");
+assert.match(app, /from\("property_loan_ledger"\)[\s\S]*\.eq\("year", selectedYear\)/, "Anlage V muss Darlehenszinsen jahresgenau aus dem Ledger laden");
+assert.match(app, /Steuer-Report_Anlage_V_\$\{period\}/, "Der Anlage-V-Dateiname muss dem fachlichen Namensschema folgen");
+assert.match(app, /"Objekt_ID"[\s\S]*"Wohnflaeche_qm"[\s\S]*"Amtliche_Formularzeile"/, "Der Anlage-V-Export muss die Pflichtfelder enthalten");
+assert.match(app, /"Umlagefaehig_Status"[\s\S]*"Zahlungsstatus"[\s\S]*"Pruefstatus"/, "Der Anlage-V-Export muss Umlage-, Zahlungs- und Prüfstatus enthalten");
+assert.match(app, /recordType: "Offene Miete"/, "Offene Mieten müssen als Zusatzdatensätze exportiert werden");
+assert.match(app, /recordType: "Leerstand"/, "Leerstände müssen als Zusatzdatensätze exportiert werden");
+assert.match(taxEngine, /key: "rosenstein-p250"[\s\S]*key: "rosenstein-p253"[\s\S]*key: "rosenstein-p254"/, "Die drei Rosenstein-Stellplätze müssen getrennte Steuerobjekte sein");
+assert.match(taxEngine, /entryYear\(entry\) === year/, "Buchungen müssen strikt nach tatsächlichem Zahlungsjahr gefiltert werden");
+assert.match(taxEngine, /Instandhaltungsrücklage - Zuführung[\s\S]*reviewStatus: "Blockiert"/, "Rücklagenzuführungen müssen steuerlich blockiert werden");
+assert.match(taxEngine, /Hausgeld - Aufteilung erforderlich[\s\S]*reviewStatus: "Blockiert"/, "Nicht aufgeschlüsseltes Hausgeld muss blockiert werden");
+assert.match(taxEngine, /Anlage V Zeile 20/, "Nebenkostenvorauszahlungen müssen der amtlichen Formularzeile zugeordnet werden");
+assert.match(taxEngine, /Anlage V Zeilen 46-48/, "Schuldzinsen müssen der amtlichen Formularzeile zugeordnet werden");
+assert.match(taxEngine, /bankAccountFlatFee: 0/, "Pauschale Kontoführungsgebühren dürfen das Zufluss-/Abflussprinzip nicht verletzen");
 
-console.log("14 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("28 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");

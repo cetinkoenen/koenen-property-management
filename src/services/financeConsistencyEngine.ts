@@ -272,7 +272,7 @@ function addSteuerberichtSourceChecks(
         propertyId: entry.object_id ? String(entry.object_id) : null,
         propertyName,
         detail: `St-Buchung "${entry.category ?? "ohne Kategorie"}" vom ${entry.booking_date ?? "ohne Datum"} konnte keinem Steuer-Objektprofil zugeordnet werden.`,
-        repairHint: "Objekt/Zuordnung korrigieren. Jede St-Buchung muss entweder einem der 5 Anlage-V-Objekte, Hohenloher §35a oder Allgemein/Portfolio-Ausgabe zugeordnet sein.",
+        repairHint: "Objekt/Zuordnung korrigieren. Jede St-Buchung muss entweder einem der 7 Anlage-V-Steuerobjekte, Hohenloher §35a oder Allgemein/Portfolio-Ausgabe zugeordnet sein.",
         actualValue: amountAbs(entry),
       });
     } else if (isSection35aProfile(profile) && entry.entry_type === "income") {

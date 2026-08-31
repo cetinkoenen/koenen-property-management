@@ -671,7 +671,7 @@ export default function EntryAdd() {
             </div>
             {isPortfolioGeneralSelected ? (
               <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: "#315f72", lineHeight: 1.35 }}>
-                Für übergreifende Kosten wie Software, Steuerberater, Büro/Porto oder Verwaltung. Steuerbericht verteilt anteilig auf die 5 vermieteten Objekte.
+                Für übergreifende Kosten wie Software, Steuerberater, Büro/Porto oder Verwaltung. Steuerbericht verteilt anteilig auf die 7 vermieteten Steuerobjekte.
               </div>
             ) : null}
           </label>

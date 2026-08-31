@@ -193,7 +193,7 @@ export function classifyTaxRelevance(entry: TaxRuleEntry, objectLabel?: string |
       taxRelevant: true,
       relevance: "tax",
       group: "Allgemein / Portfolio-Ausgabe (anteilige Verwaltungskosten)",
-      hint: "Übergreifende Kosten werden im Steuerbericht anteilig auf die 5 vermieteten Anlage-V-Objekte verteilt. Hohenloher Str. 78 bleibt ausgeschlossen.",
+      hint: "Übergreifende Kosten werden im Steuerbericht anteilig auf die 7 vermieteten Anlage-V-Steuerobjekte verteilt. Hohenloher Str. 78 bleibt ausgeschlossen.",
       locked: false,
     };
   }
