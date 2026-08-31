@@ -58,7 +58,6 @@ export function canonicalCategoryForTax(entry: TaxRuleEntry, objectLabel?: strin
 }
 
 export function isCreditRateEntry(entry: TaxRuleEntry, objectLabel?: string | null): boolean {
-  if (entry.entry_type !== "expense") return false;
   const canonicalCategory = canonicalCategoryForTax(entry, objectLabel);
   const text = normalize(`${canonicalCategory} ${entry.category ?? ""} ${entry.note ?? ""}`);
   return canonicalCategory === "Kreditrate" || includesAny(text, ["kreditrate", "monatsrate", "darlehensrate", "zins tilgung", "zins und tilgung", "tilgung"]);
@@ -70,6 +69,52 @@ export function classifyTaxRelevance(entry: TaxRuleEntry, objectLabel?: string |
   const text = normalize(`${canonicalCategory} ${entry.category ?? ""} ${entry.note ?? ""} ${entry.objekt_code ?? ""} ${objectLabel ?? ""}`);
   const isHohenloher = isHohenloherSelfUsedObject(text);
 
+  // Eindeutige steuerliche Sonderfaelle muessen vor dem technischen
+  // Buchungstyp ausgewertet werden. Historische Importe enthalten einzelne
+  // negative Ausgaben mit entry_type="income"; sie duerfen dadurch niemals
+  // als Vermietungseinnahme in Anlage V landen.
+  if (isCreditRateEntry(entry, objectLabel)) {
+    return {
+      taxRelevant: false,
+      relevance: "private",
+      group: "Kreditrate (nicht direkt Anlage V)",
+      hint: "Laufende Kreditrate enthaelt Zins und Tilgung zusammen. Nicht als St markieren; Jahreswerte kommen ueber Darlehen, nur Zinsanteil steuerrelevant.",
+      locked: true,
+    };
+  }
+
+  if (canonicalCategory === "Kaution" && !includesAny(text, ["einbehalten", "schadenersatz", "verrechnung"])) {
+    return {
+      taxRelevant: false,
+      relevance: entryType === "income" ? "check" : "private",
+      group: entryType === "income" ? "Kaution prüfen" : "Kaution / Rückzahlung (steuerneutral)",
+      hint: entryType === "income"
+        ? "Kaution ist nur steuerlich zu prüfen, wenn sie einbehalten oder verrechnet wurde."
+        : "Kautionen und Kautionsrückzahlungen sind grundsätzlich keine Werbungskosten. Nur ein nachweislich einbehaltener oder verrechneter Betrag wird gesondert geprüft.",
+      locked: entryType !== "income",
+    };
+  }
+
+  if (isPersonalMovingExpense(entry)) {
+    return {
+      taxRelevant: false,
+      relevance: "private",
+      group: "Private Umzugskosten (keine pauschale Anlage-V-Verteilung)",
+      hint: "Umzugskosten dürfen nicht pauschal auf Mietobjekte verteilt werden. Ohne belegten unmittelbaren Zusammenhang mit einem konkreten Vermietungsobjekt bleibt St ausgeschaltet.",
+      locked: true,
+    };
+  }
+
+  if (isAcquisitionSideCost(text)) {
+    return {
+      taxRelevant: false,
+      relevance: "check",
+      group: "Erwerbsnebenkosten / Anschaffungskosten prüfen",
+      hint: "Notar, Grundbuch, Grunderwerbsteuer, Makler und Kaufnebenkosten sind steuerlich relevant zu dokumentieren, aber nicht als laufende Werbungskosten zu behandeln. Sie gehören in der Regel zur Anschaffungskosten-/AfA-Basis und müssen separat geprüft werden.",
+      locked: true,
+    };
+  }
+
   if (entryType === "income") {
     if (isHohenloher) {
       return {
@@ -78,16 +123,6 @@ export function classifyTaxRelevance(entry: TaxRuleEntry, objectLabel?: string |
         group: "Selbstgenutzt / WEG (keine Anlage V)",
         hint: "Hohenloher Str. 78 ist selbstgenutzt/WEG und fuer Anlage V gesperrt. Einnahmen werden nicht als Vermietungseinnahmen in Anlage V gerechnet.",
         locked: true,
-      };
-    }
-
-    if (canonicalCategory === "Kaution" && !includesAny(text, ["einbehalten", "schadenersatz", "verrechnung"])) {
-      return {
-        taxRelevant: false,
-        relevance: "check",
-        group: "Kaution prüfen",
-        hint: "Kaution ist nur steuerlich zu prüfen, wenn sie einbehalten oder verrechnet wurde.",
-        locked: false,
       };
     }
 
@@ -115,46 +150,6 @@ export function classifyTaxRelevance(entry: TaxRuleEntry, objectLabel?: string |
       group: "Miete / Warmmiete (Einnahme)",
       hint: "Einnahmen aus Vermietung werden fuer Anlage V als steuerrelevant behandelt.",
       locked: false,
-    };
-  }
-
-  if (isCreditRateEntry({ ...entry, entry_type: entryType }, objectLabel)) {
-    return {
-      taxRelevant: false,
-      relevance: "private",
-      group: "Kreditrate (nicht direkt Anlage V)",
-      hint: "Laufende Kreditrate enthaelt Zins und Tilgung zusammen. Nicht als St markieren; Jahreswerte kommen ueber Darlehen, nur Zinsanteil steuerrelevant.",
-      locked: true,
-    };
-  }
-
-  if (canonicalCategory === "Kaution") {
-    return {
-      taxRelevant: false,
-      relevance: "private",
-      group: "Kaution / Rückzahlung (steuerneutral)",
-      hint: "Kautionen und Kautionsrückzahlungen sind grundsätzlich keine Werbungskosten. Nur ein nachweislich einbehaltener oder verrechneter Betrag wird gesondert geprüft.",
-      locked: true,
-    };
-  }
-
-  if (isPersonalMovingExpense(entry)) {
-    return {
-      taxRelevant: false,
-      relevance: "private",
-      group: "Private Umzugskosten (keine pauschale Anlage-V-Verteilung)",
-      hint: "Umzugskosten dürfen nicht pauschal auf Mietobjekte verteilt werden. Ohne belegten unmittelbaren Zusammenhang mit einem konkreten Vermietungsobjekt bleibt St ausgeschaltet.",
-      locked: true,
-    };
-  }
-
-  if (isAcquisitionSideCost(text)) {
-    return {
-      taxRelevant: false,
-      relevance: "check",
-      group: "Erwerbsnebenkosten / Anschaffungskosten prüfen",
-      hint: "Notar, Grundbuch, Grunderwerbsteuer, Makler und Kaufnebenkosten sind steuerlich relevant zu dokumentieren, aber nicht als laufende Werbungskosten zu behandeln. Sie gehören in der Regel zur Anschaffungskosten-/AfA-Basis und müssen separat geprüft werden.",
-      locked: true,
     };
   }
 

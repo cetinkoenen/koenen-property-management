@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const app = await readFile(new URL("../src/App.tsx", import.meta.url), "utf8");
 const taxEngine = await readFile(new URL("../src/services/taxReportEngine.ts", import.meta.url), "utf8");
+const taxClassification = await readFile(new URL("../src/lib/taxClassification.ts", import.meta.url), "utf8");
 const portfolioExpense = await readFile(new URL("../src/lib/portfolioExpense.ts", import.meta.url), "utf8");
 const appData = await readFile(new URL("../src/state/AppDataContext.tsx", import.meta.url), "utf8");
 
@@ -37,5 +38,10 @@ assert.match(taxEngine, /bankAccountFlatFee: 0/, "Pauschale Kontoführungsgebüh
 assert.match(portfolioExpense, /isPersonalMovingExpense[\s\S]*umzugskosten/, "Private Umzugskosten müssen aus der pauschalen Portfolio-Verteilung ausgeschlossen sein");
 assert.match(taxEngine, /isRosensteinSharedExpense[\s\S]*Anteil 1\/3/, "Gemeinsame Rosenstein-Kosten müssen ausschließlich auf die drei Stellplätze verteilt werden");
 assert.match(appData, /property_extra_info[\s\S]*wealth_profile[\s\S]*totalArea/, "Der Steuerreport muss die Wohnfläche aus den zentralen Immobilienvermögen-Details übernehmen");
+assert.doesNotMatch(taxClassification, /function isCreditRateEntry[\s\S]{0,180}entry_type !== "expense"/, "Kreditraten müssen auch bei einem historisch falschen Importtyp gesperrt bleiben");
+assert.ok(
+  taxClassification.indexOf("if (isAcquisitionSideCost(text))") < taxClassification.indexOf('if (entryType === "income")'),
+  "Erwerbsnebenkosten müssen vor der Einnahmenlogik erkannt werden",
+);
 
-console.log("31 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("33 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
