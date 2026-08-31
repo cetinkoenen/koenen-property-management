@@ -146,7 +146,6 @@ type PropertyMasterAreaRow = {
   id: string | null;
   property_id: string | null;
   name: string | null;
-  address: string | null;
   living_area_m2: unknown;
 };
 
@@ -548,7 +547,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,tax_relevant,nk_relevant,loan_interest_amount,loan_principal_amount,loan_rate_plan_id,loan_split_source").eq("is_deleted", false).order("booking_date", { ascending: false }).limit(5000),
         supabase.from("vw_property_loan_dashboard_portfolio_v2").select("property_id,portfolio_property_id,property_name,last_balance,principal_total,interest_total,repaid_percent,repayment_status,repayment_label").order("property_name", { ascending: true }),
         supabase.from("vw_property_loan_dashboard_dedup").select("property_id,property_name,first_year,last_year,last_balance_year,last_balance,interest_total,principal_total,repaid_percent,repaid_percent_display,repayment_status,repayment_label,refreshed_at").order("property_name", { ascending: true }),
-        supabase.from("properties").select("id,name,address,living_area_m2"),
+        supabase.from("properties").select("id,name,living_area_m2"),
         supabase.from("property_extra_info").select("property_id,living_area,wealth_profile"),
       ]);
 
@@ -579,7 +578,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const mappedObjects = baseObjects.map((object) => {
         const matchingMasters = propertyMasterRows.filter((row) => {
           const ids = uniqueClean([row.id, row.property_id]);
-          const names = uniqueClean([row.name, row.address]);
+          const names = uniqueClean([row.name]);
           return ids.some((id) => id === object.id || object.aliases?.includes(id))
             || names.some((name) => namesMatch(name, object.label) || object.aliases?.some((alias) => namesMatch(name, alias)));
         });
