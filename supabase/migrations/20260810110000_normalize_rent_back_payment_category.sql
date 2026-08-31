@@ -9,7 +9,7 @@ SET
   tax_relevant = true
 WHERE booking_date >= DATE '2024-01-01'
   AND booking_date <= CURRENT_DATE
-  AND lower(trim(coalesce(entry_type, ''))) = 'income'
+  AND lower(trim(coalesce(entry_type::text, ''))) = 'income'
   AND lower(trim(coalesce(category, ''))) IN (
     'miete nachzahlung',
     'mietnachzahlung',

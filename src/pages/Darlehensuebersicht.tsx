@@ -5,6 +5,7 @@ import { calculateYearlyFinanceMetrics } from "@/services/financeService";
 import { generatePropertyLoanLedgerProjection, loadPropertyLoanLedger } from "@/services/propertyLoanLedgerService";
 import type { LoanLedgerRow } from "@/types/loanLedger";
 import { supabase } from "@/lib/supabase";
+import { importLoanRatePlanFiles } from "@/services/loanRatePlanService";
 
 type PropertyRow = {
   property_id: string;
@@ -481,6 +482,9 @@ export default function Darlehensuebersicht() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState<string>("");
+  const [importingPlans, setImportingPlans] = useState(false);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
 
   async function load() {
     try {
@@ -517,6 +521,23 @@ export default function Darlehensuebersicht() {
     const initialLoad = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(initialLoad);
   }, []);
+
+  async function importPlans(files: File[]) {
+    if (!files.length) return;
+    try {
+      setImportingPlans(true);
+      setImportStatus(null);
+      setImportWarnings([]);
+      const result = await importLoanRatePlanFiles(files);
+      setImportStatus(`${result.rows} Monatswerte aus ${files.length} CSV-Datei(en) gespeichert; ${result.bookings} bestehende Kreditraten wurden mit Zins und Tilgung verknüpft.`);
+      setImportWarnings(result.warnings);
+      await load();
+    } catch (importError) {
+      setImportStatus(`Fehler beim Tilgungsplan-Import: ${importError instanceof Error ? importError.message : String(importError)}`);
+    } finally {
+      setImportingPlans(false);
+    }
+  }
 
   const filteredRows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -562,6 +583,44 @@ export default function Darlehensuebersicht() {
             <div style={styles.metricLabel}>Zinsen gesamt</div>
             <div style={styles.metricValue}>{formatCurrency(totals.interest)}</div>
           </div>
+        </div>
+
+        <div style={{ marginTop: 20, border: "1px solid #bfdbfe", borderRadius: 18, background: "#eff6ff", padding: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 900, color: "#1e3a8a", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Monatliche Tilgungspläne · Hauptquelle
+          </div>
+          <p style={{ ...styles.text, marginTop: 8 }}>
+            Deutsche CSV-Tilgungspläne importieren. Die App speichert Rate, Zins, Tilgung, Restschuld, Quelldatei und Qualitätsstatus pro Objekt und Monat in Supabase. Vorhandene Kreditraten-Buchungen werden automatisch verknüpft.
+          </p>
+          <label style={{ ...styles.primaryButton, display: "inline-flex", alignItems: "center", gap: 8, marginTop: 12, opacity: importingPlans ? 0.65 : 1 }}>
+            {importingPlans ? "Tilgungspläne werden importiert…" : "CSV-Tilgungspläne auswählen"}
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              multiple
+              disabled={importingPlans}
+              style={{ display: "none" }}
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                event.target.value = "";
+                void importPlans(files);
+              }}
+            />
+          </label>
+          {importStatus ? (
+            <div style={{ marginTop: 12, fontSize: 13, fontWeight: 800, color: importStatus.startsWith("Fehler") ? "#991b1b" : "#166534" }}>
+              {importStatus}
+            </div>
+          ) : null}
+          {importWarnings.length ? (
+            <details style={{ marginTop: 10, color: "#92400e", fontSize: 12, fontWeight: 750 }}>
+              <summary>{importWarnings.length} Quellenhinweis(e) anzeigen</summary>
+              <ul style={{ margin: "8px 0 0", paddingLeft: 20 }}>
+                {importWarnings.slice(0, 20).map((warning) => <li key={warning} style={{ marginTop: 5 }}>{warning}</li>)}
+              </ul>
+              {importWarnings.length > 20 ? <div style={{ marginTop: 8 }}>Weitere {importWarnings.length - 20} Hinweise sind mit den Monatszeilen in Supabase gespeichert.</div> : null}
+            </details>
+          ) : null}
         </div>
       </section>
 

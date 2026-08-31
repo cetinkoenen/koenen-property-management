@@ -11,6 +11,7 @@ const checks = [
   ["Berichtsexporte", "npm", ["run", "stress:report-exports"]],
   ["Logos in App und PDF-Berichten", "npm", ["run", "stress:report-logos"]],
   ["Sicherheitsbasis", "npm", ["run", "stress:security"]],
+  ["Tilgungspläne und Kreditraten", "npm", ["run", "stress:loan-rate-plans"]],
   ["Marke und Projektname", "npm", ["run", "stress:branding"]],
 ];
 

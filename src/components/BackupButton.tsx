@@ -14,6 +14,7 @@ const BACKUP_TABLES = [
   "objects",
   "property_loans",
   "property_loan_ledger",
+  "property_loan_rate_plan",
   "property_income",
   "yearly_property_income",
   "yearly_capex_entries",

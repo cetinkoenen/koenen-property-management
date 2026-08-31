@@ -24,6 +24,10 @@ export type FinanceEntry = {
   note: string | null;
   tax_relevant?: boolean | null;
   nk_relevant?: boolean | null;
+  loan_interest_amount?: number | null;
+  loan_principal_amount?: number | null;
+  loan_rate_plan_id?: string | null;
+  loan_split_source?: string | null;
 };
 
 
@@ -132,6 +136,10 @@ type FinanceEntryRow = {
   note: string | null;
   tax_relevant: boolean | null;
   nk_relevant: boolean | null;
+  loan_interest_amount: unknown;
+  loan_principal_amount: unknown;
+  loan_rate_plan_id: string | null;
+  loan_split_source: string | null;
 };
 
 type PropertyMasterAreaRow = {
@@ -538,7 +546,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     try {
       const [objectsRes, entriesRes, portfolioRes, loanRes, propertyMasterRes, propertyExtraRes] = await Promise.all([
         supabase.from("v_object_dropdown").select("value,objekt_code,label,object_id,property_id").order("label", { ascending: true }),
-        supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,tax_relevant,nk_relevant").eq("is_deleted", false).order("booking_date", { ascending: false }).limit(5000),
+        supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,tax_relevant,nk_relevant,loan_interest_amount,loan_principal_amount,loan_rate_plan_id,loan_split_source").eq("is_deleted", false).order("booking_date", { ascending: false }).limit(5000),
         supabase.from("vw_property_loan_dashboard_portfolio_v2").select("property_id,portfolio_property_id,property_name,last_balance,principal_total,interest_total,repaid_percent,repayment_status,repayment_label").order("property_name", { ascending: true }),
         supabase.from("vw_property_loan_dashboard_dedup").select("property_id,property_name,first_year,last_year,last_balance_year,last_balance,interest_total,principal_total,repaid_percent,repaid_percent_display,repayment_status,repayment_label,refreshed_at").order("property_name", { ascending: true }),
         supabase.from("properties").select("id,name,title,address,living_area_m2"),
@@ -625,6 +633,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         note: row.note ?? null,
         tax_relevant: typeof row.tax_relevant === "boolean" ? row.tax_relevant : null,
         nk_relevant: typeof row.nk_relevant === "boolean" ? row.nk_relevant : null,
+        loan_interest_amount: row.loan_interest_amount == null ? null : toNumber(row.loan_interest_amount),
+        loan_principal_amount: row.loan_principal_amount == null ? null : toNumber(row.loan_principal_amount),
+        loan_rate_plan_id: row.loan_rate_plan_id ?? null,
+        loan_split_source: row.loan_split_source ?? null,
       }));
 
       // Monatsmieten werden absichtlich aus finance_entry berechnet, damit die 25.-des-Monats-Regel überall gleich gilt.

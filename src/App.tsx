@@ -80,6 +80,7 @@ import { createPdfLogoObject, drawPdfLogo } from "./lib/pdfLogo";
 import { AppDataProvider, useAppData, type FinanceEntry } from "./state/AppDataContext";
 import { EmptyState, InfoList, KpiCard, ModuleCard, PageHeader, SectionPanel } from "./components/ui/professional";
 import { isPortfolioGeneralEntry, PORTFOLIO_GENERAL_LABEL } from "./lib/portfolioExpense";
+import { canonicalCategoryForTax } from "./lib/taxClassification";
 import type { RentAnnualReportSnapshot } from "./pages/Mietuebersicht";
 import "./App.css";
 
@@ -2070,13 +2071,52 @@ function ReportsExportsPage() {
           .eq("year", selectedYear);
         if (error) throw error;
         if (alive) {
-          setTaxLoanRows((data ?? []).map((row) => ({
+          const reportYearEntries = entries.filter((entry) => entry.booking_date?.startsWith(`${selectedYear}-`));
+          const bookedSplits = objects.map((object) => {
+            const rows = reportYearEntries.filter((entry) => (
+              (entry.object_id === object.id || Boolean(entry.objekt_code && object.code && entry.objekt_code === object.code))
+              && canonicalCategoryForTax(entry, object.label) === "Kreditrate"
+              && entry.loan_interest_amount != null
+              && entry.loan_principal_amount != null
+            ));
+            return {
+              object,
+              count: rows.length,
+              interest: rows.reduce((sum, entry) => sum + Number(entry.loan_interest_amount ?? 0), 0),
+              principal: rows.reduce((sum, entry) => sum + Number(entry.loan_principal_amount ?? 0), 0),
+            };
+          }).filter((item) => item.count > 0);
+
+          const ledgerRows = (data ?? []).map((row) => ({
             property_id: String(row.property_id ?? ""),
             property_name: getPropertyName(String(row.property_id ?? "")),
             year: Number(row.year ?? selectedYear),
             interest: Number(row.interest ?? 0),
             principal: Number(row.principal ?? 0),
-          })));
+          }));
+          const resolved = ledgerRows.map((row) => {
+            const normalizedLoanName = row.property_name.toLowerCase();
+            const split = bookedSplits.find((item) => {
+              const objectName = item.object.label.toLowerCase();
+              return row.property_id === item.object.id || normalizedLoanName.includes(objectName) || objectName.includes(normalizedLoanName);
+            });
+            return split ? { ...row, interest: split.interest, principal: split.principal } : row;
+          });
+          for (const split of bookedSplits) {
+            const alreadyIncluded = resolved.some((row) => {
+              const loanName = row.property_name.toLowerCase();
+              const objectName = split.object.label.toLowerCase();
+              return row.property_id === split.object.id || loanName.includes(objectName) || objectName.includes(loanName);
+            });
+            if (!alreadyIncluded) resolved.push({
+              property_id: split.object.id,
+              property_name: split.object.label,
+              year: selectedYear,
+              interest: split.interest,
+              principal: split.principal,
+            });
+          }
+          setTaxLoanRows(resolved);
         }
       } catch (error) {
         if (!alive) return;
@@ -2091,7 +2131,7 @@ function ReportsExportsPage() {
     return () => {
       alive = false;
     };
-  }, [getPropertyName, selectedYear]);
+  }, [entries, getPropertyName, objects, selectedYear]);
 
   function reportActionReady(kind: ReportKind): boolean {
     if (appDataLoading) return false;

@@ -40,6 +40,10 @@ type EntryRow = {
   entry_type: EntryType;
   tax_relevant: boolean | null;
   nk_relevant: boolean | null;
+  loan_interest_amount: number | null;
+  loan_principal_amount: number | null;
+  loan_rate_plan_id: string | null;
+  loan_split_source: string | null;
 };
 
 type LoanTaxRow = {
@@ -85,7 +89,7 @@ async function loadAllFinanceEntriesForTaxRules(): Promise<EntryRow[]> {
   while (true) {
     const { data, error } = await supabase
       .from("finance_entry")
-      .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,nk_relevant,is_deleted")
+      .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,nk_relevant,loan_interest_amount,loan_principal_amount,loan_rate_plan_id,loan_split_source,is_deleted")
       .eq("is_deleted", false)
       .in("entry_type", ["income", "expense"])
       .order("booking_date", { ascending: false })
@@ -106,6 +110,10 @@ async function loadAllFinanceEntriesForTaxRules(): Promise<EntryRow[]> {
         entry_type: entryType,
         tax_relevant: typeof item.tax_relevant === "boolean" ? item.tax_relevant : null,
         nk_relevant: typeof item.nk_relevant === "boolean" ? item.nk_relevant : null,
+        loan_interest_amount: item.loan_interest_amount == null ? null : parseLocaleNumber(item.loan_interest_amount, 0),
+        loan_principal_amount: item.loan_principal_amount == null ? null : parseLocaleNumber(item.loan_principal_amount, 0),
+        loan_rate_plan_id: item.loan_rate_plan_id ?? null,
+        loan_split_source: item.loan_split_source ?? null,
       };
     });
 
@@ -1069,7 +1077,7 @@ export default function SteuerCenter() {
 
       let query = supabase
         .from("finance_entry")
-        .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,nk_relevant,is_deleted")
+        .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,nk_relevant,loan_interest_amount,loan_principal_amount,loan_rate_plan_id,loan_split_source,is_deleted")
         .eq("is_deleted", false)
         .gte("booking_date", range.from)
         .lt("booking_date", range.to)
@@ -1095,6 +1103,10 @@ export default function SteuerCenter() {
           entry_type: item.entry_type === "expense" ? "expense" : "income",
           tax_relevant: typeof item.tax_relevant === "boolean" ? item.tax_relevant : null,
           nk_relevant: typeof item.nk_relevant === "boolean" ? item.nk_relevant : null,
+          loan_interest_amount: item.loan_interest_amount == null ? null : parseLocaleNumber(item.loan_interest_amount, 0),
+          loan_principal_amount: item.loan_principal_amount == null ? null : parseLocaleNumber(item.loan_principal_amount, 0),
+          loan_rate_plan_id: item.loan_rate_plan_id ?? null,
+          loan_split_source: item.loan_split_source ?? null,
         };
       });
 
@@ -1162,8 +1174,33 @@ export default function SteuerCenter() {
         });
       };
 
+      const bookedSplitsByCode = new Map<string, { interest: number; principal: number; count: number; sources: Set<string> }>();
+      for (const entry of rows) {
+        if (!entry.objekt_code || canonicalCategoryForTax(entry, objectLabelByCode.get(entry.objekt_code)) !== "Kreditrate") continue;
+        if (entry.loan_interest_amount === null || entry.loan_principal_amount === null) continue;
+        const current = bookedSplitsByCode.get(entry.objekt_code) ?? { interest: 0, principal: 0, count: 0, sources: new Set<string>() };
+        current.interest = Math.round((current.interest + entry.loan_interest_amount) * 100) / 100;
+        current.principal = Math.round((current.principal + entry.loan_principal_amount) * 100) / 100;
+        current.count += 1;
+        if (entry.loan_split_source) current.sources.add(entry.loan_split_source);
+        bookedSplitsByCode.set(entry.objekt_code, current);
+      }
+
       const loanRowsByObject = objectOptions.map<LoanTaxRow>((object) => {
         const matchedLoan = matchLoanToObject(object);
+        const bookedSplit = bookedSplitsByCode.get(object.objekt_code);
+        if (bookedSplit) {
+          return {
+            property_id: matchedLoan?.property_id ?? object.objekt_code,
+            property_label: object.label,
+            year,
+            interest: bookedSplit.interest,
+            principal: bookedSplit.principal,
+            balance: matchedLoan?.balance ?? 0,
+            source: `Gebuchte Monatsraten (${bookedSplit.count}) · ${Array.from(bookedSplit.sources).join(", ") || "manuell"}`,
+            has_year_value: true,
+          };
+        }
         if (matchedLoan) return matchedLoan;
         return {
           property_id: object.objekt_code,

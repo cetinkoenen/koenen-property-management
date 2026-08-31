@@ -9,6 +9,7 @@ import { buildBusinessMealNote, calculateBusinessMealDeductible, isBusinessMealC
 import { buildTelecommunicationNote, calculateTelecommunicationTax, isTelecommunicationCategory } from "../lib/telecommunicationTax";
 import { PORTFOLIO_GENERAL_LABEL, PORTFOLIO_GENERAL_OBJECT_CODE, PORTFOLIO_GENERAL_OBJECT_ID, isPortfolioGeneralReference } from "../lib/portfolioExpense";
 import { emitFinanceEntryChanged } from "../lib/appCache";
+import { findLoanRatePlanForBooking, type LoanRatePlanRow } from "../services/loanRatePlanService";
 
 type DropdownRow = {
   /** Muss für finance_entry.object_id die UUID aus public.objects.id sein. */
@@ -89,6 +90,10 @@ export default function EntryAdd() {
   const [telecomLandlineInternet, setTelecomLandlineInternet] = useState<string>("");
   const [taxRelevant, setTaxRelevant] = useState<boolean>(true);
   const [nkRelevant, setNkRelevant] = useState<boolean>(false);
+  const [loanInterest, setLoanInterest] = useState<string>("");
+  const [loanPrincipal, setLoanPrincipal] = useState<string>("");
+  const [loanRatePlan, setLoanRatePlan] = useState<LoanRatePlanRow | null>(null);
+  const [loanPlanLoading, setLoanPlanLoading] = useState(false);
 
   const [saving, setSaving] = useState<boolean>(false);
   const [loadingObjects, setLoadingObjects] = useState<boolean>(true);
@@ -111,6 +116,9 @@ export default function EntryAdd() {
     [kind, note, resolvedCategory],
   );
   const selectedObjectLabel = useMemo(() => objects.find((object) => String(object.value) === String(objectId))?.label ?? "", [objectId, objects]);
+  const isCreditRate = kind === "expense" && resolvedCategory === "Kreditrate";
+  const loanInterestNumber = useMemo(() => parseNumberInput(loanInterest), [loanInterest]);
+  const loanPrincipalNumber = useMemo(() => parseNumberInput(loanPrincipal), [loanPrincipal]);
   const isPortfolioGeneralSelected = isPortfolioGeneralReference(objectId) || isPortfolioGeneralReference(objektCodePreview);
   const isBusinessMeal = kind === "expense" && isBusinessMealCategory(resolvedCategory);
   const isTelecommunication = kind === "expense" && isTelecommunicationCategory(resolvedCategory);
@@ -132,6 +140,49 @@ export default function EntryAdd() {
     const syncTaxRule = window.setTimeout(() => setTaxRelevant(taxRule.taxRelevant), 0);
     return () => window.clearTimeout(syncTaxRule);
   }, [taxRule.taxRelevant, taxRule.locked, resolvedCategory, kind]);
+
+  useEffect(() => {
+    let alive = true;
+    if (!isCreditRate || !objectId || !bookingDate || isPortfolioGeneralReference(objectId)) {
+      const clear = window.setTimeout(() => {
+        if (!alive) return;
+        setLoanRatePlan(null);
+        setLoanInterest("");
+        setLoanPrincipal("");
+        setLoanPlanLoading(false);
+      }, 0);
+      return () => {
+        alive = false;
+        window.clearTimeout(clear);
+      };
+    }
+
+    const startLookup = window.setTimeout(() => {
+      if (!alive) return;
+      setLoanPlanLoading(true);
+      void findLoanRatePlanForBooking({ objectId, objectLabel: selectedObjectLabel, bookingDate })
+        .then((row) => {
+          if (!alive) return;
+          setLoanRatePlan(row);
+          setLoanInterest(row ? row.interest_amount.toFixed(2).replace(".", ",") : "");
+          setLoanPrincipal(row ? row.principal_amount.toFixed(2).replace(".", ",") : "");
+        })
+        .catch((lookupError) => {
+          if (!alive) return;
+          setLoanRatePlan(null);
+          setLoanInterest("");
+          setLoanPrincipal("");
+          setMsg(`❌ Tilgungsplan konnte nicht geladen werden: ${lookupError instanceof Error ? lookupError.message : String(lookupError)}`);
+        })
+        .finally(() => {
+          if (alive) setLoanPlanLoading(false);
+        });
+    }, 0);
+    return () => {
+      alive = false;
+      window.clearTimeout(startLookup);
+    };
+  }, [bookingDate, isCreditRate, objectId, selectedObjectLabel]);
 
   useEffect(() => {
     let alive = true;
@@ -212,6 +263,9 @@ export default function EntryAdd() {
     setTelecomLandlineInternet("");
     setTaxRelevant(true);
     setNkRelevant(false);
+    setLoanInterest("");
+    setLoanPrincipal("");
+    setLoanRatePlan(null);
     setMsg(null);
   }
 
@@ -255,6 +309,21 @@ export default function EntryAdd() {
     if (!resolvedCategory) {
       setMsg("❌ Bitte eine Kategorie auswählen oder eine neue Kategorie eintragen.");
       return;
+    }
+
+    if (isCreditRate) {
+      if (!Number.isFinite(loanInterestNumber) || loanInterestNumber < 0) {
+        setMsg("❌ Bitte einen gültigen Zinsanteil ab 0,00 EUR eintragen.");
+        return;
+      }
+      if (!Number.isFinite(loanPrincipalNumber)) {
+        setMsg("❌ Bitte einen gültigen Tilgungsanteil eintragen. Negative Tilgung ist bei Sonderplänen zulässig.");
+        return;
+      }
+      if (Math.abs(effectiveAmountNumber - (loanInterestNumber + loanPrincipalNumber)) > 0.02) {
+        setMsg(`❌ Kreditrate stimmt nicht: Gesamtbetrag ${effectiveAmountNumber.toFixed(2)} EUR, Zins + Tilgung ${(loanInterestNumber + loanPrincipalNumber).toFixed(2)} EUR.`);
+        return;
+      }
     }
 
     if (isBusinessMeal) {
@@ -312,6 +381,10 @@ export default function EntryAdd() {
         note: resolvedNote,
         tax_relevant: taxRule.locked ? false : options?.forceTaxRelevant ? true : taxRelevant,
         nk_relevant: nextNkRelevant,
+        loan_interest_amount: isCreditRate ? loanInterestNumber : null,
+        loan_principal_amount: isCreditRate ? loanPrincipalNumber : null,
+        loan_rate_plan_id: isCreditRate ? loanRatePlan?.id ?? null : null,
+        loan_split_source: isCreditRate ? (loanRatePlan ? `csv:${loanRatePlan.source_file}` : "manual") : null,
       };
 
       const { error } = await supabase.from("finance_entry").insert(payload);
@@ -334,6 +407,9 @@ export default function EntryAdd() {
       setTelecomLandlineInternet("");
       setTaxRelevant(classifyTaxRelevance({ entry_type: kind }).taxRelevant);
       setNkRelevant(false);
+      setLoanInterest("");
+      setLoanPrincipal("");
+      setLoanRatePlan(null);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       setMsg(`❌ Speichern fehlgeschlagen: ${message}`);
@@ -736,6 +812,63 @@ export default function EntryAdd() {
                 style={inputStyle()}
               />
             </label>
+          )}
+
+          {isCreditRate && (
+            <div
+              style={{
+                ...panelStyle(),
+                gridColumn: "1 / -1",
+                padding: 14,
+                display: "grid",
+                gap: 12,
+                background: loanRatePlan ? "#f1f5f9" : "#fffbeb",
+                borderColor: loanRatePlan ? "#cbd5e1" : "#fde68a",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: "0.12em", textTransform: "uppercase", color: loanRatePlan ? "#475569" : "#92400e" }}>
+                  Aufteilung der Kreditrate
+                </div>
+                <div style={{ marginTop: 4, fontSize: 13, fontWeight: 800, color: "#64748b", lineHeight: 1.4 }}>
+                  {loanPlanLoading
+                    ? "Monatswert wird aus dem Tilgungsplan geladen…"
+                    : loanRatePlan
+                      ? `Quelle: ${loanRatePlan.source_file} · ${loanRatePlan.plan_date} · Felder sind schreibgeschützt.`
+                      : "Für diesen Objektmonat fehlt ein importierter Planwert. Zins und Tilgung bitte manuell eintragen."}
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+                <label style={fieldLabelStyle()}>
+                  Zinsanteil (EUR)
+                  <input
+                    value={loanInterest}
+                    onChange={(event) => setLoanInterest(event.target.value)}
+                    disabled={loanPlanLoading || Boolean(loanRatePlan)}
+                    placeholder="z. B. 96,49"
+                    style={{ ...inputStyle(), background: loanRatePlan ? "#e2e8f0" : "#ffffff", color: loanRatePlan ? "#475569" : "#111827" }}
+                  />
+                </label>
+                <label style={fieldLabelStyle()}>
+                  Tilgungsanteil (EUR)
+                  <input
+                    value={loanPrincipal}
+                    onChange={(event) => setLoanPrincipal(event.target.value)}
+                    disabled={loanPlanLoading || Boolean(loanRatePlan)}
+                    placeholder="z. B. 1.103,51"
+                    style={{ ...inputStyle(), background: loanRatePlan ? "#e2e8f0" : "#ffffff", color: loanRatePlan ? "#475569" : "#111827" }}
+                  />
+                </label>
+              </div>
+              {loanRatePlan?.quality_status === "warning" ? (
+                <div style={{ color: "#92400e", fontSize: 12, fontWeight: 800 }}>
+                  Quellenhinweis: {loanRatePlan.quality_note}
+                </div>
+              ) : null}
+              <div style={{ color: "#475569", fontSize: 12, fontWeight: 800 }}>
+                Steuerlogik: Nur der Zinsanteil wird bei vermieteten Objekten im Steuerbericht berücksichtigt; die Tilgung bleibt steuerlich gesperrt.
+              </div>
+            </div>
           )}
 
           {isBusinessMeal && (

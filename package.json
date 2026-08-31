@@ -18,6 +18,7 @@
     "stress:report-exports": "node scripts/stress-report-exports.mjs",
     "stress:report-logos": "node scripts/stress-report-logos.mjs",
     "stress:security": "node scripts/stress-security-baseline.mjs",
+    "stress:loan-rate-plans": "node scripts/stress-loan-rate-plans.mjs",
     "stress:branding": "node scripts/stress-branding.mjs",
     "verify": "node scripts/verify-project.mjs",
     "preview": "vite preview"
