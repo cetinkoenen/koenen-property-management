@@ -6,6 +6,8 @@ const migration = await readFile(
   "utf8",
 );
 const dataCheckPage = await readFile(new URL("../src/pages/Datenpruefung.tsx", import.meta.url), "utf8");
+const appDataContext = await readFile(new URL("../src/state/AppDataContext.tsx", import.meta.url), "utf8");
+const exposeService = await readFile(new URL("../src/lib/uploadExpose.ts", import.meta.url), "utf8");
 
 const bridgeDefinition = migration.match(/create or replace view public\.v_koenen_object_bridge as([\s\S]*?)revoke all/i)?.[1] ?? "";
 
@@ -20,5 +22,8 @@ assert.match(migration, /rent_adjustment_total_mismatch/, "Widersprüchliche Mie
 assert.match(migration, /vacancy_contract_overlap/, "Überschneidungen von Leerstand und Vertrag müssen geprüft werden");
 assert.match(migration, /split_part\(e\.property_id, '::', 1\)/, "Einheiten-Zusatzdaten dürfen nicht fälschlich als verwaist gelten");
 assert.match(dataCheckPage, /Objektzuordnungen, Mietverträge, Mietanpassungen und Leerstände/, "Datenprüfungsseite muss den erweiterten Prüfumfang erklären");
+assert.match(appDataContext, /from\("properties"\)\.select\("id,name,address,living_area_m2"\)/, "Wohnflächen müssen nur vorhandene properties-Spalten abfragen");
+assert.doesNotMatch(appDataContext, /from\("properties"\)\.select\("[^"]*title/, "Die nicht vorhandene properties.title-Spalte darf nicht abgefragt werden");
+assert.match(exposeService, /message\.toLowerCase\(\)\.includes\("object not found"\)/, "Ein veralteter Exposé-Verweis darf das Laden aller übrigen Exposés nicht blockieren");
 
-console.log("11 Stressfaelle fuer zentrale Objektzuordnung und Datenqualitaet bestanden.");
+console.log("14 Stressfaelle fuer zentrale Objektzuordnung und Datenqualitaet bestanden.");

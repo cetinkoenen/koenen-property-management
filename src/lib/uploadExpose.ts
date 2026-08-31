@@ -144,7 +144,21 @@ export async function loadExposeLinks(): Promise<StoredExposeLink[]> {
   const links = await Promise.all((data ?? []).map(async (row) => {
     const filePath = String(row.expose_path ?? "").trim();
     if (!filePath) return null;
-    const signedUrl = await createExposeSignedUrl(filePath);
+    let signedUrl: string;
+    try {
+      signedUrl = await createExposeSignedUrl(filePath);
+    } catch (linkError) {
+      const message = linkError instanceof Error ? linkError.message : String(linkError);
+      // Ein alter DB-Verweis kann nach einer bewussten Storage-Bereinigung noch
+      // auf eine nicht mehr vorhandene PDF zeigen. Andere Exposés müssen deshalb
+      // weiterhin geladen werden; die betroffene Immobilie erscheint korrekt
+      // wieder ohne hinterlegtes PDF.
+      if (message.toLowerCase().includes("object not found")) {
+        if (import.meta.env.DEV) console.debug("Veralteter Exposé-Verweis wird ignoriert", { filePath });
+        return null;
+      }
+      throw linkError;
+    }
     return {
       portfolioPropertyId: String(row.id),
       corePropertyId: row.core_property_id ? String(row.core_property_id) : null,
