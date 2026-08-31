@@ -577,7 +577,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         });
         const extra = propertyExtraRows.find((row) => {
           const id = String(row.property_id ?? "").trim();
-          return Boolean(id && (id === object.id || object.aliases?.includes(id)));
+          return Boolean(id && (
+            id === object.id
+            || object.aliases?.includes(id)
+            || namesMatch(id, object.label)
+            || object.aliases?.some((alias) => namesMatch(id, alias))
+          ));
         });
         const wealthArea = extra?.wealth_profile?.totalArea ?? extra?.wealth_profile?.livingArea ?? extra?.wealth_profile?.living_area;
         return {
