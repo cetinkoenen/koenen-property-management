@@ -570,7 +570,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const propertyExtraRows = (propertyExtraRes.error ? [] : propertyExtraRes.data ?? []) as PropertyExtraAreaRow[];
       const portfolioSourceRows = (portfolioRes.error ? [] : portfolioRes.data ?? []) as PortfolioLoanSourceRow[];
       const mappedObjects = baseObjects.map((object) => {
-        const master = propertyMasterRows.find((row) => {
+        const matchingMasters = propertyMasterRows.filter((row) => {
           const ids = uniqueClean([row.id, row.property_id]);
           const names = uniqueClean([row.name, row.title, row.address]);
           return ids.some((id) => id === object.id || object.aliases?.includes(id))
@@ -578,24 +578,39 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         });
         const matchingPortfolio = portfolioSourceRows.find((row) => namesMatch(row.property_name, object.label));
         const portfolioIds = uniqueClean([matchingPortfolio?.property_id, matchingPortfolio?.portfolio_property_id]);
-        const extra = propertyExtraRows.find((row) => {
+        const matchingExtras = propertyExtraRows.filter((row) => {
           const id = String(row.property_id ?? "").trim();
+          const profile = row.wealth_profile ?? {};
+          const profileLabel = uniqueClean([
+            profile.name,
+            profile.address,
+            [profile.street, profile.houseNumber].filter(Boolean).join(" "),
+          ]).join(" ");
           return Boolean(id && (
             id === object.id
             || object.aliases?.includes(id)
             || portfolioIds.includes(id)
             || namesMatch(id, object.label)
             || object.aliases?.some((alias) => namesMatch(id, alias))
+            || namesMatch(profileLabel, object.label)
           ));
         });
-        const wealthArea = extra?.wealth_profile?.totalArea ?? extra?.wealth_profile?.livingArea ?? extra?.wealth_profile?.living_area;
+        const masterArea = matchingMasters
+          .map((row) => parseMaybeNumber(row.living_area_m2))
+          .find((value): value is number => value !== null && value > 0);
+        const extraArea = matchingExtras
+          .map((row) => parseMaybeNumber(row.living_area)
+            ?? parseMaybeNumber(row.wealth_profile?.totalArea)
+            ?? parseMaybeNumber(row.wealth_profile?.livingArea)
+            ?? parseMaybeNumber(row.wealth_profile?.living_area))
+          .find((value): value is number => value !== null && value > 0);
         return {
           ...object,
           // Eine zentrale Lesekette: properties ist primaer; die bereits in
           // Immobilienvermoegen gepflegte Objektdetailflaeche ist der Fallback.
-          livingAreaM2: parseMaybeNumber(master?.living_area_m2)
-            ?? parseMaybeNumber(extra?.living_area)
-            ?? parseMaybeNumber(wealthArea),
+          // Bei historischen Dubletten wird bewusst der erste positive Wert
+          // statt einer eventuell leeren ersten Zeile verwendet.
+          livingAreaM2: masterArea ?? extraArea ?? null,
         };
       });
 
