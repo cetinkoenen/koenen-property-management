@@ -19,6 +19,7 @@ import {
 import { listMileageTrips, openMileageReceipt, type MileageTripRow } from "../services/mileageTripService";
 import { isVacancyInRange, listVacancies, type UnitVacancy } from "../services/vacancyService";
 import { parseLocaleNumber } from "../utils/numberParser";
+import { useAppData } from "../state/AppDataContext";
 
 type EntryType = "income" | "expense";
 type RelevanceFilter = "all" | "tax" | "check" | "private";
@@ -26,6 +27,7 @@ type RelevanceFilter = "all" | "tax" | "check" | "private";
 type ObjectOption = {
   objekt_code: string;
   label: string;
+  livingAreaM2: number | null;
 };
 
 type EntryRow = {
@@ -1019,6 +1021,7 @@ function openAdvisorPdf(payload: AdvisorExportPayload) {
 }
 
 export default function SteuerCenter() {
+  const appData = useAppData();
   const [year, setYear] = useState(currentYear);
   const [objectCode, setObjectCode] = useState("ALL");
   const [relevance, setRelevance] = useState<RelevanceFilter>("tax");
@@ -1039,21 +1042,12 @@ export default function SteuerCenter() {
   }, [objects]);
 
   async function loadObjects(): Promise<ObjectOption[]> {
-    const { data, error: loadError } = await supabase
-      .from("v_object_dropdown")
-      .select("objekt_code,label")
-      .order("label", { ascending: true });
-
-    if (loadError) throw loadError;
-
-    const rows = (data ?? [])
-      .map((row: unknown) => {
-        const item = row as Partial<ObjectOption>;
-        return {
-          objekt_code: String(item.objekt_code ?? ""),
-          label: String(item.label ?? ""),
-        };
-      })
+    const rows = appData.objects
+      .map((object) => ({
+        objekt_code: String(object.code ?? object.id),
+        label: object.label,
+        livingAreaM2: object.livingAreaM2 ?? null,
+      }))
       .filter((row) => row.objekt_code && row.label);
 
     setObjects(rows);
@@ -1304,41 +1298,13 @@ export default function SteuerCenter() {
   }
 
   useEffect(() => {
-    let alive = true;
-
-    async function initialLoad() {
-      try {
-        const { data, error: loadError } = await supabase
-          .from("v_object_dropdown")
-          .select("objekt_code,label")
-          .order("label", { ascending: true });
-
-        if (!alive) return;
-        if (loadError) throw loadError;
-
-        const rows = (data ?? [])
-          .map((row: unknown) => {
-            const item = row as Partial<ObjectOption>;
-            return {
-              objekt_code: String(item.objekt_code ?? ""),
-              label: String(item.label ?? ""),
-            };
-          })
-          .filter((row) => row.objekt_code && row.label);
-
-        setObjects(rows);
-      } catch (loadError) {
-        if (!alive) return;
-        const message = getLoadErrorMessage(loadError);
-        setError(message);
-      }
-    }
-
-    void initialLoad();
-    return () => {
-      alive = false;
-    };
-  }, []);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setObjects(appData.objects.map((object) => ({
+      objekt_code: String(object.code ?? object.id),
+      label: object.label,
+      livingAreaM2: object.livingAreaM2 ?? null,
+    })).filter((row) => row.objekt_code && row.label));
+  }, [appData.objects]);
 
   useEffect(() => {
     // Initialer und filterbasierter Supabase-Ladevorgang fuer die Steueruebersicht.
@@ -1541,6 +1507,7 @@ export default function SteuerCenter() {
       code: object.objekt_code,
       label: object.label,
       aliases: [object.objekt_code, object.label],
+      livingAreaM2: object.livingAreaM2,
     })),
   }), [classifiedRows, filteredMileageTrips, loanTaxRows, objects, year]);
 
