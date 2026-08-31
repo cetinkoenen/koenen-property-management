@@ -142,13 +142,6 @@ type FinanceEntryRow = {
   loan_split_source: string | null;
 };
 
-type PropertyMasterAreaRow = {
-  id: string | null;
-  property_id: string | null;
-  name: string | null;
-  living_area_m2: unknown;
-};
-
 type PropertyExtraAreaRow = {
   property_id: string | null;
   living_area: unknown;
@@ -542,12 +535,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     setLoading(!hydrated);
     setError(null);
     try {
-      const [objectsRes, entriesRes, portfolioRes, loanRes, propertyMasterRes, propertyExtraRes] = await Promise.all([
+      const [objectsRes, entriesRes, portfolioRes, loanRes, propertyExtraRes] = await Promise.all([
         supabase.from("v_object_dropdown").select("value,objekt_code,label,object_id,property_id").order("label", { ascending: true }),
         supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,tax_relevant,nk_relevant,loan_interest_amount,loan_principal_amount,loan_rate_plan_id,loan_split_source").eq("is_deleted", false).order("booking_date", { ascending: false }).limit(5000),
         supabase.from("vw_property_loan_dashboard_portfolio_v2").select("property_id,portfolio_property_id,property_name,last_balance,principal_total,interest_total,repaid_percent,repayment_status,repayment_label").order("property_name", { ascending: true }),
         supabase.from("vw_property_loan_dashboard_dedup").select("property_id,property_name,first_year,last_year,last_balance_year,last_balance,interest_total,principal_total,repaid_percent,repaid_percent_display,repayment_status,repayment_label,refreshed_at").order("property_name", { ascending: true }),
-        supabase.from("properties").select("id,name,living_area_m2"),
         supabase.from("property_extra_info").select("property_id,living_area,wealth_profile"),
       ]);
 
@@ -558,7 +550,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       if (firstBlockingError) throw firstBlockingError;
       if (portfolioRes.error) console.warn("Portfolio-Darlehensdaten konnten nicht geladen werden:", portfolioRes.error.message);
       if (loanRes.error) console.warn("Darlehensdashboard konnte nicht geladen werden:", loanRes.error.message);
-      if (propertyMasterRes.error) console.warn("Wohnflächen-Stammdaten konnten nicht geladen werden:", propertyMasterRes.error.message);
       if (propertyExtraRes.error) console.warn("Wohnflächen aus Immobilienvermögen konnten nicht geladen werden:", propertyExtraRes.error.message);
 
       const baseObjects = dedupeObjectsByCanonicalName(((objectsRes.data ?? []) as ObjectDropdownRow[])
@@ -572,16 +563,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           aliases: uniqueClean([row.object_id, row.property_id, row.value, row.objekt_code, row.label]),
         })));
 
-      const propertyMasterRows = (propertyMasterRes.error ? [] : propertyMasterRes.data ?? []) as PropertyMasterAreaRow[];
       const propertyExtraRows = (propertyExtraRes.error ? [] : propertyExtraRes.data ?? []) as PropertyExtraAreaRow[];
       const portfolioSourceRows = (portfolioRes.error ? [] : portfolioRes.data ?? []) as PortfolioLoanSourceRow[];
       const mappedObjects = baseObjects.map((object) => {
-        const matchingMasters = propertyMasterRows.filter((row) => {
-          const ids = uniqueClean([row.id, row.property_id]);
-          const names = uniqueClean([row.name]);
-          return ids.some((id) => id === object.id || object.aliases?.includes(id))
-            || names.some((name) => namesMatch(name, object.label) || object.aliases?.some((alias) => namesMatch(name, alias)));
-        });
         const matchingPortfolio = portfolioSourceRows.find((row) => namesMatch(row.property_name, object.label));
         const portfolioIds = uniqueClean([matchingPortfolio?.property_id, matchingPortfolio?.portfolio_property_id]);
         const matchingExtras = propertyExtraRows.filter((row) => {
@@ -601,9 +585,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             || namesMatch(profileLabel, object.label)
           ));
         });
-        const masterArea = matchingMasters
-          .map((row) => parseMaybeNumber(row.living_area_m2))
-          .find((value): value is number => value !== null && value > 0);
         const extraArea = matchingExtras
           .map((row) => parseMaybeNumber(row.living_area)
             ?? parseMaybeNumber(row.wealth_profile?.totalArea)
@@ -612,11 +593,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           .find((value): value is number => value !== null && value > 0);
         return {
           ...object,
-          // Eine zentrale Lesekette: properties ist primaer; die bereits in
-          // Immobilienvermoegen gepflegte Objektdetailflaeche ist der Fallback.
+          // Immobilienvermoegen/Objektdetails ist die einzige Wohnflaechenquelle.
           // Bei historischen Dubletten wird bewusst der erste positive Wert
           // statt einer eventuell leeren ersten Zeile verwendet.
-          livingAreaM2: masterArea ?? extraArea ?? null,
+          livingAreaM2: extraArea ?? null,
         };
       });
 

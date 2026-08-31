@@ -22,9 +22,8 @@ assert.match(migration, /rent_adjustment_total_mismatch/, "Widersprüchliche Mie
 assert.match(migration, /vacancy_contract_overlap/, "Überschneidungen von Leerstand und Vertrag müssen geprüft werden");
 assert.match(migration, /split_part\(e\.property_id, '::', 1\)/, "Einheiten-Zusatzdaten dürfen nicht fälschlich als verwaist gelten");
 assert.match(dataCheckPage, /Objektzuordnungen, Mietverträge, Mietanpassungen und Leerstände/, "Datenprüfungsseite muss den erweiterten Prüfumfang erklären");
-assert.match(appDataContext, /from\("properties"\)\.select\("id,name,living_area_m2"\)/, "Wohnflächen müssen nur vorhandene properties-Spalten abfragen");
-assert.doesNotMatch(appDataContext, /from\("properties"\)\.select\("[^"]*title/, "Die nicht vorhandene properties.title-Spalte darf nicht abgefragt werden");
-assert.doesNotMatch(appDataContext, /from\("properties"\)\.select\("[^"]*address/, "Die nicht vorhandene properties.address-Spalte darf nicht abgefragt werden");
+assert.match(appDataContext, /from\("property_extra_info"\)\.select\("property_id,living_area,wealth_profile"\)/, "Immobilienvermögen muss die einzige zentrale Wohnflächenquelle sein");
+assert.doesNotMatch(appDataContext, /from\("properties"\)\.select\([^\n]*living_area/, "Wohnflächen dürfen nicht aus einer zweiten, produktiv nicht vorhandenen properties-Spalte gelesen werden");
 assert.match(exposeService, /message\.toLowerCase\(\)\.includes\("object not found"\)/, "Ein veralteter Exposé-Verweis darf das Laden aller übrigen Exposés nicht blockieren");
 
-console.log("15 Stressfaelle fuer zentrale Objektzuordnung und Datenqualitaet bestanden.");
+console.log("16 Stressfaelle fuer zentrale Objektzuordnung und Datenqualitaet bestanden.");
