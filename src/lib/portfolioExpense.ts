@@ -7,6 +7,7 @@ export const PORTFOLIO_GENERAL_LABEL = "Allgemein / Portfolio-Ausgabe";
 const PORTFOLIO_EXPENSE_CATEGORIES = new Set([
   "Allgemein",
   "Büro / Porto",
+  "Handy & Internet",
   "Kontoführungsgebühr",
   "Software",
   "Steuer",

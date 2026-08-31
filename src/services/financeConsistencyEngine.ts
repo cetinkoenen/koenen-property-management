@@ -485,7 +485,7 @@ export function buildFinanceConsistencySummary(input: ConsistencyInput): Consist
         propertyId: null,
         propertyName: PORTFOLIO_GENERAL_LABEL,
         detail: `Portfolio-Ausgabe "${entry.category ?? "ohne Kategorie"}" gehört nicht zu den freigegebenen übergreifenden Kostenarten.`,
-        repairHint: "Nur Software, Steuerberater, Büro/Porto, Kontoführungsgebühr, Verwaltungskosten, Steuer oder Allgemein als Portfolio-Ausgabe verwenden. Erwerbsnebenkosten/Anschaffungskosten bitte immer einem konkreten Objekt zuordnen.",
+        repairHint: "Nur Software, Steuerberater, Büro/Porto, Handy & Internet, Kontoführungsgebühr, Verwaltungskosten, Steuer oder Allgemein als Portfolio-Ausgabe verwenden. Erwerbsnebenkosten/Anschaffungskosten bitte immer einem konkreten Objekt zuordnen.",
       });
     }
 
