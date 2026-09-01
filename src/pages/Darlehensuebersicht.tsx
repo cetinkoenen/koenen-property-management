@@ -449,7 +449,7 @@ function PropertyLoanCard(props: {
           {!planSummaryLoading && planSummaryError ? <div style={styles.errorBox}>{planSummaryError}</div> : null}
           {!planSummaryLoading && !planSummaryError ? (
             <div style={{ ...styles.tableWrap, marginBottom: 0 }}>
-              <table style={{ ...styles.table, minWidth: 860 }}>
+              <table style={{ ...styles.table, minWidth: 820 }}>
                 <thead>
                   <tr>
                     <th style={styles.th}>Jahr</th>
