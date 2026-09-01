@@ -24,8 +24,6 @@ type PropertyRowNormalized = {
   propertyId: string;
   propertyName: string;
   lastBalance: number;
-  lastBalanceYear: number;
-  balanceSource: string | null;
   principalTotal: number;
   interestTotal: number;
 };
@@ -153,7 +151,7 @@ const styles: Record<string, CSSProperties> = {
   },
   summaryGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
     gap: 12,
     marginTop: 16,
   },
@@ -274,8 +272,6 @@ function PropertyLoanCard(props: {
   propertyId: string;
   propertyName: string;
   dashboardBalance: number;
-  dashboardBalanceYear: number;
-  dashboardBalanceSource: string | null;
   dashboardPrincipalTotal: number;
   dashboardInterestTotal: number;
 }) {
@@ -387,9 +383,6 @@ function PropertyLoanCard(props: {
 
 
   const latestBalance = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].balance : props.dashboardBalance;
-  const latestYear = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].year : null;
-  const latestSource = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].source : props.dashboardBalanceSource;
-  const sourceLabel = latestSource?.replace(/^CSV-Monatsplan:\s*/i, "CSV · ") ?? "manueller Ledger-Eintrag";
   const visibleDebtService = ledgerRows.length > 0
     ? ledgerRows.reduce((sum, row) => sum + row.interest + row.principal, 0)
     : props.dashboardInterestTotal + props.dashboardPrincipalTotal;
@@ -414,13 +407,12 @@ function PropertyLoanCard(props: {
             Editierbare Jahresübersicht mit bestehender Ledger-Logik und automatisch berechneter Finance-Tabelle.
           </div>
           <div style={styles.summaryGrid}>
-            <FinanceSummary label="Letzte Restschuld laut Darlehen" value={formatCurrency(latestBalance)} />
-            <FinanceSummary
-              label="Hauptquelle"
-              value={`Darlehen · Ledger ${latestYear ?? props.dashboardBalanceYear} · ${sourceLabel}`}
-            />
+            <FinanceSummary label="Aktuelle Restschuld" value={formatCurrency(latestBalance)} />
             <FinanceSummary label="Debt Service gesamt" value={visibleDebtService > 0 ? formatCurrency(visibleDebtService) : "—"} />
             <FinanceSummary label="DSCR Ø" value={visibleDscr !== null ? formatNumber(visibleDscr) : "—"} />
+          </div>
+          <div style={{ marginTop: 10, fontSize: 10, lineHeight: 1.4, color: "#94a3b8", fontWeight: 700 }}>
+            Ref.* Darlehenswerte und Qualitätsangaben sind zentral im Datenbestand hinterlegt.
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -445,13 +437,13 @@ function PropertyLoanCard(props: {
         </summary>
         <div style={{ padding: "0 24px 22px" }}>
           <div style={{ ...styles.mutedText, marginBottom: 12 }}>
-            Direkte Hauptquelle: hochgeladene Monatspläne. Rate, Zins, Tilgung, Gebühren und Restschuld werden je Kalenderjahr zusammengefasst.
+            Rate, Zins, Tilgung, Gebühren und Restschuld werden kompakt je Kalenderjahr zusammengefasst.
           </div>
           {planSummaryLoading ? <div style={styles.loadingBox}>Tilgungsplandaten werden geladen…</div> : null}
           {!planSummaryLoading && planSummaryError ? <div style={styles.errorBox}>{planSummaryError}</div> : null}
           {!planSummaryLoading && !planSummaryError ? (
             <div style={{ ...styles.tableWrap, marginBottom: 0 }}>
-              <table style={{ ...styles.table, minWidth: 820 }}>
+              <table style={{ ...styles.table, minWidth: 720 }}>
                 <thead>
                   <tr>
                     <th style={styles.th}>Jahr</th>
@@ -461,7 +453,6 @@ function PropertyLoanCard(props: {
                     <th style={styles.th}>Tilgung</th>
                     <th style={styles.th}>Gebühren</th>
                     <th style={styles.th}>Restschuld Jahresende</th>
-                    <th style={styles.th}>Quelle / Qualität</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -471,6 +462,8 @@ function PropertyLoanCard(props: {
                       <tr key={year} style={isCurrentYear ? { background: "#ecfdf5" } : undefined}>
                         <td style={{ ...styles.td, fontWeight: 900 }}>
                           {year}{isCurrentYear ? <span style={{ marginLeft: 8, borderRadius: 999, background: "#047857", color: "white", padding: "3px 8px", fontSize: 10, whiteSpace: "nowrap" }}>Laufendes Jahr</span> : null}
+                          {summary?.warningCount ? <div style={{ marginTop: 5, color: "#92400e", fontSize: 10, fontWeight: 800 }}>{summary.warningCount} Hinweis(e)</div> : null}
+                          {!summary ? <div style={{ marginTop: 5, color: "#94a3b8", fontSize: 10, fontWeight: 700 }}>Keine Monatswerte vorhanden</div> : null}
                         </td>
                         <td style={styles.td}>{summary ? `${summary.monthCount} / 12` : "0 / 12"}</td>
                         <td style={{ ...styles.td, fontWeight: 850 }}>{summary ? formatCurrency(summary.paymentTotal) : "—"}</td>
@@ -478,16 +471,6 @@ function PropertyLoanCard(props: {
                         <td style={{ ...styles.td, color: "#1d4ed8", fontWeight: 850 }}>{summary ? formatCurrency(summary.principalTotal) : "—"}</td>
                         <td style={styles.td}>{summary ? formatCurrency(summary.feeTotal) : "—"}</td>
                         <td style={{ ...styles.td, fontWeight: 850 }}>{summary?.closingBalance !== null && summary?.closingBalance !== undefined ? formatCurrency(summary.closingBalance) : "—"}</td>
-                        <td style={styles.td}>
-                          {summary ? (
-                            <div>
-                              <div style={{ fontWeight: 800, color: summary.warningCount ? "#92400e" : "#166534" }}>
-                                {summary.warningCount ? `${summary.warningCount} Hinweis(e)` : "Quelle geprüft"}
-                              </div>
-                              <div style={{ ...styles.mutedText, marginTop: 4 }}>{summary.sourceFiles.join(", ") || "Tilgungsplan"}</div>
-                            </div>
-                          ) : <span style={styles.mutedText}>Keine Monatswerte vorhanden</span>}
-                        </td>
                       </tr>
                     );
                   })}
@@ -495,6 +478,9 @@ function PropertyLoanCard(props: {
               </table>
             </div>
           ) : null}
+          <div style={{ marginTop: 10, fontSize: 10, color: "#94a3b8", fontWeight: 700 }}>
+            Ref.* Quellen, Quelldateien und Qualitätsstatus bleiben vollständig in Supabase gespeichert und werden bei Warnungen berücksichtigt.
+          </div>
         </div>
       </details>
 
@@ -617,8 +603,6 @@ export default function Darlehensuebersicht() {
           propertyId,
           propertyName: cleanDisplayName(row.property_name, "Unbenanntes Objekt"),
           lastBalance: snapshot.balance,
-          lastBalanceYear: snapshot.balanceYear,
-          balanceSource: snapshot.source,
           principalTotal: snapshot.principalTotal,
           interestTotal: snapshot.interestTotal,
         };
@@ -681,7 +665,7 @@ export default function Darlehensuebersicht() {
         <h1 style={styles.title}>Darlehensübersicht für alle Immobilien</h1>
         <p style={styles.text}>
           Diese Seite bündelt die jährliche Darlehensübersicht aus deinem Bestand. Jede Immobilie kann geöffnet werden, die Tabelle „Finance pro Jahr“ wird automatisch berechnet und darunter bleibt das Darlehens-Ledger direkt editierbar.
-          Für die Steuer ist diese Seite die Hauptquelle: Zinsen sind steuerrelevant, Tilgung dient nur der Restschuld- und Cashflow-Dokumentation.
+          Für die Steuer werden Zinsen berücksichtigt; Tilgung dient der Restschuld- und Cashflow-Dokumentation.
         </p>
 
         <div style={styles.metricGrid}>
@@ -703,14 +687,14 @@ export default function Darlehensuebersicht() {
           </div>
         </div>
 
-        <div style={{ marginTop: 20, border: "1px solid #bfdbfe", borderRadius: 18, background: "#eff6ff", padding: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, color: "#1e3a8a", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Monatliche Tilgungspläne · Hauptquelle
+        <div style={{ marginTop: 20, border: "1px solid #bfdbfe", borderRadius: 18, background: "#eff6ff", padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 900, color: "#1e3a8a", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              Tilgungspläne verwalten
+            </div>
+            <div style={{ marginTop: 4, fontSize: 12, color: "#64748b", fontWeight: 650 }}>CSV-Monatspläne importieren oder aktualisieren.</div>
           </div>
-          <p style={{ ...styles.text, marginTop: 8 }}>
-            Deutsche CSV-Tilgungspläne importieren. Die App speichert Rate, Zins, Tilgung, Restschuld, Quelldatei und Qualitätsstatus pro Objekt und Monat in Supabase. Vorhandene Kreditraten-Buchungen werden automatisch verknüpft.
-          </p>
-          <label style={{ ...styles.primaryButton, display: "inline-flex", alignItems: "center", gap: 8, marginTop: 12, opacity: importingPlans ? 0.65 : 1 }}>
+          <label style={{ ...styles.primaryButton, display: "inline-flex", alignItems: "center", gap: 8, opacity: importingPlans ? 0.65 : 1 }}>
             {importingPlans ? "Tilgungspläne werden importiert…" : "CSV-Tilgungspläne auswählen"}
             <input
               type="file"
@@ -767,8 +751,6 @@ export default function Darlehensuebersicht() {
               propertyId={row.propertyId}
               propertyName={row.propertyName}
               dashboardBalance={row.lastBalance}
-              dashboardBalanceYear={row.lastBalanceYear}
-              dashboardBalanceSource={row.balanceSource}
               dashboardPrincipalTotal={row.principalTotal}
               dashboardInterestTotal={row.interestTotal}
             />

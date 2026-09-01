@@ -33,7 +33,9 @@ assert.match(service, /loadLoanRatePlanYearlySummary/, "Die Darlehensseite brauc
 assert.match(service, /paymentTotal[\s\S]*interestTotal[\s\S]*principalTotal[\s\S]*feeTotal[\s\S]*closingBalance/, "Die Jahresübersicht muss Rate, Zins, Tilgung, Gebühren und Restschuld enthalten");
 
 assert.match(loanPage, /multiple/, "Die Darlehensseite muss mehrere CSV-Dateien gemeinsam importieren können");
-assert.match(loanPage, /Quelldatei und Qualitätsstatus/, "Die Hauptquelle und Datenqualität müssen in der UI erklärt sein");
+assert.match(loanPage, /Ref\.\* Quellen, Quelldateien und Qualitätsstatus bleiben vollständig in Supabase gespeichert/, "Quellen und Datenqualität müssen platzsparend referenziert bleiben");
+assert.doesNotMatch(loanPage, /label="Hauptquelle"/, "Die ausführliche Hauptquelle darf die Immobilien-Kennzahlen nicht mehr verbreitern");
+assert.doesNotMatch(loanPage, /<th style=\{styles\.th\}>Quelle \/ Qualität<\/th>/, "Die ausführliche Quellen-Spalte muss zugunsten eines kompakteren Jahreslayouts entfallen");
 assert.match(loanPage, /Jährliche Entwicklung aus Tilgungsplan/, "Jede Immobilie muss einen aufklappbaren Jahresverlauf anbieten");
 assert.match(loanPage, /2024–\{currentYear\}/, "Der Jahresverlauf muss ab 2024 bis zum laufenden Jahr reichen");
 assert.match(loanPage, /Laufendes Jahr/, "Das aktuelle Jahr muss sichtbar gekennzeichnet sein");
@@ -56,4 +58,4 @@ assert.match(taxCenter, /Gebuchte Monatsraten/, "Der Steuer-Report muss gebuchte
 assert.match(reports, /bookedSplits/, "Berichte & Exporte muss gebuchte Monatsaufteilungen priorisieren");
 assert.match(backup, /property_loan_rate_plan/, "Die neue Hauptquelle muss im App-Backup enthalten sein");
 
-console.log("38 Stressfälle für Tilgungsplan-Import, zentrale Restschuld, Jahresübersicht, Buchungsaufteilung, Steuerberichte und Sicherheit bestanden.");
+console.log("40 Stressfälle für Tilgungsplan-Import, zentrale Restschuld, kompakte Jahresübersicht, Buchungsaufteilung, Steuerberichte und Sicherheit bestanden.");
