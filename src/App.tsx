@@ -1538,7 +1538,18 @@ function csvToExcelHtml(title: string, csv: string): string {
 }
 
 function wrapPdfLine(value: string, maxLength = 92): string[] {
-  const words = value.replace(/\s+/g, " ").trim().split(" ");
+  const words = value
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .flatMap((word) => {
+      if (word.length <= maxLength) return [word];
+      const chunks: string[] = [];
+      for (let index = 0; index < word.length; index += maxLength) {
+        chunks.push(word.slice(index, index + maxLength));
+      }
+      return chunks;
+    });
   const lines: string[] = [];
   let current = "";
   for (const word of words) {
@@ -1672,23 +1683,33 @@ function createSimplePdf(title: string, lines: string[]): Blob {
   }
 
   function tableLikeRow(value: string) {
-    const parts = value.split("|").map((part) => part.trim()).filter(Boolean);
+    const parts = value.split("|").map((part) => part.trim());
     if (parts.length < 2) {
       paragraph(value);
       return;
     }
-    const widths = parts.length <= 5 ? [78, 122, 112, 96, 138] : [76, 118, 58, 86, 82, 128];
-    const wrapLimits = parts.length <= 5 ? [15, 22, 20, 18, 24] : [14, 22, 13, 18, 16, 22];
-    const wrappedParts = parts.slice(0, 6).map((part, index) => wrapPdfLine(part, wrapLimits[index] ?? 18));
-    const rowHeight = Math.max(34, Math.max(...wrappedParts.map((lines) => lines.length)) * 11 + 18);
+    const primaryParts = parts.slice(0, 6);
+    const overflowParts = parts.slice(6);
+    const widths = primaryParts.length <= 5 ? [72, 112, 98, 88, 121] : [62, 104, 66, 90, 76, 73];
+    const wrapLimits = primaryParts.length <= 5 ? [14, 21, 19, 17, 23] : [12, 20, 13, 18, 15, 14];
+    const wrappedParts = primaryParts.map((part, index) => wrapPdfLine(part || "-", wrapLimits[index] ?? 18));
+    const primaryHeight = Math.max(...wrappedParts.map((partLines) => partLines.length)) * 10;
+    const overflowLines = overflowParts.length
+      ? wrapPdfLine(`Weitere Angaben: ${overflowParts.map((part) => part || "-").join(" | ")}`, 96)
+      : [];
+    const rowHeight = Math.max(32, primaryHeight + (overflowLines.length ? overflowLines.length * 10 + 10 : 0) + 16);
     ensureSpace(rowHeight + 8);
     rect(marginX, y - rowHeight + 8, contentWidth, rowHeight, "0.985 0.99 1 rg", color.muted);
     let x = marginX + 10;
     wrappedParts.forEach((partLines, index) => {
       partLines.forEach((line, lineIndex) => {
-        text(line, x, y - 5 - lineIndex * 11, index === 4 ? 8 : 7.5, index === 4 ? "F2" : "F1", index === 4 ? color.teal : color.navy);
+        const emphasized = index === 4 || index === 5;
+        text(line, x, y - 5 - lineIndex * 10, emphasized ? 7.5 : 7.2, emphasized ? "F2" : "F1", emphasized ? color.teal : color.navy);
       });
       x += widths[index] ?? 70;
+    });
+    overflowLines.forEach((line, lineIndex) => {
+      text(line, marginX + 10, y - primaryHeight - 12 - lineIndex * 10, 7.4, lineIndex === 0 ? "F2" : "F1", color.slate);
     });
     y -= rowHeight + 8;
   }

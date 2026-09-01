@@ -10,6 +10,10 @@ const appData = await readFile(new URL("../src/state/AppDataContext.tsx", import
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
 assert.match(app, /let pdf = "%PDF-1\.4\\n"/, "PDF-Exporte müssen mit einer gültigen PDF-Signatur beginnen");
+assert.match(app, /const overflowParts = parts\.slice\(6\)/, "Breite PDF-Tabellen müssen alle Felder nach der sechsten Spalte erhalten");
+assert.match(app, /Weitere Angaben:.*overflowParts/s, "Zusätzliche PDF-Tabellenfelder müssen sichtbar und beschriftet ausgegeben werden");
+assert.doesNotMatch(app, /parts\.slice\(0, 6\)\.map/, "PDF-Tabellen dürfen Daten nach der sechsten Spalte nicht still verwerfen");
+assert.match(app, /word\.length <= maxLength[\s\S]*word\.slice\(index, index \+ maxLength\)/, "Lange IDs und Buchungstexte müssen innerhalb der PDF-Spalten umbrechen");
 assert.match(app, /pushUint32\(localView, 0, 0x04034b50\)/, "ZIP-Exporte müssen gültige lokale Dateiköpfe schreiben");
 assert.match(app, /pushUint32\(endView, 0, 0x06054b50\)/, "ZIP-Exporte müssen ein gültiges Zentralverzeichnis abschließen");
 assert.match(app, /text\/csv;charset=utf-8/, "CSV-Exporte müssen einen UTF-8-Inhaltstyp verwenden");
@@ -44,4 +48,4 @@ assert.ok(
   "Erwerbsnebenkosten müssen vor der Einnahmenlogik erkannt werden",
 );
 
-console.log("33 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("37 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
