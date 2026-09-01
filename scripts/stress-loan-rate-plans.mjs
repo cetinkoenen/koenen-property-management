@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [migration, service, entryAdd, loanPage, taxCenter, appData, reports, backup] = await Promise.all([
+const [migration, service, ledgerService, entryAdd, loanPage, wealthPage, taxCenter, appData, reports, backup] = await Promise.all([
   readFile(new URL("../supabase/migrations/20260831193000_monthly_loan_rate_plans.sql", import.meta.url), "utf8"),
   readFile(new URL("../src/services/loanRatePlanService.ts", import.meta.url), "utf8"),
+  readFile(new URL("../src/services/propertyLoanLedgerService.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/EntryAdd.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/Darlehensuebersicht.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/pages/ImmobilienVermoegen.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/SteuerCenter.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/state/AppDataContext.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
@@ -36,6 +38,11 @@ assert.match(loanPage, /Jährliche Entwicklung aus Tilgungsplan/, "Jede Immobili
 assert.match(loanPage, /2024–\{currentYear\}/, "Der Jahresverlauf muss ab 2024 bis zum laufenden Jahr reichen");
 assert.match(loanPage, /Laufendes Jahr/, "Das aktuelle Jahr muss sichtbar gekennzeichnet sein");
 assert.match(loanPage, /Keine Monatswerte vorhanden/, "Fehlende Jahre müssen als sichtbare Datenlücke dokumentiert werden");
+assert.match(ledgerService, /loadCanonicalPropertyLoanSnapshots/, "Restschuld braucht einen zentralen Darlehens-Lader");
+assert.match(loanPage, /loadCanonicalPropertyLoanSnapshots/, "Die Darlehensseite muss den zentralen Restschuld-Lader verwenden");
+assert.match(appData, /loadCanonicalPropertyLoanSnapshots/, "Immobilienvermögen muss denselben zentralen Restschuld-Lader verwenden");
+assert.doesNotMatch(wealthPage, /parseAmount\(card\.draft\.remainingDebt\)/, "Lokale Vermögenswerte dürfen keine Restschuldquelle sein");
+assert.match(wealthPage, /Restschuld-Hauptquelle[\s\S]*Darlehen · property_loan_ledger/, "Immobilienvermögen muss die Restschuld-Hauptquelle sichtbar nennen");
 assert.match(entryAdd, /isCreditRate/, "Zins- und Tilgungsfelder dürfen nur bei Kreditraten erscheinen");
 assert.match(entryAdd, /disabled=\{loanPlanLoading \|\| Boolean\(loanRatePlan\)\}/, "Importierte Monatswerte müssen schreibgeschützt sein");
 assert.match(entryAdd, /loanRatePlan \? `csv:/, "Manuelle und importierte Aufteilungen müssen unterscheidbar sein");
@@ -49,4 +56,4 @@ assert.match(taxCenter, /Gebuchte Monatsraten/, "Der Steuer-Report muss gebuchte
 assert.match(reports, /bookedSplits/, "Berichte & Exporte muss gebuchte Monatsaufteilungen priorisieren");
 assert.match(backup, /property_loan_rate_plan/, "Die neue Hauptquelle muss im App-Backup enthalten sein");
 
-console.log("33 Stressfälle für Tilgungsplan-Import, Jahresübersicht, Buchungsaufteilung, Steuerberichte und Sicherheit bestanden.");
+console.log("38 Stressfälle für Tilgungsplan-Import, zentrale Restschuld, Jahresübersicht, Buchungsaufteilung, Steuerberichte und Sicherheit bestanden.");

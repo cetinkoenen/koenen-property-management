@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "r
 import EditableLoanLedgerTable from "@/components/EditableLoanLedgerTable";
 import { useIncome } from "@/features/property-detail/hooks/useIncome";
 import { calculateYearlyFinanceMetrics } from "@/services/financeService";
-import { generatePropertyLoanLedgerProjection, loadPropertyLoanLedger } from "@/services/propertyLoanLedgerService";
+import {
+  generatePropertyLoanLedgerProjection,
+  loadCanonicalPropertyLoanSnapshots,
+  loadPropertyLoanLedger,
+} from "@/services/propertyLoanLedgerService";
 import type { LoanLedgerRow } from "@/types/loanLedger";
 import { supabase } from "@/lib/supabase";
 import {
@@ -14,15 +18,14 @@ import {
 type PropertyRow = {
   property_id: string;
   property_name: string | null;
-  last_balance: number | string | null;
-  principal_total: number | string | null;
-  interest_total: number | string | null;
 };
 
 type PropertyRowNormalized = {
   propertyId: string;
   propertyName: string;
   lastBalance: number;
+  lastBalanceYear: number;
+  balanceSource: string | null;
   principalTotal: number;
   interestTotal: number;
 };
@@ -232,14 +235,6 @@ const styles: Record<string, CSSProperties> = {
   },
 };
 
-function toNumber(value: number | string | null | undefined): number {
-  if (value === null || value === undefined) return 0;
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
-  const parsed = Number(String(value).replace(",", "."));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-
 function cleanDisplayName(value: string | null | undefined, fallback = "Unbenanntes Objekt"): string {
   const cleaned = String(value ?? "")
     .replace(/\s*\(?\s*core[\W_]*shadow\s*\)?/gi, "")
@@ -279,6 +274,8 @@ function PropertyLoanCard(props: {
   propertyId: string;
   propertyName: string;
   dashboardBalance: number;
+  dashboardBalanceYear: number;
+  dashboardBalanceSource: string | null;
   dashboardPrincipalTotal: number;
   dashboardInterestTotal: number;
 }) {
@@ -391,6 +388,8 @@ function PropertyLoanCard(props: {
 
   const latestBalance = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].balance : props.dashboardBalance;
   const latestYear = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].year : null;
+  const latestSource = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].source : props.dashboardBalanceSource;
+  const sourceLabel = latestSource?.replace(/^CSV-Monatsplan:\s*/i, "CSV · ") ?? "manueller Ledger-Eintrag";
   const visibleDebtService = ledgerRows.length > 0
     ? ledgerRows.reduce((sum, row) => sum + row.interest + row.principal, 0)
     : props.dashboardInterestTotal + props.dashboardPrincipalTotal;
@@ -415,8 +414,11 @@ function PropertyLoanCard(props: {
             Editierbare Jahresübersicht mit bestehender Ledger-Logik und automatisch berechneter Finance-Tabelle.
           </div>
           <div style={styles.summaryGrid}>
-            <FinanceSummary label="Aktuelle Restschuld" value={formatCurrency(latestBalance)} />
-            <FinanceSummary label="Quelle" value={latestYear ? `Ledger ${latestYear}` : "Übersicht"} />
+            <FinanceSummary label="Letzte Restschuld laut Darlehen" value={formatCurrency(latestBalance)} />
+            <FinanceSummary
+              label="Hauptquelle"
+              value={`Darlehen · Ledger ${latestYear ?? props.dashboardBalanceYear} · ${sourceLabel}`}
+            />
             <FinanceSummary label="Debt Service gesamt" value={visibleDebtService > 0 ? formatCurrency(visibleDebtService) : "—"} />
             <FinanceSummary label="DSCR Ø" value={visibleDscr !== null ? formatNumber(visibleDscr) : "—"} />
           </div>
@@ -598,19 +600,29 @@ export default function Darlehensuebersicht() {
 
       const { data, error: queryError } = await supabase
         .from("vw_property_loan_dashboard_display")
-        .select("property_id, property_name, last_balance, principal_total, interest_total")
+        .select("property_id, property_name")
         .order("property_name", { ascending: true });
 
       if (queryError) throw queryError;
 
-      const nextRows = ((data ?? []) as PropertyRow[])
-        .map((row) => ({
-          propertyId: String(row.property_id ?? ""),
+      const sourceRows = (data ?? []) as PropertyRow[];
+      const snapshots = await loadCanonicalPropertyLoanSnapshots(sourceRows.map((row) => row.property_id));
+      const snapshotByProperty = new Map(snapshots.map((snapshot) => [snapshot.propertyId, snapshot]));
+
+      const nextRows = sourceRows.map((row) => {
+        const propertyId = String(row.property_id ?? "");
+        const snapshot = snapshotByProperty.get(propertyId);
+        if (!snapshot) throw new Error(`Keine Restschuld in der Darlehens-Hauptquelle für ${cleanDisplayName(row.property_name, propertyId)} gefunden.`);
+        return {
+          propertyId,
           propertyName: cleanDisplayName(row.property_name, "Unbenanntes Objekt"),
-          lastBalance: toNumber(row.last_balance),
-          principalTotal: toNumber(row.principal_total),
-          interestTotal: toNumber(row.interest_total),
-        }));
+          lastBalance: snapshot.balance,
+          lastBalanceYear: snapshot.balanceYear,
+          balanceSource: snapshot.source,
+          principalTotal: snapshot.principalTotal,
+          interestTotal: snapshot.interestTotal,
+        };
+      });
 
       setRows(nextRows);
     } catch (loadError) {
@@ -755,6 +767,8 @@ export default function Darlehensuebersicht() {
               propertyId={row.propertyId}
               propertyName={row.propertyName}
               dashboardBalance={row.lastBalance}
+              dashboardBalanceYear={row.lastBalanceYear}
+              dashboardBalanceSource={row.balanceSource}
               dashboardPrincipalTotal={row.principalTotal}
               dashboardInterestTotal={row.interestTotal}
             />

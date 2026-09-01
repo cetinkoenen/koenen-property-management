@@ -217,7 +217,6 @@ const WEALTH_TEMPLATES: WealthTemplate[] = [
       state: "Bremen",
       marketValue: "530000",
       estimatedMarketValue: "530000",
-      remainingDebt: "41667",
       currentMonthlyRate: "1100",
       purchasePrice: "145000",
       purchaseYear: "2007",
@@ -248,7 +247,6 @@ const WEALTH_TEMPLATES: WealthTemplate[] = [
       state: "Bremen",
       marketValue: "160000",
       estimatedMarketValue: "160000",
-      remainingDebt: "78168",
       currentMonthlyRate: "300",
     },
   },
@@ -265,7 +263,6 @@ const WEALTH_TEMPLATES: WealthTemplate[] = [
       state: "Bremen",
       marketValue: "145000",
       estimatedMarketValue: "145000",
-      remainingDebt: "105616",
       currentMonthlyRate: "411",
     },
   },
@@ -282,7 +279,6 @@ const WEALTH_TEMPLATES: WealthTemplate[] = [
       state: "Bremen",
       marketValue: "140000",
       estimatedMarketValue: "140000",
-      remainingDebt: "125063",
       currentMonthlyRate: "439",
     },
   },
@@ -299,7 +295,6 @@ const WEALTH_TEMPLATES: WealthTemplate[] = [
       state: "Baden-Württemberg",
       marketValue: "530000",
       estimatedMarketValue: "530000",
-      remainingDebt: "400000",
       currentMonthlyRate: "1690",
       purchasePrice: "400000",
       purchaseDate: "2025-02-20",
@@ -327,7 +322,6 @@ const WEALTH_TEMPLATES: WealthTemplate[] = [
       purchaseDate: "2025-09-01",
       purchaseYear: "2025",
       originalLoanAmount: "60000",
-      remainingDebt: "60000",
       parkingSpaces: "P250 - E008440000121\nP253 - E008440000122\nP254 - E008440000123",
       notes: "Hauptobjekt für drei separat dokumentierte TG-Stellplätze. Kaufpreis je Stellplatz 19.000 EUR, zusammen 57.000 EUR; Darlehenssumme 60.000 EUR. Erwerbsnebenkosten aus Buchungen 632, 1289 und 1291 werden steuerlich als Anschaffungsnebenkosten dokumentiert und rechnerisch durch 3 geteilt. Der aktuelle Vermietungsstatus wird aus Mieterregister und Leerstandsverwaltung geladen.",
     },
@@ -425,7 +419,7 @@ const SECTION_FIELDS: Array<{ title: string; description: string; icon: typeof H
       { key: "fullRepaymentDate", label: "Datum der Vollauszahlung", type: "date" },
       { key: "release", label: "Ablösung" },
       { key: "shouldBeRedeemed", label: "Soll das Darlehen abgelöst werden?", type: "checkbox" },
-      { key: "remainingDebt", label: "Restschuld (€)", type: "number" },
+      { key: "remainingDebt", label: "Restschuld (€) · Quelle Darlehen", type: "number" },
       { key: "expectedEndDate", label: "Voraussichtliches Ende der Laufzeit", type: "date" },
       { key: "borrowers", label: "Darlehensnehmer*in" },
     ],
@@ -775,6 +769,8 @@ function mergeDraft(row: PortfolioLoanRow | undefined, template: WealthTemplate,
     ...withoutEmptyValues(stored[template.key]),
     ...(row?.portfolio_property_id ? withoutEmptyValues(stored[row.portfolio_property_id]) : {}),
     ...(row?.property_id ? withoutEmptyValues(stored[row.property_id]) : {}),
+    // Restschuld wird niemals aus Vorlage oder localStorage übernommen.
+    remainingDebt: "",
   };
 }
 
@@ -801,7 +797,7 @@ function buildCards(rows: PortfolioLoanRow[], stored: Record<string, WealthDraft
         ...(stored[id] ?? {}),
         ...(stored[row.property_id] ?? {}),
         name: stored[row.property_id]?.name || stored[id]?.name || row.property_name,
-        remainingDebt: stored[row.property_id]?.remainingDebt || stored[id]?.remainingDebt || String(Math.round(row.last_balance || 0)),
+        remainingDebt: "",
       },
     });
   });
@@ -1002,7 +998,7 @@ function FinanceOverview({ totals, year, objectValue, objectCount }: { totals: W
         <SourceKpi label={`Cashflow ${year}`} value={formatCurrencyExact(totals.netCashflow)} tone={totals.netCashflow >= 0 ? "green" : "red"} />
         <SourceKpi label="Brutto-Rendite" value={formatPercent(totals.grossYield)} />
         <SourceKpi label="Netto-Rendite" value={formatPercent(totals.netYield)} />
-        <SourceKpi label="Restschuld Gesamt" value={formatCurrencyExact(totals.lastBalance)} />
+        <SourceKpi label="Restschuld Gesamt · Darlehen" value={formatCurrencyExact(totals.lastBalance)} />
         <SourceKpi label="Ø Rückzahlungsstand" value={formatPercent(totals.repaidPercent)} />
       </section>
       <CashflowPanel finance={totals} year={year} objectValue={objectValue} />
@@ -1013,7 +1009,7 @@ function FinanceOverview({ totals, year, objectValue, objectCount }: { totals: W
 function PropertyEconomicOverview({ finance, year }: { finance: WealthFinance; year: number }) {
   const progress = Math.max(0, Math.min(100, finance.repaidPercent));
   const mainItems = [
-    { label: "Restschuld", value: formatCurrencyExact(finance.lastBalance), tone: "neutral" },
+    { label: "Restschuld · Darlehen", value: formatCurrencyExact(finance.lastBalance), tone: "neutral" },
     { label: `Cashflow ${year}`, value: formatCurrencyExact(finance.netCashflow), tone: finance.netCashflow >= 0 ? "green" : "red" },
     { label: "Netto-Rendite", value: formatPercent(finance.netYield), tone: "neutral" },
   ] as const;
@@ -1507,8 +1503,8 @@ function DetailPage({
                               <DetailField
                                 key={field.key}
                                 field={field}
-                                value={card.draft[field.key] ?? ""}
-                                disabled={!isAdmin}
+                                value={field.key === "remainingDebt" ? String(finance.lastBalance) : card.draft[field.key] ?? ""}
+                                disabled={!isAdmin || field.key === "remainingDebt"}
                                 onChange={(value) => onUpdate(card.id, field.key, value)}
                               />
                             );
@@ -1844,7 +1840,7 @@ export default function ImmobilienVermoegen() {
     const expenses = snapshot?.expenses ?? toNumber(summary?.ausgaben);
     const rentIncome = snapshot?.rentIncome ?? toNumber(summary?.mieteingaenge);
     const nebenkosten = row ? appData.getNebenkostenExpenses(row.property_id, year).reduce((sum, entry) => sum + entry.amount, 0) : 0;
-    const lastBalance = row?.last_balance ?? parseAmount(card.draft.remainingDebt);
+    const lastBalance = row?.last_balance ?? 0;
     const value = parseAmount(extra.marketValue) || parseAmount(card.draft.marketValue || card.draft.estimatedMarketValue) || lastBalance || 0;
     const netCashflow = income - expenses;
 
@@ -2016,7 +2012,7 @@ export default function ImmobilienVermoegen() {
         title="Immobilienvermögen"
         description="Dynamische Vermögensübersicht als zentrale Immobilienquelle für Bestand, Vermögensnachweis, Investment-Bericht, Fotos, Exposé, Mieter- und Finanzdaten."
         meta={[
-          { label: "Quelle", value: "Portfolio, Darlehen, manuelle Vermögensmaske" },
+          { label: "Restschuld-Hauptquelle", value: "Darlehen · property_loan_ledger" },
           { label: "Objekte", value: cards.length },
         ]}
       >
@@ -2091,7 +2087,7 @@ export default function ImmobilienVermoegen() {
                     <b>{formatCurrencyExact(finance.value)}</b>
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <span className="font-bold text-slate-500">Restschuld</span>
+                    <span className="font-bold text-slate-500">Restschuld · Darlehen</span>
                     <b>{formatCurrencyExact(finance.lastBalance)}</b>
                   </div>
                   <div className="flex items-center justify-between gap-4">

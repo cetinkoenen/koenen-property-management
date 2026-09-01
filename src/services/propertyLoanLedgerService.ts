@@ -53,6 +53,24 @@ type PropertyLoanRowDb = {
   created_at: unknown;
 };
 
+type CanonicalPropertyLoanSnapshotRowDb = {
+  property_id: unknown;
+  year: unknown;
+  interest: unknown;
+  principal: unknown;
+  balance: unknown;
+  source: unknown;
+};
+
+export type CanonicalPropertyLoanSnapshot = {
+  propertyId: string;
+  balanceYear: number;
+  balance: number;
+  interestTotal: number;
+  principalTotal: number;
+  source: string | null;
+};
+
 function devLog(message: string, payload?: unknown) {
   if (!DEBUG) return;
   if (import.meta.env.DEV) console.debug(`[propertyLoanLedgerService] ${message}`, payload);
@@ -325,6 +343,50 @@ export async function loadPropertyLoanLedger(
   });
 
   return rows;
+}
+
+/**
+ * Zentrale Restschuldquelle für Darlehen, Immobilienvermögen und Folgeseiten.
+ * Es werden ausschließlich Werte aus property_loan_ledger verwendet; Views,
+ * localStorage und manuelle Vermögensfelder dürfen die Restschuld nicht ersetzen.
+ */
+export async function loadCanonicalPropertyLoanSnapshots(
+  propertyIds: Array<string | null | undefined>,
+): Promise<CanonicalPropertyLoanSnapshot[]> {
+  const ids = Array.from(new Set(propertyIds.map((value) => String(value ?? "").trim()).filter(Boolean)));
+  if (!ids.length) return [];
+
+  const { data, error } = await supabase
+    .from(LEDGER_TABLE)
+    .select("property_id,year,interest,principal,balance,source")
+    .in("property_id", ids)
+    .order("property_id", { ascending: true })
+    .order("year", { ascending: true });
+
+  if (error) {
+    throw buildDetailedLedgerError(error, "Zentrale Restschulden konnten nicht aus dem Darlehens-Ledger geladen werden.");
+  }
+
+  const grouped = new Map<string, CanonicalPropertyLoanSnapshot>();
+  for (const row of (data ?? []) as CanonicalPropertyLoanSnapshotRowDb[]) {
+    const propertyId = String(row.property_id ?? "").trim();
+    const year = toInteger(row.year, Number.NaN);
+    if (!propertyId || !Number.isFinite(year)) continue;
+    const previous = grouped.get(propertyId);
+    const interestTotal = (previous?.interestTotal ?? 0) + toNumber(row.interest);
+    const principalTotal = (previous?.principalTotal ?? 0) + toNumber(row.principal);
+    const isLatest = !previous || year >= previous.balanceYear;
+    grouped.set(propertyId, {
+      propertyId,
+      balanceYear: isLatest ? year : previous.balanceYear,
+      balance: isLatest ? toNumber(row.balance) : previous.balance,
+      source: isLatest ? toNullableString(row.source) : previous.source,
+      interestTotal: Math.round(interestTotal * 100) / 100,
+      principalTotal: Math.round(principalTotal * 100) / 100,
+    });
+  }
+
+  return Array.from(grouped.values()).sort((left, right) => left.propertyId.localeCompare(right.propertyId));
 }
 
 export async function resolveLoanIdForProperty(

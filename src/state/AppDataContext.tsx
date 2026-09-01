@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { supabase } from "../lib/supabase";
 import { APP_DATA_CACHE_KEY } from "../lib/appCache";
 import { isPureRentBackPayment } from "../lib/financeCategories";
+import { loadCanonicalPropertyLoanSnapshots } from "@/services/propertyLoanLedgerService";
 
 export type AppObject = {
   id: string;
@@ -465,24 +466,6 @@ function groupLedgerRows(rows: Array<{ property_id: string | null; year: unknown
   return grouped;
 }
 
-function isFuertherName(value: string | null | undefined): boolean {
-  const normalized = String(value ?? "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/straße|strasse/g, "str");
-  return normalized.includes("further") || normalized.includes("fuerther") || normalized.includes("furth");
-}
-
-function cleanLoanBalance(value: unknown, propertyName: string | null | undefined): number | null {
-  const parsed = parseNullableLocaleNumber(value);
-  if (parsed === null) return null;
-  // Safety net for old cached/view values. The canonical source is the latest
-  // property_loan_ledger row, but if a stale dashboard view still returns
-  // 1.250.628,60 for Fürther Str., the UI must show 125.062,86.
-  return isFuertherName(propertyName) && Math.abs(parsed) >= 1_000_000 ? parsed / 10 : parsed;
-}
-
 function buildFallbackChart(row: LoanDashboardRow): LoanChartPoint[] {
   if (row.first_year === null || row.last_year === null || row.last_balance === null) return [];
   const principal = row.principal_total ?? 0;
@@ -625,14 +608,15 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const mappedMonthlyRentSummaries = buildMonthlyRentSummariesFromEntries(mappedEntries);
       const mappedYearlyFinanceSummaries = buildYearlyFinanceSummariesFromEntries(mappedEntries);
 
-      let mappedPortfolio = ((portfolioRes.error ? [] : portfolioRes.data ?? []) as PortfolioLoanSourceRow[])
+      let mappedPortfolio: PortfolioLoanRow[] = ((portfolioRes.error ? [] : portfolioRes.data ?? []) as PortfolioLoanSourceRow[])
         .filter((row) => row.property_id)
         .filter((row) => !isHiddenTechnicalPropertyName(row.property_name))
         .map((row) => ({
           property_id: String(row.property_id ?? ""),
           portfolio_property_id: row.portfolio_property_id == null ? null : String(row.portfolio_property_id),
           property_name: cleanDisplayName(row.property_name, "Unbenanntes Objekt"),
-          last_balance: cleanLoanBalance(row.last_balance, row.property_name) ?? 0,
+          // Wird weiter unten ausschließlich aus property_loan_ledger gesetzt.
+          last_balance: 0,
           principal_total: toNumber(row.principal_total),
           interest_total: toNumber(row.interest_total),
           repaid_percent: toNumber(row.repaid_percent),
@@ -640,7 +624,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           repayment_label: row.repayment_label ?? null,
         }));
 
-      let mappedLoans = ((loanRes.error ? [] : loanRes.data ?? []) as LoanDashboardSourceRow[])
+      let mappedLoans: LoanDashboardRow[] = ((loanRes.error ? [] : loanRes.data ?? []) as LoanDashboardSourceRow[])
         .filter((row) => row.property_id)
         .filter((row) => !isHiddenTechnicalPropertyName(row.property_name))
         .map((row) => ({
@@ -649,7 +633,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           first_year: parseMaybeNumber(row.first_year),
           last_year: parseMaybeNumber(row.last_year),
           last_balance_year: parseMaybeNumber(row.last_balance_year),
-          last_balance: cleanLoanBalance(row.last_balance, row.property_name),
+          // Wird weiter unten ausschließlich aus property_loan_ledger gesetzt.
+          last_balance: null,
           interest_total: parseMaybeNumber(row.interest_total),
           principal_total: parseMaybeNumber(row.principal_total),
           repaid_percent: parseMaybeNumber(row.repaid_percent),
@@ -659,65 +644,42 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
           refreshed_at: row.refreshed_at ?? null,
         }));
 
-      // Canonical ledger override: Portfolio and Objekt pages must not depend on
-      // stale dashboard views. The latest row in property_loan_ledger is the
-      // source of truth for Restschuld.
+      // Single Source of Truth: Darlehen/property_loan_ledger ist die einzige
+      // Restschuldquelle für Darlehen, Immobilienvermögen und Objektdetails.
+      // Portfolio-Views und localStorage dürfen diesen Wert nicht ersetzen.
       const ledgerOverrideIds = Array.from(new Set([
         ...mappedLoans.map((row) => row.property_id),
         ...mappedPortfolio.map((row) => row.property_id),
         ...mappedPortfolio.map((row) => row.portfolio_property_id),
       ].filter(Boolean)));
       if (ledgerOverrideIds.length) {
-        const ledgerOverrideRes = await supabase
-          .from("property_loan_ledger")
-          .select("property_id,year,balance,interest,principal")
-          .in("property_id", ledgerOverrideIds)
-          .order("property_id", { ascending: true })
-          .order("year", { ascending: true });
+        const snapshots = await loadCanonicalPropertyLoanSnapshots(ledgerOverrideIds);
+        const latestByProperty = new Map(snapshots.map((snapshot) => [snapshot.propertyId, snapshot]));
 
-        if (!ledgerOverrideRes.error) {
-          const latestByProperty: Record<string, { year: number; balance: number; interestTotal: number; principalTotal: number }> = {};
-          for (const rawRow of (ledgerOverrideRes.data ?? []) as LoanLedgerSourceRow[]) {
-            const propertyId = String(rawRow.property_id ?? "");
-            if (!propertyId) continue;
-            const year = parseMaybeNumber(rawRow.year);
-            const balance = parseMaybeNumber(rawRow.balance);
-            const interest = parseMaybeNumber(rawRow.interest) ?? 0;
-            const principal = parseMaybeNumber(rawRow.principal) ?? 0;
-            if (year === null || balance === null) continue;
-            const existing = latestByProperty[propertyId];
-            latestByProperty[propertyId] = {
-              year: existing && existing.year > year ? existing.year : year,
-              balance: existing && existing.year > year ? existing.balance : balance,
-              interestTotal: (existing?.interestTotal ?? 0) + interest,
-              principalTotal: (existing?.principalTotal ?? 0) + principal,
-            };
-          }
+        mappedLoans = mappedLoans.map((row) => {
+          const latest = latestByProperty.get(row.property_id);
+          if (!latest) return row;
+          return {
+            ...row,
+            last_year: Math.max(row.last_year ?? latest.balanceYear, latest.balanceYear),
+            last_balance_year: latest.balanceYear,
+            last_balance: latest.balance,
+            interest_total: latest.interestTotal,
+            principal_total: latest.principalTotal,
+          };
+        });
 
-          mappedLoans = mappedLoans.map((row) => {
-            const latest = latestByProperty[row.property_id];
-            if (!latest) return row;
-            return {
-              ...row,
-              last_year: Math.max(row.last_year ?? latest.year, latest.year),
-              last_balance_year: latest.year,
-              last_balance: latest.balance,
-              interest_total: latest.interestTotal || row.interest_total,
-              principal_total: latest.principalTotal || row.principal_total,
-            };
-          });
-
-          mappedPortfolio = mappedPortfolio.map((row) => {
-            const latest = latestByProperty[row.property_id] ?? (row.portfolio_property_id ? latestByProperty[row.portfolio_property_id] : undefined);
-            if (!latest) return row;
-            return {
-              ...row,
-              last_balance: latest.balance,
-              interest_total: latest.interestTotal || row.interest_total,
-              principal_total: latest.principalTotal || row.principal_total,
-            };
-          });
-        }
+        mappedPortfolio = mappedPortfolio.map((row) => {
+          const latest = latestByProperty.get(row.property_id)
+            ?? (row.portfolio_property_id ? latestByProperty.get(row.portfolio_property_id) : undefined);
+          if (!latest) return row;
+          return {
+            ...row,
+            last_balance: latest.balance,
+            interest_total: latest.interestTotal,
+            principal_total: latest.principalTotal,
+          };
+        });
       }
 
       let charts: Record<string, LoanChartPoint[]> = {};
