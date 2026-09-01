@@ -31,7 +31,7 @@ assert.match(app, /kind === "tax"\) return objectFilter === "all" && rentReportR
 assert.match(app, /from\("property_loan_ledger"\)[\s\S]*\.eq\("year", selectedYear\)/, "Anlage V muss Darlehenszinsen jahresgenau aus dem Ledger laden");
 assert.match(app, /Steuer-Report_Anlage_V_\$\{period\}/, "Der Anlage-V-Dateiname muss dem fachlichen Namensschema folgen");
 assert.doesNotMatch(app, /\.slice\(0, 40\)/, "Jahresberichte dürfen nicht nach den ersten 40 Buchungen abgeschnitten werden");
-assert.match(app, /const periodLabel = `\$\{formatDate\(periodStart\)\} bis \$\{formatDate\(periodEnd\)\}`/, "Jahresberichte müssen den festen Zeitraum 01.01. bis 31.12. ausweisen");
+assert.match(app, /const periodLabel = `01\.01\.\$\{period\} bis 31\.12\.\$\{period\}`/, "Jahresberichte müssen den festen Zeitraum 01.01. bis 31.12. ausweisen");
 assert.match(app, /Monatsabdeckung der Buchungsquelle:/, "Der §35a-Bericht muss alle zwölf Monate der Buchungsquelle nachweisen");
 assert.match(app, /Kontrollnachweis aller Hohenloher-Buchungen im Steuerjahr:/, "Der §35a-Bericht muss alle Hohenloher-Buchungen des Jahres kontrollierbar auflisten");
 assert.match(app, /entry\.nk_relevant === true/, "Nebenkostenberichte müssen das zentrale NK-Abr.-Kennzeichen bevorzugen");

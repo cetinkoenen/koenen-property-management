@@ -1994,7 +1994,7 @@ function ReportsExportsPage() {
   const selectedObject = isPortfolioReportFilter ? undefined : objects.find((object) => object.id === objectFilter);
   const periodStart = `${period}-01-01`;
   const periodEnd = `${period}-12-31`;
-  const periodLabel = `${formatDate(periodStart)} bis ${formatDate(periodEnd)}`;
+  const periodLabel = `01.01.${period} bis 31.12.${period}`;
   const vacancyRangeKey = `${periodStart}:${periodEnd}`;
   const selectedYear = Number(period) || currentYear;
   const yearEntries = entries.filter((entry) => entry.booking_date?.startsWith(`${period}-`));
@@ -2348,7 +2348,6 @@ function ReportsExportsPage() {
   function buildMonthlyCoverageLines(rows: Array<Pick<FinanceEntry, "booking_date" | "entry_type" | "amount"> | TaxReportEntry>): string[] {
     return Array.from({ length: 12 }, (_, monthIndex) => {
       const month = String(monthIndex + 1).padStart(2, "0");
-      const monthStart = `${period}-${month}-01`;
       const monthEnd = `${period}-${month}-${String(new Date(selectedYear, monthIndex + 1, 0).getDate()).padStart(2, "0")}`;
       const monthRows = rows.filter((entry) => entry.booking_date?.startsWith(`${period}-${month}-`));
       const monthIncome = monthRows
@@ -2358,7 +2357,7 @@ function ReportsExportsPage() {
         .filter((entry) => entry.entry_type === "expense")
         .reduce((sum, entry) => sum + Math.abs(Number(entry.amount ?? 0)), 0);
       const monthLabel = new Intl.DateTimeFormat("de-DE", { month: "long" }).format(new Date(selectedYear, monthIndex, 15));
-      return `${monthLabel} | ${formatDate(monthStart)} bis ${formatDate(monthEnd)} | Buchungen ${monthRows.length} | Einnahmen ${formatCurrency(monthIncome)} | Ausgaben ${formatCurrency(monthExpenses)}`;
+      return `${monthLabel} | 01.${month}.${period} bis ${monthEnd.slice(8, 10)}.${month}.${period} | Buchungen ${monthRows.length} | Einnahmen ${formatCurrency(monthIncome)} | Ausgaben ${formatCurrency(monthExpenses)}`;
     });
   }
 
