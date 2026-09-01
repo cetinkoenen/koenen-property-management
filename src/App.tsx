@@ -64,6 +64,7 @@ import {
   formatTaxCurrency,
   getTaxObjectProfileForLabel,
   type AnlageVBookingExportRow,
+  type TaxReportEntry,
   type TaxReportLoanRow,
 } from "./services/taxReportEngine";
 import {
@@ -1993,6 +1994,7 @@ function ReportsExportsPage() {
   const selectedObject = isPortfolioReportFilter ? undefined : objects.find((object) => object.id === objectFilter);
   const periodStart = `${period}-01-01`;
   const periodEnd = `${period}-12-31`;
+  const periodLabel = `${formatDate(periodStart)} bis ${formatDate(periodEnd)}`;
   const vacancyRangeKey = `${periodStart}:${periodEnd}`;
   const selectedYear = Number(period) || currentYear;
   const yearEntries = entries.filter((entry) => entry.booking_date?.startsWith(`${period}-`));
@@ -2275,8 +2277,13 @@ function ReportsExportsPage() {
     if (kind === "rent-account") return scopedEntries.filter((entry) => isRentLikeEntry(entry));
     if (kind === "utilities") {
       return scopedEntries.filter((entry) => {
+        if (entry.nk_relevant === true) return true;
+        if (entry.nk_relevant === false) return false;
         const text = `${entry.category ?? ""} ${entry.note ?? ""}`.toLowerCase();
-        return text.includes("nebenkosten") || text.includes("hausgeld") || text.includes("betriebskosten") || text.includes("nk");
+        return text.includes("nebenkosten")
+          || text.includes("hausgeld")
+          || text.includes("betriebskosten")
+          || /(^|\s)nk([\s.:/-]|$)/i.test(text);
       });
     }
     if (kind === "handover") {
@@ -2292,7 +2299,7 @@ function ReportsExportsPage() {
     const report = getReadyRentReport();
     if (!report) {
       return [
-        `Zeitraum: ${period}`,
+        `Berichtszeitraum: ${periodLabel}`,
         "Quelle: Seite Mieteingang / Zahlungskalender",
         "Der Mietkonto-Jahresreport wird noch aus der Hauptquelle geladen.",
       ];
@@ -2311,7 +2318,7 @@ function ReportsExportsPage() {
 
     return [
       `Objektfilter: ${reportObjectName}`,
-      `Zeitraum: ${period}`,
+      `Berichtszeitraum: ${periodLabel}`,
       "Hauptquelle: Seite Mieteingang / Zahlungskalender",
       "Soll: Mietentwicklung/Mietanpassungen und Mieterregister. Ist: Buchungen. Leerstand: Seite Leerstand.",
       "",
@@ -2336,6 +2343,23 @@ function ReportsExportsPage() {
         ),
       ]),
     ];
+  }
+
+  function buildMonthlyCoverageLines(rows: Array<Pick<FinanceEntry, "booking_date" | "entry_type" | "amount"> | TaxReportEntry>): string[] {
+    return Array.from({ length: 12 }, (_, monthIndex) => {
+      const month = String(monthIndex + 1).padStart(2, "0");
+      const monthStart = `${period}-${month}-01`;
+      const monthEnd = `${period}-${month}-${String(new Date(selectedYear, monthIndex + 1, 0).getDate()).padStart(2, "0")}`;
+      const monthRows = rows.filter((entry) => entry.booking_date?.startsWith(`${period}-${month}-`));
+      const monthIncome = monthRows
+        .filter((entry) => entry.entry_type === "income")
+        .reduce((sum, entry) => sum + Math.abs(Number(entry.amount ?? 0)), 0);
+      const monthExpenses = monthRows
+        .filter((entry) => entry.entry_type === "expense")
+        .reduce((sum, entry) => sum + Math.abs(Number(entry.amount ?? 0)), 0);
+      const monthLabel = new Intl.DateTimeFormat("de-DE", { month: "long" }).format(new Date(selectedYear, monthIndex, 15));
+      return `${monthLabel} | ${formatDate(monthStart)} bis ${formatDate(monthEnd)} | Buchungen ${monthRows.length} | Einnahmen ${formatCurrency(monthIncome)} | Ausgaben ${formatCurrency(monthExpenses)}`;
+    });
   }
 
   function getReadyRentReport(): RentAnnualReportSnapshot | null {
@@ -2510,11 +2534,23 @@ function ReportsExportsPage() {
     }
 
     if (kind === "section35a") {
+      const report = taxAdvisorDashboard.section35aReport;
       return [
         `Steuerjahr: ${period}`,
+        `Berichtszeitraum: ${periodLabel}`,
         "Exportbereich B: §35a EStG - nur Hohenloher Str. 78",
         "",
-        ...buildSection35aReportLines(taxAdvisorDashboard.section35aReport),
+        ...buildSection35aReportLines(report),
+        "",
+        "Monatsabdeckung der Buchungsquelle:",
+        ...buildMonthlyCoverageLines(report.entries),
+        "",
+        "Kontrollnachweis aller Hohenloher-Buchungen im Steuerjahr:",
+        ...(report.entries.length
+          ? [...report.entries]
+              .sort((left, right) => String(left.booking_date ?? "").localeCompare(String(right.booking_date ?? "")))
+              .map((entry) => `${formatDate(entry.booking_date ?? null)} | ${entry.entry_type === "expense" ? "Ausgabe" : "Einnahme"} | ${entry.category ?? "-"} | ${formatCurrency(Number(entry.amount ?? 0))} | St ${entry.tax_relevant === true ? "Ja" : "Nein"} | ${entry.note ?? ""}`)
+          : ["Keine Hohenloher-Buchungen im vollständigen Berichtszeitraum vorhanden."]),
         mileageError ? `Hinweis: Fahrtenbuch konnte nicht vollständig geladen werden: ${mileageError}` : "",
       ].filter(Boolean);
     }
@@ -2526,7 +2562,7 @@ function ReportsExportsPage() {
       });
       return [
         `Objekt: ${reportObjectName}`,
-        `Zeitraum: ${period}`,
+        `Berichtszeitraum: ${periodLabel}`,
         `Leerstandszeiträume: ${scopedVacancies.length}`,
         "",
         "Steuerliche Dokumentation:",
@@ -2547,16 +2583,18 @@ function ReportsExportsPage() {
     const reportExpenses = rows.filter((entry) => entry.entry_type === "expense").reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
     const lines = [
       `Objekt: ${reportObjectName}`,
-      `Zeitraum: ${period}`,
+      `Berichtszeitraum: ${periodLabel}`,
       `Buchungen: ${rows.length}`,
       `Einnahmen: ${formatCurrency(reportIncome)}`,
       `Ausgaben: ${formatCurrency(reportExpenses)}`,
       `Saldo: ${formatCurrency(reportIncome - reportExpenses)}`,
       "",
+      "Monatsabdeckung:",
+      ...buildMonthlyCoverageLines(rows),
+      "",
       "Buchungen:",
       ...rows
         .sort((a, b) => String(a.booking_date ?? "").localeCompare(String(b.booking_date ?? "")))
-        .slice(0, 40)
         .map((entry) => `${formatDate(entry.booking_date)} | ${getPropertyName(entry.object_id) || entry.objekt_code || reportObjectName} | ${entry.entry_type === "expense" ? "Ausgabe" : "Einnahme"} | ${entry.category ?? "-"} | ${formatCurrency(entry.amount)} | ${entry.note ?? ""}`),
     ];
     if (kind === "wealth") {
@@ -2698,9 +2736,11 @@ function ReportsExportsPage() {
 
     if (kind === "section35a") {
       const report = taxAdvisorDashboard.section35aReport;
-      return buildCsv(["Objekt", "Steuerjahr", "Haushaltsnah Arbeitslohn", "Handwerker Arbeitslohn", "davon Handwerker-Fahrtkosten §35a", "Homeoffice-Fahrtkosten", "Barzahlungen ausgeschlossen", "Homeoffice %", "Homeoffice abziehbar"], [[
+      return buildCsv(["Objekt", "Steuerjahr", "Berichtszeitraum von", "Berichtszeitraum bis", "Haushaltsnah Arbeitslohn", "Handwerker Arbeitslohn", "davon Handwerker-Fahrtkosten §35a", "Homeoffice-Fahrtkosten", "Barzahlungen ausgeschlossen", "Homeoffice %", "Homeoffice abziehbar"], [[
         report.profile.reportLabel,
         period,
+        periodStart,
+        periodEnd,
         report.householdServicesLabor,
         report.craftsmanLabor,
         report.section35aTripCosts,
@@ -2770,6 +2810,8 @@ function ReportsExportsPage() {
     const rows = entryRows(kind)
       .sort((a, b) => String(a.booking_date ?? "").localeCompare(String(b.booking_date ?? "")))
       .map((entry) => [
+        periodStart,
+        periodEnd,
         formatDate(entry.booking_date),
         getPropertyName(entry.object_id) || entry.objekt_code || reportObjectName,
         entry.entry_type === "expense" ? "Ausgabe" : "Einnahme",
@@ -2777,14 +2819,14 @@ function ReportsExportsPage() {
         entry.note ?? "",
         entry.amount,
       ]);
-    return buildCsv(["Datum", "Objekt", "Typ", "Kategorie", "Notiz", "Betrag"], rows);
+    return buildCsv(["Berichtszeitraum von", "Berichtszeitraum bis", "Datum", "Objekt", "Typ", "Kategorie", "Notiz", "Betrag"], rows);
   }
 
   function buildSummaryText(kind: ReportKind): string {
     return [
       reportTitle(kind),
       `Objekt: ${reportObjectName}`,
-      `Zeitraum: ${period}`,
+      `Berichtszeitraum: ${periodLabel}`,
       `Erstellt: ${new Date().toLocaleString("de-DE")}`,
       "",
       ...buildReportLines(kind),

@@ -30,6 +30,11 @@ assert.match(app, /role="status"/, "Die App muss den Exportstatus sichtbar melde
 assert.match(app, /kind === "tax"\) return objectFilter === "all" && rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady/, "Anlage V muss auf Alle Objekte, Mieteingang, Leerstand, Fahrtenbuch und Jahreszinsen warten");
 assert.match(app, /from\("property_loan_ledger"\)[\s\S]*\.eq\("year", selectedYear\)/, "Anlage V muss Darlehenszinsen jahresgenau aus dem Ledger laden");
 assert.match(app, /Steuer-Report_Anlage_V_\$\{period\}/, "Der Anlage-V-Dateiname muss dem fachlichen Namensschema folgen");
+assert.doesNotMatch(app, /\.slice\(0, 40\)/, "Jahresberichte dürfen nicht nach den ersten 40 Buchungen abgeschnitten werden");
+assert.match(app, /const periodLabel = `\$\{formatDate\(periodStart\)\} bis \$\{formatDate\(periodEnd\)\}`/, "Jahresberichte müssen den festen Zeitraum 01.01. bis 31.12. ausweisen");
+assert.match(app, /Monatsabdeckung der Buchungsquelle:/, "Der §35a-Bericht muss alle zwölf Monate der Buchungsquelle nachweisen");
+assert.match(app, /Kontrollnachweis aller Hohenloher-Buchungen im Steuerjahr:/, "Der §35a-Bericht muss alle Hohenloher-Buchungen des Jahres kontrollierbar auflisten");
+assert.match(app, /entry\.nk_relevant === true/, "Nebenkostenberichte müssen das zentrale NK-Abr.-Kennzeichen bevorzugen");
 assert.match(app, /"Objekt_ID"[\s\S]*"Wohnflaeche_qm"[\s\S]*"Amtliche_Formularzeile"/, "Der Anlage-V-Export muss die Pflichtfelder enthalten");
 assert.match(app, /"Umlagefaehig_Status"[\s\S]*"Zahlungsstatus"[\s\S]*"Pruefstatus"/, "Der Anlage-V-Export muss Umlage-, Zahlungs- und Prüfstatus enthalten");
 assert.match(app, /recordType: "Offene Miete"/, "Offene Mieten müssen als Zusatzdatensätze exportiert werden");
