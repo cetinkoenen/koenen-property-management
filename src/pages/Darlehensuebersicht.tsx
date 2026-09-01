@@ -5,7 +5,11 @@ import { calculateYearlyFinanceMetrics } from "@/services/financeService";
 import { generatePropertyLoanLedgerProjection, loadPropertyLoanLedger } from "@/services/propertyLoanLedgerService";
 import type { LoanLedgerRow } from "@/types/loanLedger";
 import { supabase } from "@/lib/supabase";
-import { importLoanRatePlanFiles } from "@/services/loanRatePlanService";
+import {
+  importLoanRatePlanFiles,
+  loadLoanRatePlanYearlySummary,
+  type LoanRatePlanYearSummary,
+} from "@/services/loanRatePlanService";
 
 type PropertyRow = {
   property_id: string;
@@ -287,6 +291,11 @@ function PropertyLoanCard(props: {
   const [projection, setProjection] = useState({ interestRatePercent: "3.5", annualPrincipal: "12000", years: "10" });
   const [projectionStatus, setProjectionStatus] = useState<string | null>(null);
   const [projectionLoading, setProjectionLoading] = useState(false);
+  const [planSummaryOpen, setPlanSummaryOpen] = useState(false);
+  const [planSummaryRows, setPlanSummaryRows] = useState<LoanRatePlanYearSummary[]>([]);
+  const [planSummaryLoading, setPlanSummaryLoading] = useState(false);
+  const [planSummaryLoaded, setPlanSummaryLoaded] = useState(false);
+  const [planSummaryError, setPlanSummaryError] = useState<string | null>(null);
 
   const reloadLedger = useCallback(async () => {
     try {
@@ -304,6 +313,25 @@ function PropertyLoanCard(props: {
       setLedgerLoading(false);
     }
   }, [props.propertyId]);
+
+  const reloadPlanSummary = useCallback(async () => {
+    try {
+      setPlanSummaryLoading(true);
+      setPlanSummaryError(null);
+      const rows = await loadLoanRatePlanYearlySummary({
+        propertyId: props.propertyId,
+        propertyName: props.propertyName,
+      });
+      setPlanSummaryRows(rows);
+      setPlanSummaryLoaded(true);
+    } catch (error) {
+      setPlanSummaryRows([]);
+      setPlanSummaryLoaded(true);
+      setPlanSummaryError(error instanceof Error ? error.message : "Tilgungsplan-Entwicklung konnte nicht geladen werden.");
+    } finally {
+      setPlanSummaryLoading(false);
+    }
+  }, [props.propertyId, props.propertyName]);
 
   async function createProjection() {
     const last = ledgerRows.at(-1);
@@ -338,6 +366,12 @@ function PropertyLoanCard(props: {
     return () => window.clearTimeout(initialLoad);
   }, [open, ledgerLoaded, ledgerLoading, reloadLedger]);
 
+  useEffect(() => {
+    if (!planSummaryOpen || planSummaryLoaded || planSummaryLoading) return;
+    const initialLoad = window.setTimeout(() => void reloadPlanSummary(), 0);
+    return () => window.clearTimeout(initialLoad);
+  }, [planSummaryLoaded, planSummaryLoading, planSummaryOpen, reloadPlanSummary]);
+
   const yearlyMetrics = useMemo(() => {
     return calculateYearlyFinanceMetrics({
       ledger: ledgerRows.map((row) => ({
@@ -364,6 +398,13 @@ function PropertyLoanCard(props: {
     ? yearlyMetrics.reduce((sum, row) => sum + (row.dscr ?? 0), 0) / yearlyMetrics.length
     : null;
   const yearlyWarnings = ledgerRows.some((row, index) => index > 0 && row.balance > ledgerRows[index - 1].balance + 1);
+  const currentYear = new Date().getFullYear();
+  const displayedPlanYears = useMemo(() => {
+    const firstYear = 2024;
+    const years = Array.from({ length: Math.max(1, currentYear - firstYear + 1) }, (_, index) => firstYear + index);
+    const rowsByYear = new Map(planSummaryRows.map((row) => [row.year, row]));
+    return years.map((year) => ({ year, summary: rowsByYear.get(year) ?? null }));
+  }, [currentYear, planSummaryRows]);
 
   return (
     <article style={styles.card}>
@@ -391,6 +432,69 @@ function PropertyLoanCard(props: {
           ) : null}
         </div>
       </div>
+
+      <details
+        open={planSummaryOpen}
+        onToggle={(event) => setPlanSummaryOpen(event.currentTarget.open)}
+        style={{ borderBottom: "1px solid #e5e7eb", background: "#fbfdff" }}
+      >
+        <summary style={{ padding: "16px 24px", cursor: "pointer", color: "#0f3f4b", fontWeight: 900, fontSize: 15 }}>
+          Jährliche Entwicklung aus Tilgungsplan · 2024–{currentYear}
+        </summary>
+        <div style={{ padding: "0 24px 22px" }}>
+          <div style={{ ...styles.mutedText, marginBottom: 12 }}>
+            Direkte Hauptquelle: hochgeladene Monatspläne. Rate, Zins, Tilgung, Gebühren und Restschuld werden je Kalenderjahr zusammengefasst.
+          </div>
+          {planSummaryLoading ? <div style={styles.loadingBox}>Tilgungsplandaten werden geladen…</div> : null}
+          {!planSummaryLoading && planSummaryError ? <div style={styles.errorBox}>{planSummaryError}</div> : null}
+          {!planSummaryLoading && !planSummaryError ? (
+            <div style={{ ...styles.tableWrap, marginBottom: 0 }}>
+              <table style={{ ...styles.table, minWidth: 960 }}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Jahr</th>
+                    <th style={styles.th}>Monate</th>
+                    <th style={styles.th}>Gesamtrate</th>
+                    <th style={styles.th}>Zinsen</th>
+                    <th style={styles.th}>Tilgung</th>
+                    <th style={styles.th}>Gebühren</th>
+                    <th style={styles.th}>Restschuld Jahresende</th>
+                    <th style={styles.th}>Quelle / Qualität</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedPlanYears.map(({ year, summary }) => {
+                    const isCurrentYear = year === currentYear;
+                    return (
+                      <tr key={year} style={isCurrentYear ? { background: "#ecfdf5" } : undefined}>
+                        <td style={{ ...styles.td, fontWeight: 900 }}>
+                          {year}{isCurrentYear ? <span style={{ marginLeft: 8, borderRadius: 999, background: "#047857", color: "white", padding: "3px 8px", fontSize: 10, whiteSpace: "nowrap" }}>Laufendes Jahr</span> : null}
+                        </td>
+                        <td style={styles.td}>{summary ? `${summary.monthCount} / 12` : "0 / 12"}</td>
+                        <td style={{ ...styles.td, fontWeight: 850 }}>{summary ? formatCurrency(summary.paymentTotal) : "—"}</td>
+                        <td style={{ ...styles.td, color: "#0f766e", fontWeight: 850 }}>{summary ? formatCurrency(summary.interestTotal) : "—"}</td>
+                        <td style={{ ...styles.td, color: "#1d4ed8", fontWeight: 850 }}>{summary ? formatCurrency(summary.principalTotal) : "—"}</td>
+                        <td style={styles.td}>{summary ? formatCurrency(summary.feeTotal) : "—"}</td>
+                        <td style={{ ...styles.td, fontWeight: 850 }}>{summary?.closingBalance !== null && summary?.closingBalance !== undefined ? formatCurrency(summary.closingBalance) : "—"}</td>
+                        <td style={styles.td}>
+                          {summary ? (
+                            <div>
+                              <div style={{ fontWeight: 800, color: summary.warningCount ? "#92400e" : "#166534" }}>
+                                {summary.warningCount ? `${summary.warningCount} Hinweis(e)` : "Quelle geprüft"}
+                              </div>
+                              <div style={{ ...styles.mutedText, marginTop: 4 }}>{summary.sourceFiles.join(", ") || "Tilgungsplan"}</div>
+                            </div>
+                          ) : <span style={styles.mutedText}>Keine Monatswerte vorhanden</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </div>
+      </details>
 
       {open ? (
         <div style={styles.body}>
@@ -485,6 +589,7 @@ export default function Darlehensuebersicht() {
   const [importingPlans, setImportingPlans] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
+  const [planDataRevision, setPlanDataRevision] = useState(0);
 
   async function load() {
     try {
@@ -531,6 +636,7 @@ export default function Darlehensuebersicht() {
       const result = await importLoanRatePlanFiles(files);
       setImportStatus(`${result.rows} Monatswerte aus ${files.length} CSV-Datei(en) gespeichert; ${result.bookings} bestehende Kreditraten wurden mit Zins und Tilgung verknüpft.`);
       setImportWarnings(result.warnings);
+      setPlanDataRevision((current) => current + 1);
       await load();
     } catch (importError) {
       setImportStatus(`Fehler beim Tilgungsplan-Import: ${importError instanceof Error ? importError.message : String(importError)}`);
@@ -645,7 +751,7 @@ export default function Darlehensuebersicht() {
       {!loading && !error
         ? filteredRows.map((row) => (
             <PropertyLoanCard
-              key={row.propertyId}
+              key={`${row.propertyId}-${planDataRevision}`}
               propertyId={row.propertyId}
               propertyName={row.propertyName}
               dashboardBalance={row.lastBalance}

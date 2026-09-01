@@ -27,9 +27,15 @@ assert.match(service, /quality_status: rowWarnings\.length \? "warning" : "ok"/,
 assert.match(service, /onConflict: "user_id,property_key,plan_year,plan_month"/, "Wiederholte Importe müssen aktualisieren statt duplizieren");
 assert.match(service, /backfillBookedLoanSplits/, "Bestehende Kreditraten müssen nachträglich verknüpft werden");
 assert.match(service, /tax_relevant: false/, "Die Gesamtrate darf nicht als steuerlich abziehbarer Betrag markiert werden");
+assert.match(service, /loadLoanRatePlanYearlySummary/, "Die Darlehensseite braucht eine Jahresübersicht direkt aus den Monatsplänen");
+assert.match(service, /paymentTotal[\s\S]*interestTotal[\s\S]*principalTotal[\s\S]*feeTotal[\s\S]*closingBalance/, "Die Jahresübersicht muss Rate, Zins, Tilgung, Gebühren und Restschuld enthalten");
 
 assert.match(loanPage, /multiple/, "Die Darlehensseite muss mehrere CSV-Dateien gemeinsam importieren können");
 assert.match(loanPage, /Quelldatei und Qualitätsstatus/, "Die Hauptquelle und Datenqualität müssen in der UI erklärt sein");
+assert.match(loanPage, /Jährliche Entwicklung aus Tilgungsplan/, "Jede Immobilie muss einen aufklappbaren Jahresverlauf anbieten");
+assert.match(loanPage, /2024–\{currentYear\}/, "Der Jahresverlauf muss ab 2024 bis zum laufenden Jahr reichen");
+assert.match(loanPage, /Laufendes Jahr/, "Das aktuelle Jahr muss sichtbar gekennzeichnet sein");
+assert.match(loanPage, /Keine Monatswerte vorhanden/, "Fehlende Jahre müssen als sichtbare Datenlücke dokumentiert werden");
 assert.match(entryAdd, /isCreditRate/, "Zins- und Tilgungsfelder dürfen nur bei Kreditraten erscheinen");
 assert.match(entryAdd, /disabled=\{loanPlanLoading \|\| Boolean\(loanRatePlan\)\}/, "Importierte Monatswerte müssen schreibgeschützt sein");
 assert.match(entryAdd, /loanRatePlan \? `csv:/, "Manuelle und importierte Aufteilungen müssen unterscheidbar sein");
@@ -43,4 +49,4 @@ assert.match(taxCenter, /Gebuchte Monatsraten/, "Der Steuer-Report muss gebuchte
 assert.match(reports, /bookedSplits/, "Berichte & Exporte muss gebuchte Monatsaufteilungen priorisieren");
 assert.match(backup, /property_loan_rate_plan/, "Die neue Hauptquelle muss im App-Backup enthalten sein");
 
-console.log("27 Stressfälle für Tilgungsplan-Import, Buchungsaufteilung, Steuerberichte und Sicherheit bestanden.");
+console.log("33 Stressfälle für Tilgungsplan-Import, Jahresübersicht, Buchungsaufteilung, Steuerberichte und Sicherheit bestanden.");

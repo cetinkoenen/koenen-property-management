@@ -40,6 +40,19 @@ export type ParsedLoanRatePlan = {
   warnings: string[];
 };
 
+export type LoanRatePlanYearSummary = {
+  year: number;
+  monthCount: number;
+  paymentTotal: number;
+  interestTotal: number;
+  principalTotal: number;
+  feeTotal: number;
+  closingBalance: number | null;
+  sourceFiles: string[];
+  warningCount: number;
+  qualityNotes: string[];
+};
+
 const MONTHS: Record<string, number> = {
   januar: 1,
   februar: 2,
@@ -308,4 +321,81 @@ export async function findLoanRatePlanForBooking(input: {
   const fallback = await supabase.from("property_loan_rate_plan").select("*").eq("property_key", property.key).eq("plan_year", year).eq("plan_month", month).maybeSingle();
   if (fallback.error) throw fallback.error;
   return (fallback.data as LoanRatePlanRow | null) ?? null;
+}
+
+function safePlanAmount(value: unknown): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export async function loadLoanRatePlanYearlySummary(input: {
+  propertyId: string;
+  propertyName: string;
+}): Promise<LoanRatePlanYearSummary[]> {
+  const columns = "plan_date,plan_year,plan_month,payment_amount,interest_amount,fee_amount,principal_amount,closing_balance,source_file,quality_status,quality_note";
+  let result = await supabase
+    .from("property_loan_rate_plan")
+    .select(columns)
+    .eq("property_id", input.propertyId)
+    .order("plan_date", { ascending: true });
+  if (result.error) throw result.error;
+
+  if (!result.data?.length) {
+    const property = resolveLoanProperty(input.propertyName);
+    if (property) {
+      result = await supabase
+        .from("property_loan_rate_plan")
+        .select(columns)
+        .eq("property_key", property.key)
+        .order("plan_date", { ascending: true });
+      if (result.error) throw result.error;
+    }
+  }
+
+  const grouped = new Map<number, LoanRatePlanYearSummary & { months: Set<number>; files: Set<string>; notes: Set<string> }>();
+  for (const row of result.data ?? []) {
+    const year = Number(row.plan_year ?? String(row.plan_date ?? "").slice(0, 4));
+    const month = Number(row.plan_month ?? String(row.plan_date ?? "").slice(5, 7));
+    if (!Number.isInteger(year) || year <= 0) continue;
+    const current = grouped.get(year) ?? {
+      year,
+      monthCount: 0,
+      paymentTotal: 0,
+      interestTotal: 0,
+      principalTotal: 0,
+      feeTotal: 0,
+      closingBalance: null,
+      sourceFiles: [],
+      warningCount: 0,
+      qualityNotes: [],
+      months: new Set<number>(),
+      files: new Set<string>(),
+      notes: new Set<string>(),
+    };
+    if (month >= 1 && month <= 12) current.months.add(month);
+    current.paymentTotal += safePlanAmount(row.payment_amount);
+    current.interestTotal += safePlanAmount(row.interest_amount);
+    current.principalTotal += safePlanAmount(row.principal_amount);
+    current.feeTotal += safePlanAmount(row.fee_amount);
+    current.closingBalance = row.closing_balance === null ? current.closingBalance : safePlanAmount(row.closing_balance);
+    if (row.source_file) current.files.add(String(row.source_file));
+    if (row.quality_status === "warning") current.warningCount += 1;
+    if (row.quality_note) current.notes.add(String(row.quality_note));
+    grouped.set(year, current);
+  }
+
+  return Array.from(grouped.values())
+    .sort((left, right) => left.year - right.year)
+    .map((summary) => ({
+      year: summary.year,
+      monthCount: summary.months.size,
+      paymentTotal: Math.round(summary.paymentTotal * 100) / 100,
+      interestTotal: Math.round(summary.interestTotal * 100) / 100,
+      principalTotal: Math.round(summary.principalTotal * 100) / 100,
+      feeTotal: Math.round(summary.feeTotal * 100) / 100,
+      closingBalance: summary.closingBalance,
+      sourceFiles: Array.from(summary.files).sort(),
+      warningCount: summary.warningCount,
+      qualityNotes: Array.from(summary.notes),
+    }));
 }
