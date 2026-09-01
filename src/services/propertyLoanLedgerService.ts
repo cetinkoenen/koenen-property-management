@@ -71,6 +71,15 @@ export type CanonicalPropertyLoanSnapshot = {
   source: string | null;
 };
 
+export type CanonicalPropertyLoanYear = {
+  propertyId: string;
+  year: number;
+  interest: number;
+  principal: number;
+  balance: number;
+  source: string | null;
+};
+
 function devLog(message: string, payload?: unknown) {
   if (!DEBUG) return;
   if (import.meta.env.DEV) console.debug(`[propertyLoanLedgerService] ${message}`, payload);
@@ -387,6 +396,37 @@ export async function loadCanonicalPropertyLoanSnapshots(
   }
 
   return Array.from(grouped.values()).sort((left, right) => left.propertyId.localeCompare(right.propertyId));
+}
+
+export async function loadCanonicalPropertyLoanHistory(
+  propertyIds: Array<string | null | undefined>,
+  maximumYear = new Date().getFullYear(),
+): Promise<CanonicalPropertyLoanYear[]> {
+  const ids = Array.from(new Set(propertyIds.map((value) => String(value ?? "").trim()).filter(Boolean)));
+  if (!ids.length) return [];
+
+  const { data, error } = await supabase
+    .from(LEDGER_TABLE)
+    .select("property_id,year,interest,principal,balance,source")
+    .in("property_id", ids)
+    .lte("year", maximumYear)
+    .order("property_id", { ascending: true })
+    .order("year", { ascending: true });
+
+  if (error) {
+    throw buildDetailedLedgerError(error, "Tilgungs- und Zinsverlauf konnte nicht aus der Darlehens-Hauptquelle geladen werden.");
+  }
+
+  return ((data ?? []) as CanonicalPropertyLoanSnapshotRowDb[])
+    .map((row) => ({
+      propertyId: String(row.property_id ?? "").trim(),
+      year: toInteger(row.year, Number.NaN),
+      interest: toNumber(row.interest),
+      principal: toNumber(row.principal),
+      balance: toNumber(row.balance),
+      source: toNullableString(row.source),
+    }))
+    .filter((row) => row.propertyId && Number.isFinite(row.year) && row.year <= maximumYear);
 }
 
 export async function resolveLoanIdForProperty(

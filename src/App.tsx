@@ -82,6 +82,15 @@ import { EmptyState, InfoList, KpiCard, ModuleCard, PageHeader, SectionPanel } f
 import { isPortfolioGeneralEntry, PORTFOLIO_GENERAL_LABEL } from "./lib/portfolioExpense";
 import { canonicalCategoryForTax } from "./lib/taxClassification";
 import type { RentAnnualReportSnapshot } from "./pages/Mietuebersicht";
+import { loadCanonicalPropertyLoanHistory } from "./services/propertyLoanLedgerService";
+import {
+  buildLoanInterestReportCsv,
+  buildLoanInterestReportExcelHtml,
+  buildLoanInterestReportModel,
+  createLoanInterestReportPdf,
+  type LoanInterestDetailMode,
+  type LoanInterestSourceRow,
+} from "./lib/loanInterestReport";
 import "./App.css";
 
 type AppErrorBoundaryProps = {
@@ -1427,8 +1436,9 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
   );
 }
 
-type ReportKind = "tax" | "advisor" | "anlage-v-package" | "section35a" | "rent-account" | "utilities" | "wealth" | "handover" | "vacancy" | "tax-data-package";
+type ReportKind = "tax" | "advisor" | "anlage-v-package" | "section35a" | "rent-account" | "utilities" | "wealth" | "loan-interest" | "handover" | "vacancy" | "tax-data-package";
 type ReportFormat = "pdf" | "csv" | "excel" | "zip";
+const PDF_PAGE_BREAK = "[[PDF_PAGE_BREAK]]";
 type AnlageVReportDataRow = Omit<AnlageVBookingExportRow, "recordType" | "paymentStatus"> & {
   recordType: AnlageVBookingExportRow["recordType"] | "Leerstand" | "Offene Miete";
   paymentStatus: AnlageVBookingExportRow["paymentStatus"] | "Nicht anwendbar";
@@ -1729,6 +1739,10 @@ function createSimplePdf(title: string, lines: string[]): Blob {
   y -= 70;
 
   lines.forEach((rawLine) => {
+    if (rawLine === PDF_PAGE_BREAK) {
+      startPage(false);
+      return;
+    }
     const line = rawLine.trim();
     if (!line) {
       y -= 8;
@@ -1967,6 +1981,10 @@ function ReportsExportsPage() {
   const [taxLoanRows, setTaxLoanRows] = useState<TaxReportLoanRow[]>([]);
   const [taxLoanError, setTaxLoanError] = useState<string | null>(null);
   const [taxLoanLoadedYear, setTaxLoanLoadedYear] = useState<number | null>(null);
+  const [loanHistoryRows, setLoanHistoryRows] = useState<LoanInterestSourceRow[]>([]);
+  const [loanHistoryError, setLoanHistoryError] = useState<string | null>(null);
+  const [loanHistoryLoaded, setLoanHistoryLoaded] = useState(false);
+  const [loanDetailMode, setLoanDetailMode] = useState<LoanInterestDetailMode>("selected-year");
   const [rentAnnualReport, setRentAnnualReport] = useState<RentAnnualReportSnapshot | null>(null);
   const [activeExport, setActiveExport] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
@@ -2022,6 +2040,24 @@ function ReportsExportsPage() {
         return row.property_id === selectedObject.id || rowName.includes(selectedObject.label.toLowerCase()) || selectedObject.label.toLowerCase().includes(rowName);
       })
       : loanRows;
+  const scopedLoanHistoryRows = isPortfolioReportFilter
+    ? []
+    : selectedObject
+      ? loanHistoryRows.filter((row) => {
+        if (row.propertyId === selectedObject.id || selectedObject.aliases?.includes(row.propertyId)) return true;
+        const rowName = row.propertyName.toLowerCase();
+        const selectedName = selectedObject.label.toLowerCase();
+        return rowName.includes(selectedName) || selectedName.includes(rowName);
+      })
+      : loanHistoryRows;
+  const loanInterestReport = buildLoanInterestReportModel({
+    rows: scopedLoanHistoryRows,
+    properties: scopedLoans.map((loan) => ({ propertyId: loan.property_id, propertyName: loan.property_name })),
+    selectedYear,
+    currentYear,
+    detailMode: loanDetailMode,
+    objectLabel: reportObjectName,
+  });
   const taxAdvisorDashboard = buildTaxAdvisorDashboard({
     year: selectedYear,
     entries: yearEntries,
@@ -2079,6 +2115,42 @@ function ReportsExportsPage() {
       alive = false;
     };
   }, [selectedYear]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadLoanHistoryRows() {
+      if (appDataLoading) return;
+      try {
+        setLoanHistoryLoaded(false);
+        setLoanHistoryError(null);
+        const rows = await loadCanonicalPropertyLoanHistory(loanRows.map((row) => row.property_id), currentYear);
+        if (!alive) return;
+        setLoanHistoryRows(rows.map((row) => ({
+          propertyId: row.propertyId,
+          propertyName: loanRows.find((loan) => loan.property_id === row.propertyId)?.property_name
+            ?? getPropertyName(row.propertyId)
+            ?? row.propertyId,
+          year: row.year,
+          interest: row.interest,
+          principal: row.principal,
+          balance: row.balance,
+          source: row.source,
+        })));
+      } catch (error) {
+        if (!alive) return;
+        setLoanHistoryRows([]);
+        setLoanHistoryError(error instanceof Error ? error.message : String(error));
+      } finally {
+        if (alive) setLoanHistoryLoaded(true);
+      }
+    }
+
+    void loadLoanHistoryRows();
+    return () => {
+      alive = false;
+    };
+  }, [appDataLoading, currentYear, getPropertyName, loanRows]);
 
   useEffect(() => {
     let alive = true;
@@ -2159,9 +2231,10 @@ function ReportsExportsPage() {
     if (kind === "rent-account") return rentReportReady;
     if (kind === "vacancy") return vacancyReportReady;
     if (kind === "section35a") return mileageReportReady;
+    if (kind === "loan-interest") return loanHistoryLoaded && !loanHistoryError && !isPortfolioReportFilter;
     if (kind === "anlage-v-package") return mileageReportReady && taxLoanReportReady;
-    if (kind === "tax") return objectFilter === "all" && rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady;
-    if (kind === "tax-data-package") return rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady;
+    if (kind === "tax") return objectFilter === "all" && rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady && loanHistoryLoaded && !loanHistoryError;
+    if (kind === "tax-data-package") return rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady && loanHistoryLoaded && !loanHistoryError;
     return true;
   }
 
@@ -2190,6 +2263,7 @@ function ReportsExportsPage() {
       "rent-account": "Mietkonto-Check und offene Zahlungen",
       utilities: "Nebenkostenabrechnungen",
       wealth: "Immobilien-Vermögen und Kredite",
+      "loan-interest": "Tilgung & Zins - Jahresübersicht",
       handover: "Übergabeprotokolle und Zählerstände",
       vacancy: "Leerstandsbericht",
       "tax-data-package": "Steuerberater-Datenpaket",
@@ -2328,6 +2402,40 @@ function ReportsExportsPage() {
       .sort((left, right) => left.objectName.localeCompare(right.objectName, "de") || left.bookingDate.localeCompare(right.bookingDate));
   }
 
+  function taxLoanOverviewRows() {
+    return loanRows.map((loan) => {
+      const loanName = loan.property_name.toLowerCase();
+      const taxRow = taxLoanRows.find((row) => {
+        const taxName = String(row.property_name ?? row.property_label ?? "").toLowerCase();
+        return row.property_id === loan.property_id || (taxName && (taxName.includes(loanName) || loanName.includes(taxName)));
+      });
+      const history = loanHistoryRows.find((row) => row.propertyId === loan.property_id && row.year === selectedYear);
+      const interest = Number(taxRow?.interest ?? taxRow?.interest_total ?? history?.interest ?? 0);
+      const principal = Number(taxRow?.principal ?? taxRow?.principal_total ?? history?.principal ?? 0);
+      return {
+        propertyId: loan.property_id,
+        propertyName: loan.property_name,
+        interest,
+        principal,
+        debtService: interest + principal,
+        balance: history?.balance ?? null,
+        source: history?.source ?? null,
+      };
+    }).sort((left, right) => left.propertyName.localeCompare(right.propertyName, "de"));
+  }
+
+  function buildTaxLoanOverviewLines(): string[] {
+    return [
+      PDF_PAGE_BREAK,
+      `Tilgung & Zins ${selectedYear}:`,
+      "Zusatzseite für den Steuerberater. Hauptquelle: Darlehen / property_loan_ledger und gebuchte monatliche Kreditraten-Aufteilungen.",
+      "Steuerregel: Nur der Schuldzinsenanteil ist bei vermieteten Objekten als Werbungskosten zu prüfen. Tilgung ist nicht steuerlich abzugsfähig.",
+      "Hohenloher Str. 78 ist selbstgenutzt und bleibt für Anlage V gesperrt; die Darlehenswerte werden nur informativ dokumentiert.",
+      "",
+      ...taxLoanOverviewRows().map((row) => `${row.propertyName} | Zinsen ${formatCurrency(row.interest)} | Tilgung ${formatCurrency(row.principal)} | Kapitaldienst ${formatCurrency(row.debtService)} | Restschuld ${row.balance === null ? "nicht vorhanden" : formatCurrency(row.balance)} | ${row.source ? row.source.replace(/^CSV-Monatsplan:\s*/i, "Quelle CSV: ") : "Quelle: Darlehens-Ledger"}`),
+    ];
+  }
+
   function buildReportLines(kind: ReportKind): string[] {
     if (kind === "tax-data-package") {
       return buildTaxDataPackageLines();
@@ -2360,6 +2468,28 @@ function ReportsExportsPage() {
         ]),
         "Detailnachweis je Buchung:",
         ...dataRows.map((row) => `${row.bookingDate || "-"} | ${row.objectId} | ${row.categoryName} | ${row.officialFormLine} | Einnahme ${formatCurrency(row.incomeAmount)} | Ausgabe ${formatCurrency(row.expenseAmount)} | umlagefähig ${row.apportionableStatus} | Zahlung ${row.paymentStatus} | ${row.reviewStatus} | ${row.bookingText}`),
+        ...buildTaxLoanOverviewLines(),
+      ];
+    }
+
+    if (kind === "loan-interest") {
+      return [
+        `Objektfilter: ${loanInterestReport.objectLabel}`,
+        `Ausgewähltes Jahr: ${selectedYear}`,
+        `Detailumfang: ${loanDetailMode === "all-years" ? `alle Jahre bis ${currentYear}` : `nur ${selectedYear}`}`,
+        "Hauptquelle: Darlehen / property_loan_ledger",
+        "Steuerhinweis: Zinsen sind bei Vermietung zu prüfen; Tilgung ist nicht als Werbungskosten abzugsfähig.",
+        "",
+        "Jahresentwicklung bis aktuelles Jahr:",
+        ...loanInterestReport.coverRows.map((row) => `${row.year} | Zinsen ${formatCurrency(row.interest)} | Tilgung ${formatCurrency(row.principal)} | Kapitaldienst ${formatCurrency(row.debtService)} | Restschuld ${formatCurrency(row.closingBalance)} | Objekte ${row.propertyCount}`),
+        "",
+        ...loanInterestReport.sections.flatMap((section) => [
+          `${section.propertyName}:`,
+          ...(section.rows.length
+            ? section.rows.map((row) => `${row.year} | Zinsen ${formatCurrency(row.interest)} | Tilgung ${formatCurrency(row.principal)} | Kapitaldienst ${formatCurrency(row.interest + row.principal)} | Restschuld ${formatCurrency(row.balance)} | ${row.source ?? "Darlehens-Ledger"}`)
+            : [`Für ${selectedYear} sind keine Darlehenswerte vorhanden.`]),
+          "",
+        ]),
       ];
     }
 
@@ -2375,6 +2505,7 @@ function ReportsExportsPage() {
         ]),
         taxAdvisorDashboard.warnings.length ? "Pruefhinweise:" : "",
         ...taxAdvisorDashboard.warnings.map((warning) => `- ${warning}`),
+        ...buildTaxLoanOverviewLines(),
       ].filter((line, index, list) => line || list[index - 1] !== "");
     }
 
@@ -2446,10 +2577,11 @@ function ReportsExportsPage() {
       { title: "2. Steuer-Report Anlage V", kind: "tax" },
       { title: "3. Mietkonto-Check und offene Zahlungen", kind: "rent-account" },
       { title: "4. Immobilien-Vermoegen und Kredite", kind: "wealth" },
-      { title: "5. Leerstandsbericht", kind: "vacancy" },
-      { title: "6. Paragraf 35a Bericht Hohenloher Str. 78", kind: "section35a" },
-      { title: "7. Export fuer den Steuerberater", kind: "advisor" },
-      { title: "8. Nebenkostenabrechnungen", kind: "utilities" },
+      { title: "5. Tilgung und Zins Jahresuebersicht", kind: "loan-interest" },
+      { title: "6. Leerstandsbericht", kind: "vacancy" },
+      { title: "7. Paragraf 35a Bericht Hohenloher Str. 78", kind: "section35a" },
+      { title: "8. Export fuer den Steuerberater", kind: "advisor" },
+      { title: "9. Nebenkostenabrechnungen", kind: "utilities" },
     ];
 
     return [
@@ -2471,6 +2603,10 @@ function ReportsExportsPage() {
   }
 
   function buildReportCsv(kind: ReportKind): string {
+    if (kind === "loan-interest") {
+      return buildLoanInterestReportCsv(loanInterestReport);
+    }
+
     if (kind === "tax") {
       return buildCsv([
         "Datensatztyp",
@@ -2512,6 +2648,7 @@ function ReportsExportsPage() {
         ["Steuer", `steuer-report-anlage-v-${period}.pdf`, "PDF", "Allgemeine Anlage-V-Jahresuebersicht"],
         ["Mietkonto", `mietkonto-check-${period}.pdf`, "PDF", "Mietzahlungen und offene Posten"],
         ["Vermoegen", `immobilien-vermoegen-kredite-${period}.pdf`, "PDF", "Objektwerte, Darlehen und Zins-/Tilgungswerte"],
+        ["Darlehen", `tilgung-zins-${period}.pdf`, "PDF", "Deckblatt und objektweise Jahresdetails für Zinsen, Tilgung und Restschuld"],
         ["Leerstand", `leerstandsbericht-${period}.pdf`, "PDF", "Leerstand mit Status, Beginn und Ende"],
         ["§35a", `35a-hohenloher-str-78-${period}.pdf`, "PDF", "Selbstgenutztes Objekt, Arbeitslohn und Barzahlungspruefung"],
         ["Steuerberater", `export-steuerberater-${period}.xlsx`, "Excel", "Strukturierte Uebergabedaten"],
@@ -2679,10 +2816,11 @@ function ReportsExportsPage() {
       { folder: "02-steuer-report", filename: `steuer-report-anlage-v-${period}`, kind: "tax" },
       { folder: "03-mietkonto", filename: `mietkonto-check-${period}`, kind: "rent-account" },
       { folder: "04-vermoegen-kredite", filename: `immobilien-vermoegen-kredite-${period}`, kind: "wealth" },
-      { folder: "05-leerstand", filename: `leerstandsbericht-${period}`, kind: "vacancy" },
-      { folder: "06-35a-hohenloher", filename: `35a-hohenloher-str-78-${period}`, kind: "section35a" },
-      { folder: "07-steuerberater-export", filename: `export-steuerberater-${period}`, kind: "advisor" },
-      { folder: "08-nebenkosten", filename: `nebenkostenabrechnungen-${period}`, kind: "utilities" },
+      { folder: "05-tilgung-zins", filename: `tilgung-zins-${period}`, kind: "loan-interest" },
+      { folder: "06-leerstand", filename: `leerstandsbericht-${period}`, kind: "vacancy" },
+      { folder: "07-35a-hohenloher", filename: `35a-hohenloher-str-78-${period}`, kind: "section35a" },
+      { folder: "08-steuerberater-export", filename: `export-steuerberater-${period}`, kind: "advisor" },
+      { folder: "09-nebenkosten", filename: `nebenkostenabrechnungen-${period}`, kind: "utilities" },
     ];
 
     const rentedReportCount = taxAdvisorDashboard.AnlageVReports.length || 1;
@@ -2716,10 +2854,12 @@ function ReportsExportsPage() {
           name: `${packageSlug}/${item.folder}/${item.filename}.pdf`,
           content: item.kind === "rent-account"
             ? createRentAccountPdf(readyRentReport, reportObjectName)
-            : createSimplePdf(reportTitle(item.kind), buildReportLines(item.kind)),
+            : item.kind === "loan-interest"
+              ? createLoanInterestReportPdf(loanInterestReport)
+              : createSimplePdf(reportTitle(item.kind), buildReportLines(item.kind)),
         },
         { name: `${packageSlug}/${item.folder}/${item.filename}.csv`, content: csv },
-        { name: `${packageSlug}/${item.folder}/${item.filename}.xls`, content: csvToExcelHtml(reportTitle(item.kind), csv) },
+        { name: `${packageSlug}/${item.folder}/${item.filename}.xls`, content: item.kind === "loan-interest" ? buildLoanInterestReportExcelHtml(loanInterestReport) : csvToExcelHtml(reportTitle(item.kind), csv) },
         { name: `${packageSlug}/${item.folder}/${item.filename}.txt`, content: buildSummaryText(item.kind) },
       );
     });
@@ -2740,6 +2880,8 @@ function ReportsExportsPage() {
 
     const baseName = kind === "tax"
       ? `Steuer-Report_Anlage_V_${period}`
+      : kind === "loan-interest"
+        ? `Tilgung-und-Zins-${slugifyReportPart(reportObjectName)}-${period}-${loanDetailMode === "all-years" ? "alle-jahre" : "jahresdetail"}`
       : `${slugifyReportPart(reportTitle(kind))}-${reportSlug}`;
     if (kind === "anlage-v-package" && format === "zip") {
       const rentedReportCount = taxAdvisorDashboard.AnlageVReports.length || 1;
@@ -2812,13 +2954,18 @@ function ReportsExportsPage() {
       return;
     }
     if (format === "excel") {
-      downloadBlob(`${baseName}.xls`, new Blob([`\uFEFF${csvToExcelHtml(reportTitle(kind), buildReportCsv(kind))}`], { type: "application/vnd.ms-excel;charset=utf-8" }));
+      const excelContent = kind === "loan-interest"
+        ? buildLoanInterestReportExcelHtml(loanInterestReport)
+        : csvToExcelHtml(reportTitle(kind), buildReportCsv(kind));
+      downloadBlob(`${baseName}.xls`, new Blob([`\uFEFF${excelContent}`], { type: "application/vnd.ms-excel;charset=utf-8" }));
       return;
     }
     if (format === "pdf") {
       const content = kind === "rent-account"
         ? createRentAccountPdf(getReadyRentReport()!, reportObjectName)
-        : createSimplePdf(reportTitle(kind), buildReportLines(kind));
+        : kind === "loan-interest"
+          ? createLoanInterestReportPdf(loanInterestReport)
+          : createSimplePdf(reportTitle(kind), buildReportLines(kind));
       downloadBlob(`${baseName}.pdf`, content);
       return;
     }
@@ -2854,7 +3001,7 @@ function ReportsExportsPage() {
     },
     {
       title: "Steuer-Report (Anlage V)",
-      description: "Fachlicher Detailreport für alle Immobilien nach Zahlungsdatum mit Formularzeile, Wohnfläche, getrennten Miet-/Kostenarten, Hausgeld-Sperre, Leerstand und offenen Mieten. Objektfilter: Alle Objekte.",
+      description: "Fachlicher Detailreport mit Formularzeile, Wohnfläche, getrennten Miet-/Kostenarten, Leerstand und offenen Mieten. Neu: eigene Tilgung-&-Zins-Seite für jede Immobilie im gewählten Steuerjahr. Objektfilter: Alle Objekte.",
       icon: Euro,
       actions: [
         { label: "PDF herunterladen", kind: "tax", format: "pdf", primary: true },
@@ -2880,6 +3027,16 @@ function ReportsExportsPage() {
         { label: "Vermögens-PDF", kind: "wealth", format: "pdf", primary: true },
         { label: "Excel", kind: "wealth", format: "excel" },
         { label: "CSV", kind: "wealth", format: "csv" },
+      ],
+    },
+    {
+      title: "Tilgung & Zins - Jahresübersicht",
+      description: "Professioneller Darlehensreport mit Deckblatt, einer Zeile je Jahr bis zum aktuellen Jahr und separaten Immobilienseiten. Der Detailumfang folgt der Auswahl ‚gewähltes Jahr‘ oder ‚alle Jahre‘.",
+      icon: Landmark,
+      actions: [
+        { label: "PDF herunterladen", kind: "loan-interest", format: "pdf", primary: true },
+        { label: "Excel", kind: "loan-interest", format: "excel" },
+        { label: "CSV", kind: "loan-interest", format: "csv" },
       ],
     },
     {
@@ -2951,7 +3108,7 @@ function ReportsExportsPage() {
         title="Bericht vorbereiten"
         description="Wählen Sie Objekt und Zeitraum. Alle Export-Kacheln erzeugen ihre Datei direkt aus genau dieser gefilterten Auswahl."
       >
-        <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
+        <div className="grid gap-4 lg:grid-cols-[1fr_240px_280px]">
           <label className="grid gap-2 text-sm font-black text-slate-700">
             Welches Objekt möchten Sie auswerten?
             <select
@@ -2978,6 +3135,17 @@ function ReportsExportsPage() {
               <option value={String(currentYear - 1)}>Vorjahr ({currentYear - 1})</option>
             </select>
           </label>
+          <label className="grid gap-2 text-sm font-black text-slate-700">
+            Tilgung-&-Zins-Details
+            <select
+              value={loanDetailMode}
+              onChange={(event) => setLoanDetailMode(event.target.value as LoanInterestDetailMode)}
+              className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
+            >
+              <option value="selected-year">Nur gewähltes Jahr ({period})</option>
+              <option value="all-years">Alle Jahre bis {currentYear}</option>
+            </select>
+          </label>
         </div>
       </SectionPanel>
 
@@ -2985,6 +3153,11 @@ function ReportsExportsPage() {
         {exportMessage ? (
           <div role="status" className="lg:col-span-2 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm font-bold text-teal-900">
             {exportMessage}
+          </div>
+        ) : null}
+        {loanHistoryError ? (
+          <div role="alert" className="lg:col-span-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-900">
+            Darlehens-Hauptquelle konnte nicht geladen werden: {loanHistoryError}
           </div>
         ) : null}
         {reportCards.map((card) => {

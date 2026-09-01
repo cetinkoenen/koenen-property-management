@@ -6,6 +6,8 @@ const taxEngine = await readFile(new URL("../src/services/taxReportEngine.ts", i
 const taxClassification = await readFile(new URL("../src/lib/taxClassification.ts", import.meta.url), "utf8");
 const portfolioExpense = await readFile(new URL("../src/lib/portfolioExpense.ts", import.meta.url), "utf8");
 const appData = await readFile(new URL("../src/state/AppDataContext.tsx", import.meta.url), "utf8");
+const loanInterestReport = await readFile(new URL("../src/lib/loanInterestReport.ts", import.meta.url), "utf8");
+const loanLedgerService = await readFile(new URL("../src/services/propertyLoanLedgerService.ts", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -48,4 +50,18 @@ assert.ok(
   "Erwerbsnebenkosten müssen vor der Einnahmenlogik erkannt werden",
 );
 
-console.log("37 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+assert.match(app, /type ReportKind = [^;]*"loan-interest"/, "Tilgung und Zins muss als eigener Berichtstyp registriert sein");
+assert.match(app, /title: "Tilgung & Zins - Jahresübersicht"[\s\S]*kind: "loan-interest", format: "pdf"[\s\S]*format: "excel"[\s\S]*format: "csv"/, "Der Darlehensreport muss PDF, Excel und CSV anbieten");
+assert.match(app, /value=\{loanDetailMode\}[\s\S]*value="selected-year"[\s\S]*value="all-years"/, "Der Darlehensreport muss gewähltes Jahr und alle Jahre unterstützen");
+assert.match(app, /buildTaxLoanOverviewLines\(\)[\s\S]*PDF_PAGE_BREAK/, "Die Anlage V muss eine eigene Tilgung-und-Zins-Seite erzeugen");
+assert.match(app, /if \(rawLine === PDF_PAGE_BREAK\)/, "Der Steuerreport muss den Seitenwechsel für den Darlehensnachweis verarbeiten");
+assert.match(app, /kind === "tax"[\s\S]*\.\.\.buildTaxLoanOverviewLines\(\)/, "Der Steuer-Report Anlage V muss den Darlehensnachweis enthalten");
+assert.match(loanLedgerService, /loadCanonicalPropertyLoanHistory[\s\S]*from\(LEDGER_TABLE\)[\s\S]*\.lte\("year", maximumYear\)/, "Historische Darlehenswerte müssen aus der zentralen Ledger-Quelle bis zum aktuellen Jahr geladen werden");
+assert.match(loanInterestReport, /for \(let year = firstYear; year <= input\.currentYear; year \+= 1\)/, "Das Deckblatt muss für jedes Jahr bis zum aktuellen Jahr eine Zeile enthalten");
+assert.match(loanInterestReport, /createLoanInterestReportPdf[\s\S]*model\.sections\.forEach/, "Der PDF-Bericht muss nach dem Deckblatt eine Seite je Immobilie erzeugen");
+assert.match(loanInterestReport, /\.\.\.\(input\.properties \?\? \[\]\)\.map[\s\S]*\.\.\.rows\.map/, "Auch Immobilien ohne Werte im gewählten Jahr müssen im Detailbericht enthalten bleiben");
+assert.match(loanInterestReport, /buildLoanInterestReportExcelHtml/, "Der Darlehensreport muss einen professionell formatierten Excel-Export erzeugen");
+assert.match(loanInterestReport, /buildLoanInterestReportCsv/, "Der Darlehensreport muss einen strukturierten CSV-Export erzeugen");
+assert.match(loanInterestReport, /Tilgung ist keine Werbungskostenposition/, "Der Bericht muss Zinsen und Tilgung steuerlich korrekt unterscheiden");
+
+console.log("50 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
