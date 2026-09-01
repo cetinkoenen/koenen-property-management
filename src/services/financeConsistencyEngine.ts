@@ -331,6 +331,11 @@ export function buildFinanceConsistencySummary(input: ConsistencyInput): Consist
   const today = input.today ?? new Date();
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth() + 1;
+  // Operational grace period: the payment calendar already distinguishes
+  // receipts through day 10. A current-month absence must therefore not be
+  // reported as a data error while an on-time/near-time receipt can still be
+  // booked. Historical months remain strict.
+  const currentMonthIsDueForConsistencyCheck = today.getDate() > 10;
   const names = propertyNameById(input.objects, input.portfolioRows, input.loanRows);
   const knownIds = knownPropertyIds(input.objects, input.portfolioRows, input.loanRows);
   const checks: ConsistencyCheck[] = [];
@@ -654,10 +659,11 @@ export function buildFinanceConsistencySummary(input: ConsistencyInput): Consist
   }
 
   if (input.year <= currentYear) {
-    const maxMonth = input.year === currentYear ? currentMonth : 12;
+    const maxMonth = input.year === currentYear
+      ? currentMonth - (currentMonthIsDueForConsistencyCheck ? 0 : 1)
+      : 12;
     for (const propertyId of propertiesWithCurrentRent) {
       for (let month = 1; month <= maxMonth; month += 1) {
-        if (input.year === currentYear && month > currentMonth) continue;
         const value = rentByPropertyMonth.get(`${propertyId}|${input.year}|${month}`) ?? 0;
         if (value <= 0) {
           addCheck(checks, {

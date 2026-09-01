@@ -375,7 +375,13 @@ export default function Datenpruefung() {
   }, [auditSources, app.yearlyFinanceSummaries, app.loanRows, app.portfolioRows, capex, incomeYears, ledger, rentals]);
 
   const backendFinance = useBackendFinanceMaster(currentYear, backendRefreshKey);
-  const qualityChecks = backendFinance.dataQualityChecks;
+  // Missing uploads are an inventory reminder, not a consistency error in
+  // accounting or tax data. Keep the backend signal available, but exclude it
+  // from this page's error totals and warning list.
+  const qualityChecks = useMemo(
+    () => backendFinance.dataQualityChecks.filter((row) => row.issue_code !== "missing_documents"),
+    [backendFinance.dataQualityChecks],
+  );
   const qualityStats = useMemo(() => ({
     critical: qualityChecks.filter((row) => row.severity === "critical").length,
     warning: qualityChecks.filter((row) => row.severity === "warning").length,
@@ -556,7 +562,7 @@ export default function Datenpruefung() {
             </div>
             <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">Backend-Qualitätschecks</h2>
             <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-600">
-              Supabase prüft jetzt zentral Objektzuordnungen, Mietverträge, Mietanpassungen und Leerstände sowie fehlende Darlehens-Ledger, fehlende Dokumente und Buchungsdubletten. Portfolio-Allgemeinbuchungen und gültige Einheiten-IDs werden dabei bewusst nicht als Fehler gewertet.
+              Supabase prüft jetzt zentral Objektzuordnungen, Mietverträge, Mietanpassungen und Leerstände sowie fehlende Darlehens-Ledger und Buchungsdubletten. Fehlende Dokument-Uploads, Portfolio-Allgemeinbuchungen und gültige Einheiten-IDs werden dabei bewusst nicht als Fehler gewertet.
             </p>
             <p className="mt-2 text-xs font-black text-slate-500">Server-Refresh aktualisiert die Finanzmaster-Views und lädt die Datenprüfung neu.</p>
           </div>

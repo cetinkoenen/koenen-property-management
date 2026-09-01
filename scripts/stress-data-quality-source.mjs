@@ -8,6 +8,7 @@ const migration = await readFile(
 const dataCheckPage = await readFile(new URL("../src/pages/Datenpruefung.tsx", import.meta.url), "utf8");
 const appDataContext = await readFile(new URL("../src/state/AppDataContext.tsx", import.meta.url), "utf8");
 const exposeService = await readFile(new URL("../src/lib/uploadExpose.ts", import.meta.url), "utf8");
+const consistencyEngine = await readFile(new URL("../src/services/financeConsistencyEngine.ts", import.meta.url), "utf8");
 
 const bridgeDefinition = migration.match(/create or replace view public\.v_koenen_object_bridge as([\s\S]*?)revoke all/i)?.[1] ?? "";
 
@@ -25,5 +26,7 @@ assert.match(dataCheckPage, /Objektzuordnungen, Mietverträge, Mietanpassungen u
 assert.match(appDataContext, /from\("property_extra_info"\)\.select\("property_id,living_area,wealth_profile"\)/, "Immobilienvermögen muss die einzige zentrale Wohnflächenquelle sein");
 assert.doesNotMatch(appDataContext, /from\("properties"\)\.select\([^\n]*living_area/, "Wohnflächen dürfen nicht aus einer zweiten, produktiv nicht vorhandenen properties-Spalte gelesen werden");
 assert.match(exposeService, /message\.toLowerCase\(\)\.includes\("object not found"\)/, "Ein veralteter Exposé-Verweis darf das Laden aller übrigen Exposés nicht blockieren");
+assert.match(dataCheckPage, /issue_code !== "missing_documents"/, "Fehlende Dokument-Uploads dürfen nicht als Konsistenzfehler gewertet werden");
+assert.match(consistencyEngine, /today\.getDate\(\) > 10/, "Der laufende Monat darf erst nach der Zahlungskalender-Kulanz als fehlend gelten");
 
-console.log("16 Stressfaelle fuer zentrale Objektzuordnung und Datenqualitaet bestanden.");
+console.log("18 Stressfaelle fuer zentrale Objektzuordnung und Datenqualitaet bestanden.");
