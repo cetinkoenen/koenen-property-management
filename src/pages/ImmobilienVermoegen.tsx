@@ -650,9 +650,13 @@ function contractMatchesParkingUnit(contract: TenantContract, unit: ParkingUnit)
 }
 
 function isContractActiveOn(contract: TenantContract, date: string): boolean {
-  if (contract.status === "vacant" || contract.status === "ended") return false;
+  if (contract.status === "vacant") return false;
   if (contract.start_date && contract.start_date > date) return false;
-  return !contract.end_date || contract.end_date >= date;
+  if (contract.end_date && contract.end_date < date) return false;
+  // Ein geplanter Leerstand setzt den Datensatz technisch bereits auf "ended".
+  // Bis zum hinterlegten Vertragsende bleibt der Mietvertrag jedoch fachlich aktiv.
+  if (contract.status === "ended" && !contract.end_date) return false;
+  return true;
 }
 
 function tenantDisplayName(profile: TenantProfileWithContracts): string {

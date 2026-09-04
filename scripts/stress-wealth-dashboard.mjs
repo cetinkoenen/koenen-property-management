@@ -151,6 +151,14 @@ function contractMatchesWealthCard(contract, card, objects) {
   return Boolean(contractLabel && cardLabel && contractLabel.includes("rosenstein") && cardLabel.includes("rosenstein"));
 }
 
+function isContractActiveOn(contract, date) {
+  if (contract.status === "vacant") return false;
+  if (contract.start_date && contract.start_date > date) return false;
+  if (contract.end_date && contract.end_date < date) return false;
+  if (contract.status === "ended" && !contract.end_date) return false;
+  return true;
+}
+
 function isVacancyEffectivelyActiveInRange(vacancy, start, end) {
   if (vacancy.status === "ended") return false;
   if (vacancy.start_date > end) return false;
@@ -329,6 +337,16 @@ const tests = [
       contractMatchesWealthCard({ property_id: "foreign-object", object_code: "Objekt_2", unit_label: "P250" }, rosenstein, objects),
       false,
       "Eine gleiche Einheitsbezeichnung allein darf kein anderes Objekt verknuepfen",
+    );
+    assert.equal(
+      isContractActiveOn({ status: "ended", start_date: "2026-01-01", end_date: "2026-09-29" }, "2026-09-04"),
+      true,
+      "Ein wegen geplantem Leerstand technisch beendeter Vertrag muss bis zu seinem Enddatum aktiv bleiben",
+    );
+    assert.equal(
+      isContractActiveOn({ status: "ended", start_date: "2026-01-01", end_date: "2026-09-29" }, "2026-10-01"),
+      false,
+      "Nach dem Vertragsende darf der Stellplatz nicht mehr als vermietet gelten",
     );
   },
   () => {
