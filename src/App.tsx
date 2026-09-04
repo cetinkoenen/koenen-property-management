@@ -85,6 +85,7 @@ import { canonicalCategoryForTax } from "./lib/taxClassification";
 import type { RentAnnualReportSnapshot } from "./pages/Mietuebersicht";
 import { loadCanonicalPropertyLoanHistory } from "./services/propertyLoanLedgerService";
 import { fetchPropertyWealthProfiles, type PropertyWealthProfile } from "./services/propertyExtraService";
+import { portfolioGalleryItems } from "./data/portfolioGallery";
 import {
   buildLoanInterestReportCsv,
   buildLoanInterestReportExcelHtml,
@@ -1493,6 +1494,12 @@ function slugifyReportPart(value: string): string {
     .replace(/^-+|-+$/g, "") || "bericht";
 }
 
+function reportPropertyNamesMatch(left: string, right: string): boolean {
+  const leftKey = slugifyReportPart(left).replace(/-/g, "");
+  const rightKey = slugifyReportPart(right).replace(/-/g, "");
+  return leftKey === rightKey || leftKey.includes(rightKey) || rightKey.includes(leftKey);
+}
+
 function csvValue(value: unknown): string {
   return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
@@ -1632,7 +1639,46 @@ function escapePdfText(value: string): string {
     .replace(/[^\x20-\x7E]/g, " ");
 }
 
-function createSimplePdf(title: string, lines: string[]): Blob {
+type PdfJpegImage = {
+  bytes: Uint8Array;
+  width: number;
+  height: number;
+};
+
+async function loadPdfJpegImage(imageUrl: string): Promise<PdfJpegImage> {
+  const response = await fetch(imageUrl);
+  if (!response.ok) throw new Error(`Immobilienfoto konnte nicht geladen werden (${response.status}).`);
+  const sourceBlob = await response.blob();
+  const bitmap = await createImageBitmap(sourceBlob);
+  const maxWidth = 1400;
+  const maxHeight = 900;
+  const scale = Math.min(1, maxWidth / bitmap.width, maxHeight / bitmap.height);
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Immobilienfoto konnte nicht für die PDF vorbereitet werden.");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+  const jpegBlob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Immobilienfoto konnte nicht als JPEG erzeugt werden.")), "image/jpeg", 0.88);
+  });
+  return { bytes: new Uint8Array(await jpegBlob.arrayBuffer()), width, height };
+}
+
+function bytesToBinaryString(bytes: Uint8Array): string {
+  const chunks: string[] = [];
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    chunks.push(String.fromCharCode(...bytes.subarray(index, index + 0x8000)));
+  }
+  return chunks.join("");
+}
+
+function createSimplePdf(title: string, lines: string[], coverImage?: PdfJpegImage): Blob {
   const pageWidth = 595;
   const pageHeight = 842;
   const marginX = 42;
@@ -1776,6 +1822,20 @@ function createSimplePdf(title: string, lines: string[]): Blob {
   text("Quelle: App-Daten, Buchhaltung, Darlehen, Fahrtenbuch", marginX + 240, y - 25, 9, "F1", color.slate);
   y -= 70;
 
+  if (coverImage) {
+    const maxImageHeight = 220;
+    const imageWidth = contentWidth;
+    const imageHeight = Math.min(maxImageHeight, imageWidth * (coverImage.height / coverImage.width));
+    const displayedWidth = imageHeight * (coverImage.width / coverImage.height);
+    const imageX = marginX + (contentWidth - displayedWidth) / 2;
+    ensureSpace(imageHeight + 36);
+    rect(marginX, y - imageHeight - 10, contentWidth, imageHeight + 20, "0.985 0.99 1 rg", color.muted);
+    current.push("q", `${displayedWidth} 0 0 ${imageHeight} ${imageX} ${y - imageHeight} cm`, "/PropertyPhoto Do", "Q");
+    y -= imageHeight + 24;
+    text("Immobilienfoto - Quelle: Objektgalerie der App", marginX, y, 8, "F1", color.slate);
+    y -= 22;
+  }
+
   lines.forEach((rawLine) => {
     if (rawLine === PDF_PAGE_BREAK) {
       startPage(false);
@@ -1803,15 +1863,19 @@ function createSimplePdf(title: string, lines: string[]): Blob {
   });
 
   pageStreams.push(current.join("\n"));
-  const pageKids = pageStreams.map((_, index) => `${6 + index * 2} 0 R`).join(" ");
+  const photoObjectId = coverImage ? 6 : null;
+  const firstPageObjectId = coverImage ? 7 : 6;
+  const pageKids = pageStreams.map((_, index) => `${firstPageObjectId + index * 2} 0 R`).join(" ");
+  const photoResource = photoObjectId ? ` /PropertyPhoto ${photoObjectId} 0 R` : "";
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     `<< /Type /Pages /Kids [${pageKids}] /Count ${pageStreams.length} >>`,
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
     createPdfLogoObject(),
+    ...(coverImage ? [`<< /Type /XObject /Subtype /Image /Width ${coverImage.width} /Height ${coverImage.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${coverImage.bytes.length} >>\nstream\n${bytesToBinaryString(coverImage.bytes)}\nendstream`] : []),
     ...pageStreams.flatMap((content, index) => [
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << /BrandLogo 5 0 R >> >> /Contents ${7 + index * 2} 0 R >>`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << /BrandLogo 5 0 R${photoResource} >> >> /Contents ${firstPageObjectId + index * 2 + 1} 0 R >>`,
       `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
     ]),
   ];
@@ -1827,7 +1891,8 @@ function createSimplePdf(title: string, lines: string[]): Blob {
     pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
   });
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return new Blob([pdf], { type: "application/pdf" });
+  const pdfBytes = Uint8Array.from(pdf, (character) => character.charCodeAt(0) & 0xff);
+  return new Blob([pdfBytes], { type: "application/pdf" });
 }
 
 const crcTable = Array.from({ length: 256 }, (_, tableIndex) => {
@@ -2006,7 +2071,7 @@ function ReportActionButton({
 }
 
 function ReportsExportsPage() {
-  const { objects, entries, loanRows, getPropertyName, loading: appDataLoading } = useAppData();
+  const { objects, entries, loanRows, portfolioRows, getPropertyName, loading: appDataLoading } = useAppData();
   const currentYear = new Date().getFullYear();
   const [objectFilter, setObjectFilter] = useState("all");
   const [period, setPeriod] = useState(String(currentYear));
@@ -2039,17 +2104,41 @@ function ReportsExportsPage() {
   const selectedYear = Number(period) || currentYear;
   const effectiveDossierObjectId = propertyDossierObjectId || objects[0]?.id || "";
   const selectedDossierObject = objects.find((object) => object.id === effectiveDossierObjectId);
-  const selectedDossierProfile = selectedDossierObject
-    ? wealthProfiles[selectedDossierObject.id]
-      ?? selectedDossierObject.aliases?.map((alias) => wealthProfiles[alias]).find(Boolean)
-      ?? {}
-    : {};
+  const selectedDossierPortfolio = selectedDossierObject
+    ? portfolioRows.find((row) => {
+      const objectIds = new Set([selectedDossierObject.id, ...(selectedDossierObject.aliases ?? [])]);
+      if (objectIds.has(row.property_id) || Boolean(row.portfolio_property_id && objectIds.has(row.portfolio_property_id))) return true;
+      return reportPropertyNamesMatch(row.property_name, selectedDossierObject.label);
+    })
+    : undefined;
   const selectedDossierLoan = selectedDossierObject
     ? loanRows.find((loan) => {
-      if (loan.property_id === selectedDossierObject.id || selectedDossierObject.aliases?.includes(loan.property_id)) return true;
-      const loanName = loan.property_name.toLowerCase();
-      const objectName = selectedDossierObject.label.toLowerCase();
-      return loanName.includes(objectName) || objectName.includes(loanName);
+      const objectIds = new Set([
+        selectedDossierObject.id,
+        ...(selectedDossierObject.aliases ?? []),
+        selectedDossierPortfolio?.property_id ?? "",
+        selectedDossierPortfolio?.portfolio_property_id ?? "",
+      ]);
+      if (objectIds.has(loan.property_id)) return true;
+      return reportPropertyNamesMatch(loan.property_name, selectedDossierObject.label);
+    })
+    : undefined;
+  const selectedDossierProfileKeys = selectedDossierObject
+    ? [
+        selectedDossierObject.id,
+        ...(selectedDossierObject.aliases ?? []),
+        selectedDossierPortfolio?.property_id,
+        selectedDossierPortfolio?.portfolio_property_id,
+        selectedDossierLoan?.property_id,
+      ].filter((value): value is string => Boolean(value))
+    : [];
+  const selectedDossierProfile = selectedDossierProfileKeys
+    .map((key) => wealthProfiles[key])
+    .find((profile) => profile && Object.keys(profile).length > 0)
+    ?? {};
+  const selectedDossierPhoto = selectedDossierObject
+    ? portfolioGalleryItems.find((item) => {
+      return item.matchTerms.some((term) => reportPropertyNamesMatch(selectedDossierObject.label, term));
     })
     : undefined;
   const yearEntries = entries.filter((entry) => entry.booking_date?.startsWith(`${period}-`));
@@ -2304,7 +2393,7 @@ function ReportsExportsPage() {
     if (kind === "vacancy") return vacancyReportReady;
     if (kind === "section35a") return mileageReportReady;
     if (kind === "loan-interest") return loanHistoryLoaded && !loanHistoryError && !isPortfolioReportFilter;
-    if (kind === "property-dossier") return wealthProfilesLoaded && Boolean(selectedDossierObject);
+    if (kind === "property-dossier") return wealthProfilesLoaded && Boolean(selectedDossierObject && selectedDossierProfileKeys.length);
     if (kind === "anlage-v-package") return mileageReportReady && taxLoanReportReady;
     if (kind === "tax") return objectFilter === "all" && rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady && loanHistoryLoaded && !loanHistoryError;
     if (kind === "tax-data-package") return rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady && loanHistoryLoaded && !loanHistoryError;
@@ -3116,6 +3205,12 @@ function ReportsExportsPage() {
         ? createRentAccountPdf(getReadyRentReport()!, reportObjectName)
         : kind === "loan-interest"
           ? createLoanInterestReportPdf(loanInterestReport)
+          : kind === "property-dossier"
+            ? createSimplePdf(
+                reportTitle(kind),
+                buildReportLines(kind),
+                selectedDossierPhoto ? await loadPdfJpegImage(selectedDossierPhoto.imageUrl) : undefined,
+              )
           : createSimplePdf(reportTitle(kind), buildReportLines(kind));
       downloadBlob(`${baseName}.pdf`, content);
       return;
