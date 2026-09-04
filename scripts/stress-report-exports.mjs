@@ -68,5 +68,9 @@ assert.match(loanInterestReport, /\.\.\.\(input\.properties \?\? \[\]\)\.map[\s\
 assert.match(loanInterestReport, /buildLoanInterestReportExcelHtml/, "Der Darlehensreport muss einen professionell formatierten Excel-Export erzeugen");
 assert.match(loanInterestReport, /buildLoanInterestReportCsv/, "Der Darlehensreport muss einen strukturierten CSV-Export erzeugen");
 assert.match(loanInterestReport, /Tilgung ist keine Werbungskostenposition/, "Der Bericht muss Zinsen und Tilgung steuerlich korrekt unterscheiden");
+assert.match(app, /type ReportKind = [^;]*"property-dossier"/, "Die Immobilienakte muss als eigener Berichtstyp registriert sein");
+assert.match(app, /title: "Immobilien-Eigenschaften & Darlehen"[\s\S]*kind: "property-dossier", format: "pdf"/, "Die Immobilienakte muss als eigener PDF-Report angeboten werden");
+assert.match(app, /Immobilie für die PDF-Akte[\s\S]*value=\{effectiveDossierObjectId\}/, "Die Immobilienakte muss eine separate Objektauswahl besitzen");
+assert.match(app, /Restschuldquelle: Darlehen \/ property_loan_ledger/, "Die Immobilienakte muss die zentrale Restschuldquelle dokumentieren");
 
-console.log("50 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("54 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");

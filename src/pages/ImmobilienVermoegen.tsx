@@ -894,7 +894,8 @@ function DetailField({
       {field.label}
       <input
         className={commonClass}
-        type={field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
+        type={field.type === "date" ? "date" : "text"}
+        inputMode={field.type === "number" ? "decimal" : undefined}
         value={value}
         disabled={disabled}
         placeholder={field.placeholder}
@@ -1553,7 +1554,7 @@ function DetailPage({
       </SectionPanel>
 
       <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-[24px] border border-white/70 bg-white/90 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm font-bold text-slate-600">{!isAdmin ? "Nur-Lesen-Zugang: Die Detailmaske ist geschützt." : saveStatus ?? "Änderungen werden zentral in Supabase gespeichert."}</p>
+        <p className="text-sm font-bold text-slate-600">{!isAdmin ? "Nur-Lesen-Zugang: Die Detailmaske ist geschützt." : saveStatus ?? "Alle Felder bleiben nach dem Speichern erneut editierbar. Nur die Restschuld wird ausschließlich auf der Seite Darlehen gepflegt."}</p>
         <button
           type="button"
           onClick={() => onSave(card.id)}

@@ -84,6 +84,7 @@ import { isPortfolioGeneralEntry, PORTFOLIO_GENERAL_LABEL } from "./lib/portfoli
 import { canonicalCategoryForTax } from "./lib/taxClassification";
 import type { RentAnnualReportSnapshot } from "./pages/Mietuebersicht";
 import { loadCanonicalPropertyLoanHistory } from "./services/propertyLoanLedgerService";
+import { fetchPropertyWealthProfiles, type PropertyWealthProfile } from "./services/propertyExtraService";
 import {
   buildLoanInterestReportCsv,
   buildLoanInterestReportExcelHtml,
@@ -1437,9 +1438,45 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
   );
 }
 
-type ReportKind = "tax" | "advisor" | "anlage-v-package" | "section35a" | "rent-account" | "utilities" | "wealth" | "loan-interest" | "handover" | "vacancy" | "tax-data-package";
+type ReportKind = "tax" | "advisor" | "anlage-v-package" | "section35a" | "rent-account" | "utilities" | "wealth" | "property-dossier" | "loan-interest" | "handover" | "vacancy" | "tax-data-package";
 type ReportFormat = "pdf" | "csv" | "excel" | "zip";
 const PDF_PAGE_BREAK = "[[PDF_PAGE_BREAK]]";
+const PROPERTY_DOSSIER_SECTIONS = [
+  {
+    title: "Vorhaben, Adresse und Erwerb",
+    fields: [
+      ["financingReason", "Finanzierungsgrund"], ["propertyType", "Immobilientyp"], ["name", "Immobilienbezeichnung"],
+      ["street", "Straße"], ["houseNumber", "Hausnummer"], ["postalCode", "PLZ"], ["city", "Ort"], ["state", "Bundesland"],
+      ["inhabitants", "Einwohnerklasse"], ["surroundings", "Umgebung"], ["purchasePrice", "Kaufpreis / Baukosten"],
+      ["purchaseDate", "Kaufdatum"], ["purchaseYear", "Kauf-/Fertigstellungsjahr"], ["buildingPurchasePrice", "Kaufpreisanteil Gebäude"],
+      ["landPurchasePrice", "Kaufpreisanteil Grund/Boden"], ["parkingPurchasePrice", "Kaufpreisanteil Stellplatz"],
+    ],
+  },
+  {
+    title: "Immobilieneigenschaften",
+    fields: [
+      ["usageType", "Nutzungstyp"], ["unitCount", "Anzahl Einheiten"], ["totalArea", "Gesamtfläche (m²)"],
+      ["coldRentMonthly", "Monatliche Netto-Kaltmiete"], ["landArea", "Grundstücksfläche (m²)"], ["convertedSpace", "Umbauter Raum (m³)"],
+      ["equipmentYear", "Baujahr / Ausstattungsjahr"], ["constructionType", "Bauweise"], ["constructionSpecials", "Besonderheiten der Bauart"],
+      ["equipmentRating", "Ausstattungsbeurteilung"], ["floors", "Vollgeschosse"], ["elevator", "Aufzug"], ["condition", "Zustand"],
+      ["attic", "Dachgeschoss"], ["cellar", "Keller"], ["parkingSpaces", "Stellplätze"], ["marketValue", "Marktwert"],
+      ["landValue", "Bodenrichtwert"], ["estimatedMarketValue", "Geschätzter Marktwert"], ["acquisitionSpecials", "Erwerbsbesonderheiten"],
+      ["heritableBuildingRight", "Erbbaurecht"], ["energyClass", "Energieeffizienzklasse"], ["primaryEnergyDemand", "Primärenergiebedarf"],
+      ["primaryEnergyConsumption", "Primärenergieverbrauch"], ["co2Emissions", "CO₂-Emissionen"], ["modernizations", "Modernisierungen"],
+      ["lastModernizationYear", "Letzte Modernisierung"], ["modernizationCosts", "Modernisierungskosten"],
+    ],
+  },
+  {
+    title: "Darlehensangaben",
+    fields: [
+      ["lender", "Darlehensgeber"], ["ibanBic", "BLZ / BIC"], ["loanNumber", "Darlehensnummer"], ["landRegisterRank", "Rangstelle Grundbuch"],
+      ["subsidizedLoan", "Förderdarlehen"], ["originalLoanAmount", "Ursprüngliche Darlehenssumme"], ["currentMonthlyRate", "Aktuelle Monatsrate"],
+      ["agreedFutureRate", "Zukünftige Monatsrate"], ["interestRate", "Sollzins (%)"], ["interestBinding", "Sollzinsbindung"],
+      ["fullRepaymentDate", "Datum Vollauszahlung"], ["release", "Ablösung"], ["shouldBeRedeemed", "Ablösung vorgesehen"],
+      ["expectedEndDate", "Voraussichtliches Laufzeitende"], ["borrowers", "Darlehensnehmer"],
+    ],
+  },
+] as const;
 type AnlageVReportDataRow = Omit<AnlageVBookingExportRow, "recordType" | "paymentStatus"> & {
   recordType: AnlageVBookingExportRow["recordType"] | "Leerstand" | "Offene Miete";
   paymentStatus: AnlageVBookingExportRow["paymentStatus"] | "Nicht anwendbar";
@@ -1985,6 +2022,9 @@ function ReportsExportsPage() {
   const [loanHistoryRows, setLoanHistoryRows] = useState<LoanInterestSourceRow[]>([]);
   const [loanHistoryError, setLoanHistoryError] = useState<string | null>(null);
   const [loanHistoryLoaded, setLoanHistoryLoaded] = useState(false);
+  const [wealthProfiles, setWealthProfiles] = useState<Record<string, PropertyWealthProfile>>({});
+  const [wealthProfilesLoaded, setWealthProfilesLoaded] = useState(false);
+  const [propertyDossierObjectId, setPropertyDossierObjectId] = useState("");
   const [loanDetailMode, setLoanDetailMode] = useState<LoanInterestDetailMode>("selected-year");
   const [rentAnnualReport, setRentAnnualReport] = useState<RentAnnualReportSnapshot | null>(null);
   const [activeExport, setActiveExport] = useState<string | null>(null);
@@ -1997,6 +2037,21 @@ function ReportsExportsPage() {
   const periodLabel = `01.01.${period} bis 31.12.${period}`;
   const vacancyRangeKey = `${periodStart}:${periodEnd}`;
   const selectedYear = Number(period) || currentYear;
+  const effectiveDossierObjectId = propertyDossierObjectId || objects[0]?.id || "";
+  const selectedDossierObject = objects.find((object) => object.id === effectiveDossierObjectId);
+  const selectedDossierProfile = selectedDossierObject
+    ? wealthProfiles[selectedDossierObject.id]
+      ?? selectedDossierObject.aliases?.map((alias) => wealthProfiles[alias]).find(Boolean)
+      ?? {}
+    : {};
+  const selectedDossierLoan = selectedDossierObject
+    ? loanRows.find((loan) => {
+      if (loan.property_id === selectedDossierObject.id || selectedDossierObject.aliases?.includes(loan.property_id)) return true;
+      const loanName = loan.property_name.toLowerCase();
+      const objectName = selectedDossierObject.label.toLowerCase();
+      return loanName.includes(objectName) || objectName.includes(loanName);
+    })
+    : undefined;
   const yearEntries = entries.filter((entry) => entry.booking_date?.startsWith(`${period}-`));
   const matchesSelectedObject = (entry: FinanceEntry) => {
     if (!selectedObject) return true;
@@ -2156,6 +2211,21 @@ function ReportsExportsPage() {
 
   useEffect(() => {
     let alive = true;
+    async function loadWealthProfiles() {
+      try {
+        setWealthProfilesLoaded(false);
+        const profiles = await fetchPropertyWealthProfiles();
+        if (alive) setWealthProfiles(profiles);
+      } finally {
+        if (alive) setWealthProfilesLoaded(true);
+      }
+    }
+    void loadWealthProfiles();
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
 
     async function loadTaxLoanRows() {
       try {
@@ -2234,6 +2304,7 @@ function ReportsExportsPage() {
     if (kind === "vacancy") return vacancyReportReady;
     if (kind === "section35a") return mileageReportReady;
     if (kind === "loan-interest") return loanHistoryLoaded && !loanHistoryError && !isPortfolioReportFilter;
+    if (kind === "property-dossier") return wealthProfilesLoaded && Boolean(selectedDossierObject);
     if (kind === "anlage-v-package") return mileageReportReady && taxLoanReportReady;
     if (kind === "tax") return objectFilter === "all" && rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady && loanHistoryLoaded && !loanHistoryError;
     if (kind === "tax-data-package") return rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady && loanHistoryLoaded && !loanHistoryError;
@@ -2265,6 +2336,7 @@ function ReportsExportsPage() {
       "rent-account": "Mietkonto-Check und offene Zahlungen",
       utilities: "Nebenkostenabrechnungen",
       wealth: "Immobilien-Vermögen und Kredite",
+      "property-dossier": "Immobilien-Eigenschaften und Darlehen",
       "loan-interest": "Tilgung & Zins - Jahresübersicht",
       handover: "Übergabeprotokolle und Zählerstände",
       vacancy: "Leerstandsbericht",
@@ -2342,6 +2414,32 @@ function ReportsExportsPage() {
           `  ${month.monthLabel}: ${month.kpi} | Eingang ${formatCurrency(month.paid)} | Soll ${formatCurrency(month.expected)} | Offen ${formatCurrency(month.open)} | Überzahlung ${formatCurrency(month.overpaid)} | Eingang ${formatDate(month.paymentDate)} | Quelle ${month.expectedSource}`
         ),
       ]),
+    ];
+  }
+
+  function buildPropertyDossierLines(): string[] {
+    if (!selectedDossierObject) return ["Bitte zuerst eine Immobilie auswählen."];
+    const valueFor = (key: string) => String(selectedDossierProfile[key] ?? "").trim().replace(/\s*\n\s*/g, ", ") || "—";
+    return [
+      `Immobilie: ${selectedDossierObject.label}`,
+      `Erstellt: ${new Date().toLocaleString("de-DE")}`,
+      "Hauptquelle: Immobilienvermögen > jeweilige Immobilie > Detailmaske",
+      "Restschuldquelle: Darlehen / property_loan_ledger (nicht parallel editierbar)",
+      "",
+      ...PROPERTY_DOSSIER_SECTIONS.flatMap((section, index) => [
+        `${index + 1}. ${section.title}`,
+        ...section.fields.map(([key, label]) => `${label}: ${valueFor(key)}`),
+        ...(section.title === "Darlehensangaben"
+          ? [
+              `Aktuelle Restschuld: ${formatCurrency(selectedDossierLoan?.last_balance ?? 0)}`,
+              `Zinsen gesamt: ${formatCurrency(selectedDossierLoan?.interest_total ?? 0)}`,
+              `Tilgung gesamt: ${formatCurrency(selectedDossierLoan?.principal_total ?? 0)}`,
+            ]
+          : []),
+        "",
+      ]),
+      "Notizen:",
+      valueFor("notes"),
     ];
   }
 
@@ -2460,6 +2558,7 @@ function ReportsExportsPage() {
   }
 
   function buildReportLines(kind: ReportKind): string[] {
+    if (kind === "property-dossier") return buildPropertyDossierLines();
     if (kind === "tax-data-package") {
       return buildTaxDataPackageLines();
     }
@@ -2640,6 +2739,15 @@ function ReportsExportsPage() {
   }
 
   function buildReportCsv(kind: ReportKind): string {
+    if (kind === "property-dossier") {
+      const valueFor = (key: string) => String(selectedDossierProfile[key] ?? "").trim();
+      const rows = PROPERTY_DOSSIER_SECTIONS.flatMap((section) => section.fields.map(([key, label]) => [section.title, label, valueFor(key)]));
+      rows.push(["Darlehensangaben", "Aktuelle Restschuld", String(selectedDossierLoan?.last_balance ?? 0)]);
+      rows.push(["Darlehensangaben", "Zinsen gesamt", String(selectedDossierLoan?.interest_total ?? 0)]);
+      rows.push(["Darlehensangaben", "Tilgung gesamt", String(selectedDossierLoan?.principal_total ?? 0)]);
+      rows.push(["Notizen", "Notizen", valueFor("notes")]);
+      return buildCsv(["Bereich", "Feld", "Wert"], rows);
+    }
     if (kind === "loan-interest") {
       return buildLoanInterestReportCsv(loanInterestReport);
     }
@@ -2921,6 +3029,8 @@ function ReportsExportsPage() {
 
     const baseName = kind === "tax"
       ? `Steuer-Report_Anlage_V_${period}`
+      : kind === "property-dossier"
+        ? `Immobilienakte-${slugifyReportPart(selectedDossierObject?.label ?? "immobilie")}`
       : kind === "loan-interest"
         ? `Tilgung-und-Zins-${slugifyReportPart(reportObjectName)}-${period}-${loanDetailMode === "all-years" ? "alle-jahre" : "jahresdetail"}`
       : `${slugifyReportPart(reportTitle(kind))}-${reportSlug}`;
@@ -3071,6 +3181,14 @@ function ReportsExportsPage() {
       ],
     },
     {
+      title: "Immobilien-Eigenschaften & Darlehen",
+      description: "Separate PDF-Immobilienakte mit allen gepflegten Eigenschaften und Darlehensangaben. Die Immobilie wird direkt in dieser Kachel ausgewählt.",
+      icon: Building2,
+      actions: [
+        { label: "Immobilienakte als PDF", kind: "property-dossier", format: "pdf", primary: true },
+      ],
+    },
+    {
       title: "Tilgung & Zins - Jahresübersicht",
       description: "Professioneller Darlehensreport mit Deckblatt, einer Zeile je Jahr bis zum aktuellen Jahr und separaten Immobilienseiten. Der Detailumfang folgt der Auswahl ‚gewähltes Jahr‘ oder ‚alle Jahre‘.",
       icon: Landmark,
@@ -3214,6 +3332,19 @@ function ReportsExportsPage() {
                   <p className="mt-2 text-sm font-semibold leading-6 text-[#5c6a7e]">{card.description}</p>
                 </div>
               </div>
+              {card.title === "Immobilien-Eigenschaften & Darlehen" ? (
+                <label className="mt-5 grid gap-2 text-sm font-black text-slate-700">
+                  Immobilie für die PDF-Akte
+                  <select
+                    value={effectiveDossierObjectId}
+                    onChange={(event) => setPropertyDossierObjectId(event.target.value)}
+                    className="min-h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-950 shadow-sm"
+                  >
+                    <option value="">Bitte Immobilie auswählen</option>
+                    {objects.map((object) => <option key={object.id} value={object.id}>{object.label}</option>)}
+                  </select>
+                </label>
+              ) : null}
               <div className="mt-5 flex flex-wrap gap-2">
                 {card.title === "Mietkonto-Check & Offene Zahlungen" ? (
                   <ReportActionButton

@@ -1,4 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const wealthSource = readFileSync(new URL("../src/pages/ImmobilienVermoegen.tsx", import.meta.url), "utf8");
+assert.match(wealthSource, /inputMode=\{field\.type === "number" \? "decimal" : undefined\}/, "Gespeicherte Zahlenfelder müssen auch mit deutscher Dezimalschreibweise erneut editierbar bleiben");
+assert.match(wealthSource, /field\.key === "remainingDebt"/, "Die zentrale Restschuld muss auf der Vermögensseite schreibgeschützt bleiben");
 
 const EMPTY_DRAFT = {
   name: "",
