@@ -55,7 +55,7 @@ import { supabase } from "./lib/supabaseClient";
 import { clearAppSessionStorage } from "./lib/security";
 import { createRentAccountPdf } from "./lib/rentAccountPdf";
 import { isVacancyInRange, listVacancies, type UnitVacancy } from "./services/vacancyService";
-import { listMileageTrips, type MileageTripRow } from "./services/mileageTripService";
+import { listMileageTrips, MILEAGE_RATE_EUR, type MileageTripRow } from "./services/mileageTripService";
 import {
   buildAnlageVBookingExportRows,
   buildAnlageVReportLines,
@@ -1440,7 +1440,7 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
   );
 }
 
-type ReportKind = "tax" | "advisor" | "anlage-v-package" | "section35a" | "rent-account" | "utilities" | "wealth" | "property-dossier" | "loan-interest" | "handover" | "vacancy" | "tax-data-package";
+type ReportKind = "tax" | "advisor" | "anlage-v-package" | "section35a" | "rent-account" | "utilities" | "wealth" | "property-dossier" | "loan-interest" | "handover" | "vacancy" | "tax-data-package" | "portfolio-register" | "acquisition-afa" | "acquisition-15-check" | "mileage-log" | "tax-checklist";
 type ReportFormat = "pdf" | "csv" | "excel" | "zip";
 const PDF_PAGE_BREAK = "[[PDF_PAGE_BREAK]]";
 const PROPERTY_DOSSIER_SECTIONS = [
@@ -1452,6 +1452,8 @@ const PROPERTY_DOSSIER_SECTIONS = [
       ["inhabitants", "Einwohnerklasse"], ["surroundings", "Umgebung"], ["purchasePrice", "Kaufpreis / Baukosten"],
       ["purchaseDate", "Kaufdatum"], ["purchaseYear", "Kauf-/Fertigstellungsjahr"], ["buildingPurchasePrice", "Kaufpreisanteil Gebäude"],
       ["landPurchasePrice", "Kaufpreisanteil Grund/Boden"], ["parkingPurchasePrice", "Kaufpreisanteil Stellplatz"],
+      ["unitValueFileNumber", "Einheitswert-Aktenzeichen"], ["ownershipHusbandPercent", "Eigentumsquote Ehemann (%)"],
+      ["ownershipWifePercent", "Eigentumsquote Ehefrau (%)"], ["transferBenefitsDate", "Übergang Nutzen und Lasten"],
     ],
   },
   {
@@ -1485,7 +1487,7 @@ const PROPERTY_DOSSIER_PDF_GROUPS = [
     sections: [
       { title: "Vorhaben", fields: ["financingReason", "propertyType", "name"] },
       { title: "Adresse und Kontaktdaten", fields: ["street", "houseNumber", "postalCode", "city", "state", "inhabitants", "surroundings"] },
-      { title: "Kostenaufstellung", fields: ["purchasePrice", "purchaseDate", "purchaseYear", "buildingPurchasePrice", "landPurchasePrice", "parkingPurchasePrice"] },
+      { title: "Kostenaufstellung", fields: ["purchasePrice", "purchaseDate", "purchaseYear", "buildingPurchasePrice", "landPurchasePrice", "parkingPurchasePrice", "unitValueFileNumber", "ownershipHusbandPercent", "ownershipWifePercent", "transferBenefitsDate"] },
     ],
   },
   {
@@ -2216,6 +2218,105 @@ function ReportsExportsPage() {
       ? getExpenseEntriesForProperty(selectedDossierPortfolio?.property_id ?? selectedDossierObject.id)
       : [],
   );
+  const reportNumber = (value: unknown): number => {
+    const normalized = String(value ?? "")
+      .trim()
+      .replace(/\s/g, "")
+      .replace(/\.(?=\d{3}(?:\D|$))/g, "")
+      .replace(",", ".")
+      .replace(/[^0-9.-]/g, "");
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const profileForReportObject = (object: (typeof objects)[number]): PropertyWealthProfile => {
+    const portfolio = portfolioRows.find((row) => (
+      row.property_id === object.id
+      || row.portfolio_property_id === object.id
+      || reportPropertyNamesMatch(row.property_name, object.label)
+    ));
+    const loan = loanRows.find((row) => row.property_id === object.id || reportPropertyNamesMatch(row.property_name, object.label));
+    const keys = [
+      ...(object.aliases ?? []),
+      object.id,
+      portfolio?.portfolio_property_id,
+      loan?.property_id,
+      portfolio?.property_id,
+    ].filter((value): value is string => Boolean(value));
+    return keys.reduce<PropertyWealthProfile>((merged, key) => {
+      const populated = Object.fromEntries(
+        Object.entries(wealthProfiles[key] ?? {}).filter(([, value]) => String(value ?? "").trim() !== ""),
+      );
+      return { ...merged, ...populated };
+    }, {});
+  };
+  const reportEntriesForObject = (object: (typeof objects)[number]) => entries.filter((entry) => {
+    const ids = new Set([object.id, object.code ?? "", ...(object.aliases ?? [])].filter(Boolean));
+    if ((entry.object_id && ids.has(entry.object_id)) || (entry.objekt_code && ids.has(entry.objekt_code))) return true;
+    const entryName = getPropertyName(entry.object_id);
+    return Boolean(entryName && reportPropertyNamesMatch(entryName, object.label));
+  });
+  const reportTripsForObject = (object: (typeof objects)[number]) => mileageTrips.filter((trip) => (
+    trip.steuerjahr === selectedYear
+    && (
+      trip.property_id === object.id
+      || Boolean(trip.portfolio_property_id && (trip.portfolio_property_id === object.id || object.aliases?.includes(trip.portfolio_property_id)))
+      || reportPropertyNamesMatch(trip.property_label, object.label)
+    )
+  ));
+  const isHohenloherObject = (label: string) => slugifyReportPart(label).includes("hohenloher");
+  const isRosensteinObject = (label: string) => slugifyReportPart(label).includes("rosenstein");
+  const portfolioRegisterRows = objects.map((object) => {
+    const profile = profileForReportObject(object);
+    const street = [profile.street, profile.houseNumber].filter(Boolean).join(" ").trim() || object.label;
+    const city = [profile.postalCode, profile.city].filter(Boolean).join(" ").trim();
+    const usage = isHohenloherObject(object.label)
+      ? "Eigennutzung"
+      : isRosensteinObject(object.label)
+        ? "Vermietet - 3 TG-Stellplätze"
+        : "Vermietet";
+    return {
+      object,
+      profile,
+      objectId: object.code || object.id,
+      address: [street, city].filter(Boolean).join(", "),
+      buildingYear: profile.equipmentYear || profile.purchaseYear || "nicht gepflegt",
+      livingArea: isRosensteinObject(object.label) ? "0 (Stellplätze)" : profile.totalArea || object.livingAreaM2 || "nicht gepflegt",
+      unitValueFileNumber: profile.unitValueFileNumber || "nicht gepflegt",
+      usage,
+      ownershipHusband: profile.ownershipHusbandPercent || "nicht gepflegt",
+      ownershipWife: profile.ownershipWifePercent || "nicht gepflegt",
+      purchaseDate: profile.purchaseDate || "nicht gepflegt",
+      transferBenefitsDate: profile.transferBenefitsDate || "nicht gepflegt",
+    };
+  });
+  const acquisitionObjects = objects.filter((object) => isRosensteinObject(object.label) || isHohenloherObject(object.label));
+  const acquisitionKeyword = /(kaufpreis|grunderwerb|notar|gericht|grundbuch|makler|anschaffung|erwerbsneben|modernisierung)/i;
+  const financingKeyword = /(grundschuld|geldbeschaffung|darlehensgeb|bankgeb|disagio|damnum)/i;
+  const maintenanceKeyword = /(reparatur|instandhaltung|instandsetzung|modernisierung|renovierung|handwerker|wartung)/i;
+  const acquisitionRowsForObject = (object: (typeof objects)[number]) => reportEntriesForObject(object)
+    .filter((entry) => entry.entry_type === "expense" && entry.booking_date?.startsWith("2025-"))
+    .filter((entry) => acquisitionKeyword.test(`${entry.category ?? ""} ${entry.note ?? ""}`))
+    .filter((entry) => !financingKeyword.test(`${entry.category ?? ""} ${entry.note ?? ""}`));
+  const financingRowsForObject = (object: (typeof objects)[number]) => reportEntriesForObject(object)
+    .filter((entry) => entry.entry_type === "expense" && entry.booking_date?.startsWith("2025-"))
+    .filter((entry) => financingKeyword.test(`${entry.category ?? ""} ${entry.note ?? ""}`));
+  const acquisitionCheckForObject = (object: (typeof objects)[number]) => {
+    const profile = profileForReportObject(object);
+    const purchaseDate = profile.purchaseDate || `${selectedYear}-01-01`;
+    const purchaseYear = Number(purchaseDate.slice(0, 4)) || selectedYear;
+    const cutoff = `${purchaseYear + 3}-${purchaseDate.slice(5) || "12-31"}`;
+    const reportEnd = periodEnd < cutoff ? periodEnd : cutoff;
+    const buildingBasis = reportNumber(profile.buildingPurchasePrice);
+    const rows = reportEntriesForObject(object)
+      .filter((entry) => entry.entry_type === "expense" && Boolean(entry.booking_date))
+      .filter((entry) => String(entry.booking_date) >= purchaseDate && String(entry.booking_date) <= reportEnd)
+      .filter((entry) => maintenanceKeyword.test(`${entry.category ?? ""} ${entry.note ?? ""}`));
+    const costs = rows.reduce((sum, entry) => sum + Math.abs(Number(entry.amount ?? 0)), 0);
+    const threshold = buildingBasis * 0.15;
+    const ratio = buildingBasis > 0 ? costs / buildingBasis : null;
+    const status = buildingBasis <= 0 ? "PRÜFEN" : ratio! > 0.15 ? "KRITISCH" : ratio! >= 0.12 ? "WARNUNG" : "OK";
+    return { profile, purchaseDate, cutoff, reportEnd, buildingBasis, rows, costs, threshold, ratio, status };
+  };
   const yearEntries = entries.filter((entry) => entry.booking_date?.startsWith(`${period}-`));
   const matchesSelectedObject = (entry: FinanceEntry) => {
     if (!selectedObject) return true;
@@ -2469,9 +2570,11 @@ function ReportsExportsPage() {
     if (kind === "section35a") return mileageReportReady;
     if (kind === "loan-interest") return loanHistoryLoaded && !loanHistoryError && !isPortfolioReportFilter;
     if (kind === "property-dossier") return wealthProfilesLoaded && Boolean(selectedDossierObject && selectedDossierProfileKeys.length);
+    if (kind === "portfolio-register" || kind === "acquisition-afa" || kind === "acquisition-15-check" || kind === "tax-checklist") return wealthProfilesLoaded;
+    if (kind === "mileage-log") return mileageReportReady;
     if (kind === "anlage-v-package") return mileageReportReady && taxLoanReportReady;
     if (kind === "tax") return objectFilter === "all" && rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady && loanHistoryLoaded && !loanHistoryError;
-    if (kind === "tax-data-package") return rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady && loanHistoryLoaded && !loanHistoryError;
+    if (kind === "tax-data-package") return objectFilter === "all" && wealthProfilesLoaded && rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady && loanHistoryLoaded && !loanHistoryError;
     return true;
   }
 
@@ -2505,6 +2608,11 @@ function ReportsExportsPage() {
       handover: "Übergabeprotokolle und Zählerstände",
       vacancy: "Leerstandsbericht",
       "tax-data-package": "Steuerberater-Datenpaket",
+      "portfolio-register": "Immobilien-Stammdaten (Portfolio-Register)",
+      "acquisition-afa": "Anschaffungskosten & AfA-Basis 2025",
+      "acquisition-15-check": "15%-Check anschaffungsnahe Herstellungskosten",
+      "mileage-log": "Fahrtkosten-Einzelnachweis",
+      "tax-checklist": "Chef-Kontrollbericht",
     };
     return titles[kind];
   }
@@ -2757,8 +2865,162 @@ function ReportsExportsPage() {
     ];
   }
 
+  function buildPortfolioRegisterLines(): string[] {
+    return [
+      `Bestandsstand: 31.12.${selectedYear}`,
+      "Hauptquelle: Immobilienvermögen > jeweilige Immobilie > Stammdaten.",
+      "Read-only-Auswertung: Fehlende Angaben werden als 'nicht gepflegt' ausgewiesen und nicht geschätzt.",
+      "",
+      "Portfolio-Register:",
+      ...portfolioRegisterRows.map((row) => [
+        `${row.object.label} (${row.objectId})`,
+        `  Anschrift: ${row.address || "nicht gepflegt"}`,
+        `  Baujahr: ${row.buildingYear} | Wohn-/Nutzfläche m²: ${row.livingArea}`,
+        `  Nutzung: ${row.usage} | Einheitswert-Aktenzeichen: ${row.unitValueFileNumber}`,
+        `  Eigentumsquote Ehemann: ${row.ownershipHusband}% | Ehefrau: ${row.ownershipWife}%`,
+        `  Kaufdatum: ${row.purchaseDate} | Übergang Nutzen und Lasten: ${row.transferBenefitsDate}`,
+        "",
+      ]).flat(),
+    ];
+  }
+
+  function buildAcquisitionAfaLines(): string[] {
+    return [
+      "Gegenstand: Neuzugänge 2025 - Rosenstein Str. 25 und Hohenloher Str. 78.",
+      "Quellen: Immobilienvermögen (Kaufpreisaufteilung) sowie tatsächlich bezahlte Buchungen 2025.",
+      "Steuerliche Schutzregel: Grund und Boden wird nicht in eine Gebäude-AfA-Basis eingerechnet. Fehlende Aufteilungen werden nicht geschätzt.",
+      "Bank-/Grundschuldkosten werden separat als zu prüfende Finanzierungskosten gezeigt und nicht den Anschaffungskosten zugeschlagen.",
+      ...acquisitionObjects.flatMap((object, index) => {
+        const profile = profileForReportObject(object);
+        const acquisitionRows = acquisitionRowsForObject(object);
+        const financingRows = financingRowsForObject(object);
+        const acquisitionTotal = acquisitionRows.reduce((sum, entry) => sum + Math.abs(Number(entry.amount ?? 0)), 0);
+        const financingTotal = financingRows.reduce((sum, entry) => sum + Math.abs(Number(entry.amount ?? 0)), 0);
+        const building = reportNumber(profile.buildingPurchasePrice);
+        const land = reportNumber(profile.landPurchasePrice);
+        const parking = reportNumber(profile.parkingPurchasePrice);
+        return [
+          PDF_PAGE_BREAK,
+          `${index + 1}. ${object.label}:`,
+          `Objekt-ID: ${object.code || object.id}`,
+          `Kaufdatum: ${profile.purchaseDate || "nicht gepflegt"}`,
+          `Kaufpreis gesamt: ${profile.purchasePrice ? formatCurrency(reportNumber(profile.purchasePrice)) : "nicht gepflegt"}`,
+          `Kaufpreis Gebäudeanteil: ${building > 0 ? formatCurrency(building) : "FEHLT - Steuerberater muss Kaufpreisaufteilung festlegen"}`,
+          `Kaufpreis Grund und Boden: ${land > 0 ? formatCurrency(land) : "nicht gepflegt"}`,
+          `Kaufpreis Stellplatz: ${parking > 0 ? formatCurrency(parking) : "nicht gepflegt"}`,
+          "",
+          "Anschaffungs-/Erwerbsvorgänge aus Buchungen 2025:",
+          ...(acquisitionRows.length
+            ? acquisitionRows.map((entry) => `- ${formatDate(entry.booking_date)} | ${entry.category ?? "nicht kategorisiert"} | ${formatCurrency(Math.abs(entry.amount))} | ${entry.note ?? ""}`)
+            : ["- Keine passenden Buchungen gefunden."]),
+          `Summe dokumentierte Anschaffungs-/Erwerbsvorgänge: ${formatCurrency(acquisitionTotal)}`,
+          "",
+          "Separat zu prüfende Finanzierungskosten:",
+          ...(financingRows.length
+            ? financingRows.map((entry) => `- ${formatDate(entry.booking_date)} | ${entry.category ?? "Finanzierungskosten"} | ${formatCurrency(Math.abs(entry.amount))} | ${entry.note ?? ""}`)
+            : ["- Keine separaten Finanzierungskosten gefunden."]),
+          `Summe Finanzierungskosten: ${formatCurrency(financingTotal)}`,
+          `Prüfstatus AfA-Basis: ${building > 0 ? "Gebäude-/Grund-und-Boden-Aufteilung vorhanden" : "OFFEN - keine automatische AfA-Berechnung"}`,
+        ];
+      }),
+    ];
+  }
+
+  function buildAcquisition15CheckLines(): string[] {
+    return [
+      `Prüfstand bis: ${periodEnd}`,
+      "Rechtsgrundlage: § 6 Abs. 1 Nr. 1a EStG - 15%-Grenze ohne Umsatzsteuer innerhalb von drei Jahren nach Anschaffung.",
+      "Die App zeigt eine Vorprüfung auf Basis der gespeicherten Buchungsbeträge. Da Buchungen kein separates Netto-/USt-Feld besitzen, ist der endgültige Nettobetrag vom Steuerberater zu bestätigen.",
+      ...acquisitionObjects.flatMap((object, index) => {
+        const check = acquisitionCheckForObject(object);
+        return [
+          PDF_PAGE_BREAK,
+          `${index + 1}. ${object.label}:`,
+          `Kaufdatum: ${check.purchaseDate} | Drei-Jahres-Ende: ${check.cutoff} | berücksichtigt bis ${check.reportEnd}`,
+          `Gebäude-Anschaffungskosten: ${check.buildingBasis > 0 ? formatCurrency(check.buildingBasis) : "FEHLT"}`,
+          `15%-Vergleichswert: ${check.buildingBasis > 0 ? formatCurrency(check.threshold) : "nicht berechenbar"}`,
+          `Erfasste Instandsetzungs-/Modernisierungskosten: ${formatCurrency(check.costs)}`,
+          `Quote (Vorprüfung): ${check.ratio === null ? "nicht berechenbar" : `${(check.ratio * 100).toLocaleString("de-DE", { maximumFractionDigits: 2 })}%`}`,
+          `Status (Vorprüfung): [${check.status}]`,
+          "",
+          "Einbezogene Buchungen:",
+          ...(check.rows.length
+            ? check.rows.map((entry) => `- ${formatDate(entry.booking_date)} | ${entry.category ?? "nicht kategorisiert"} | ${formatCurrency(Math.abs(entry.amount))} | ${entry.note ?? ""}`)
+            : ["- Keine passenden Buchungen im Prüfzeitraum gefunden."]),
+        ];
+      }),
+    ];
+  }
+
+  function buildMileageLogLines(): string[] {
+    const propertySections = objects
+      .filter((object) => !isHohenloherObject(object.label))
+      .map((object) => ({ object, trips: reportTripsForObject(object) }));
+    const total = propertySections.flatMap((section) => section.trips)
+      .reduce((sum, trip) => sum + Number(trip.berechneter_betrag || trip.fahrtkosten_betrag || 0), 0);
+    return [
+      `Steuerjahr: ${selectedYear} | Berichtszeitraum: ${periodLabel}`,
+      `Hauptquelle: Fahrtenbuch / Objekt-Fahrten | Pkw-Pauschale: ${MILEAGE_RATE_EUR.toLocaleString("de-DE", { minimumFractionDigits: 2 })} EUR je gefahrenem Kilometer.`,
+      "Nur tatsächlich gespeicherte Fahrten werden exportiert; der jeweilige Objektbetrag fließt in dessen Anlage-V-Auswertung ein.",
+      `Gesamtsumme dokumentierte Fahrt-/Reisekosten: ${formatCurrency(total)}`,
+      ...propertySections.flatMap(({ object, trips }, index) => [
+        PDF_PAGE_BREAK,
+        `${index + 1}. ${object.label}:`,
+        ...(trips.length
+          ? [...trips].sort((a, b) => a.datum.localeCompare(b.datum)).map((trip) => {
+              const distance = trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1);
+              return `- ${formatDate(trip.datum)} | ${trip.grund} | ${trip.start_adresse} -> ${trip.zieladresse} | ${distance.toLocaleString("de-DE")} km | ${trip.verkehrsmittel === "car" ? "Pkw" : "ÖPNV"} | ${formatCurrency(trip.berechneter_betrag || trip.fahrtkosten_betrag || 0)}`;
+            })
+          : ["- Keine Fahrten für dieses Objekt im Steuerjahr dokumentiert."]),
+        `Objektsumme: ${formatCurrency(trips.reduce((sum, trip) => sum + Number(trip.berechneter_betrag || trip.fahrtkosten_betrag || 0), 0))}`,
+      ]),
+    ];
+  }
+
+  function buildTaxChecklistLines(): string[] {
+    const common = [
+      "[ ] Vollständigkeit der Buchungen 01.01.-31.12. geprüft",
+      "[ ] Mietkonto-/Banknachweis und Belege abgestimmt",
+      "[ ] Darlehens-Jahreskontoauszug / Saldenbestätigung vorhanden",
+      "[ ] Rechnungen und Zahlungsnachweise für Werbungskosten vorhanden",
+      "[ ] Eigentumsquote, Wohnfläche und Objekt-ID geprüft",
+    ];
+    return [
+      `Steuerjahr: ${selectedYear}`,
+      "Chefliste - externe Originalunterlagen vor Übergabe an den Steuerberater abhaken.",
+      ...objects.flatMap((object, index) => [
+        PDF_PAGE_BREAK,
+        `${index + 1}. ${object.label}:`,
+        ...common,
+        ...(isRosensteinObject(object.label) || isHohenloherObject(object.label)
+          ? [
+              "[ ] Notarieller Kaufvertrag und Kaufpreisaufteilung Gebäude/Grund und Boden",
+              "[ ] Grunderwerbsteuer-, Notar-, Grundbuch- und Maklerbelege",
+              "[ ] Übergang Nutzen und Lasten bestätigt",
+              "[ ] 15%-Prüfung der anschaffungsnahen Herstellungskosten bestätigt",
+            ]
+          : []),
+        ...(isHohenloherObject(object.label)
+          ? ["[ ] §35a-Bescheinigungen mit unbarer Zahlung vorhanden"]
+          : ["[ ] Anlage-V-Objektbericht und Fahrtkostennachweis geprüft"]),
+      ]),
+      PDF_PAGE_BREAK,
+      "Abschlussfreigabe:",
+      "[ ] Alle Prüfhinweise aus der automatischen Konsistenzprüfung bearbeitet",
+      "[ ] Fehlende Stammdaten bewusst gekennzeichnet",
+      "[ ] Paketstruktur und Dateinamen geprüft",
+      "[ ] Steuerberater-Freigabe / Rückfragen dokumentiert",
+      "Datum / Unterschrift: ______________________________________________",
+    ];
+  }
+
   function buildReportLines(kind: ReportKind): string[] {
     if (kind === "property-dossier") return buildPropertyDossierLines();
+    if (kind === "portfolio-register") return buildPortfolioRegisterLines();
+    if (kind === "acquisition-afa") return buildAcquisitionAfaLines();
+    if (kind === "acquisition-15-check") return buildAcquisition15CheckLines();
+    if (kind === "mileage-log") return buildMileageLogLines();
+    if (kind === "tax-checklist") return buildTaxChecklistLines();
     if (kind === "tax-data-package") {
       return buildTaxDataPackageLines();
     }
@@ -2909,22 +3171,20 @@ function ReportsExportsPage() {
 
   function buildTaxDataPackageLines(): string[] {
     const sections: Array<{ title: string; kind: ReportKind }> = [
-      { title: "1. Anlage-V-Paket fuer Steuerberater", kind: "anlage-v-package" },
-      { title: "2. Steuer-Report Anlage V", kind: "tax" },
-      { title: "3. Mietkonto-Check und offene Zahlungen", kind: "rent-account" },
-      { title: "4. Immobilien-Vermoegen und Kredite", kind: "wealth" },
-      { title: "5. Tilgung und Zins Jahresuebersicht", kind: "loan-interest" },
-      { title: "6. Leerstandsbericht", kind: "vacancy" },
-      { title: "7. Paragraf 35a Bericht Hohenloher Str. 78", kind: "section35a" },
-      { title: "8. Export fuer den Steuerberater", kind: "advisor" },
-      { title: "9. Nebenkostenabrechnungen", kind: "utilities" },
+      { title: "1. Immobilien-Stammdaten (Portfolio-Register)", kind: "portfolio-register" },
+      { title: "2. Anschaffungskosten & AfA-Basis (Neuzugänge 2025)", kind: "acquisition-afa" },
+      { title: "3. Einnahmen-Überschuss-Rechnung - strikt objektbezogen", kind: "anlage-v-package" },
+      { title: "4. Finanzierung, Vermögen & Kredite", kind: "wealth" },
+      { title: "5. Risiko- und Überwachungsbericht 15%-Grenze", kind: "acquisition-15-check" },
+      { title: "6. Fahrtkosten-Einzelnachweis", kind: "mileage-log" },
+      { title: "7. Chef-Kontrollbericht", kind: "tax-checklist" },
     ];
 
     return [
       `Steuerjahr: ${period}`,
       "Paketinhalt: Alle steuerrelevanten Jahresunterlagen in einem zusammengefuehrten PDF.",
       "Quelle: Buchhaltung, Darlehen, Leerstand, Fahrtenbuch, Mietregister und Immobilienvermoegen.",
-      "Hinweis: Allgemein / Portfolio-Ausgaben werden anteilig auf die vermieteten Anlage-V-Objekte verteilt; Hohenloher Str. 78 bleibt fuer Anlage V gesperrt.",
+      "Schutzregeln: Jeder steuerliche Ergebnisbericht bleibt objektbezogen. Tilgung wird aus Anlage V blockiert; Hohenloher Str. 78 bleibt wegen Eigennutzung ausgeschlossen. Fehlende Werte werden nicht geschätzt.",
       "",
       ...sections.flatMap((section) => [
         `${section.title}:`,
@@ -2950,6 +3210,65 @@ function ReportsExportsPage() {
     }
     if (kind === "loan-interest") {
       return buildLoanInterestReportCsv(loanInterestReport);
+    }
+    if (kind === "portfolio-register") {
+      return buildCsv([
+        "Objekt_ID", "Immobilie", "Strasse_Hausnummer", "PLZ_Ort", "Baujahr", "Wohnflaeche_m2",
+        "Einheitswert_Aktenzeichen", "Nutzungsart", "Eigentumsquote_Ehemann", "Eigentumsquote_Ehefrau",
+        "Kaufdatum", "Uebergang_Nutzen_Lasten",
+      ], portfolioRegisterRows.map((row) => [
+        row.objectId, row.object.label,
+        [row.profile.street, row.profile.houseNumber].filter(Boolean).join(" "),
+        [row.profile.postalCode, row.profile.city].filter(Boolean).join(" "),
+        row.buildingYear, row.livingArea, row.unitValueFileNumber, row.usage,
+        row.ownershipHusband, row.ownershipWife, row.purchaseDate, row.transferBenefitsDate,
+      ]));
+    }
+    if (kind === "acquisition-afa") {
+      const rows = acquisitionObjects.flatMap((object) => {
+        const profile = profileForReportObject(object);
+        const acquisitionRows = acquisitionRowsForObject(object);
+        const financingRows = financingRowsForObject(object);
+        return [
+          [object.code || object.id, object.label, profile.purchaseDate || "", "Kaufpreisaufteilung Gebäude", "", "", "", reportNumber(profile.buildingPurchasePrice), "AfA-Basis - nur Gebäudeanteil"],
+          [object.code || object.id, object.label, profile.purchaseDate || "", "Kaufpreisaufteilung Grund und Boden", "", "", "", reportNumber(profile.landPurchasePrice), "Nicht abschreibbar"],
+          ...acquisitionRows.map((entry) => [object.code || object.id, object.label, entry.booking_date ?? "", entry.category ?? "", entry.id ?? "", "", entry.note ?? "", Math.abs(entry.amount), "Anschaffungskosten/AfA-Basis prüfen"]),
+          ...financingRows.map((entry) => [object.code || object.id, object.label, entry.booking_date ?? "", entry.category ?? "", entry.id ?? "", "", entry.note ?? "", Math.abs(entry.amount), "Separater Finanzierungskosten-Prüfposten"]),
+        ];
+      });
+      return buildCsv(["Objekt_ID", "Immobilie", "Beleg_Datum", "Kategorie", "Beleg_Nummer", "Kreditor", "Buchungstext", "Betrag_Brutto", "Steuerliche_Behandlung"], rows);
+    }
+    if (kind === "acquisition-15-check") {
+      return buildCsv([
+        "Objekt_ID", "Immobilie", "Kaufdatum", "Pruefzeitraum_bis", "Gebaeude_Basis", "15_Prozent_Grenze",
+        "Instandsetzung_Modernisierung", "Quote_Prozent", "Status_Vorpruefung", "Hinweis",
+      ], acquisitionObjects.map((object) => {
+        const check = acquisitionCheckForObject(object);
+        return [
+          object.code || object.id, object.label, check.purchaseDate, check.reportEnd, check.buildingBasis,
+          check.threshold, check.costs, check.ratio === null ? "" : check.ratio * 100, check.status,
+          "Buchungsbeträge ohne separates Netto-/USt-Feld; Nettoprüfung durch Steuerberater erforderlich",
+        ];
+      }));
+    }
+    if (kind === "mileage-log") {
+      return buildCsv([
+        "Objekt_ID", "Immobilie", "Datum", "Grund", "Start", "Ziel", "Gefahrene_km", "Verkehrsmittel",
+        "Kilometersatz", "Fahrtkosten", "VMA", "Hotel", "Gesamt",
+      ], objects.filter((object) => !isHohenloherObject(object.label)).flatMap((object) => reportTripsForObject(object).map((trip) => [
+        object.code || object.id, object.label, trip.datum, trip.grund, trip.start_adresse, trip.zieladresse,
+        trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1), trip.verkehrsmittel, trip.verkehrsmittel === "car" ? MILEAGE_RATE_EUR : "",
+        trip.fahrtkosten_betrag, trip.vma_betrag, trip.hotelkosten_brutto, trip.berechneter_betrag,
+      ])));
+    }
+    if (kind === "tax-checklist") {
+      return buildCsv(["Immobilie", "Pruefpunkt", "Status"], objects.flatMap((object) => [
+        [object.label, "Buchungen 01.01.-31.12. vollständig", "offen"],
+        [object.label, "Bank-/Mietkontoabstimmung", "offen"],
+        [object.label, "Darlehens-Jahreskontoauszug / Saldenbestätigung", "offen"],
+        [object.label, "Rechnungen und Zahlungsnachweise", "offen"],
+        [object.label, "Eigentumsquote, Fläche und Objekt-ID", "offen"],
+      ]));
     }
 
     if (kind === "tax") {
@@ -2988,17 +3307,15 @@ function ReportsExportsPage() {
 
     if (kind === "tax-data-package") {
       return buildCsv(["Bereich", "Datei", "Format", "Beschreibung"], [
-        ["Anlage V", `anlage-v/steuerberater-jahresakte-${period}.pdf`, "PDF", "Zusammengefuehrter Objektbericht mit Verwaltungskosten & Pauschalen"],
-        ["Anlage V", `anlage-v/gesamtuebersicht-${period}.csv`, "CSV", "Felder 1 bis 7 je vermietetem Objekt"],
-        ["Steuer", `steuer-report-anlage-v-${period}.pdf`, "PDF", "Allgemeine Anlage-V-Jahresuebersicht"],
-        ["Mietkonto", `mietkonto-check-${period}.pdf`, "PDF", "Mietzahlungen und offene Posten"],
-        ["Vermoegen", `immobilien-vermoegen-kredite-${period}.pdf`, "PDF", "Objektwerte, Darlehen und Zins-/Tilgungswerte"],
-        ["Darlehen", `tilgung-zins-${period}.pdf`, "PDF", "Deckblatt und objektweise Jahresdetails für Zinsen, Tilgung und Restschuld"],
-        ["Leerstand", `leerstandsbericht-${period}.pdf`, "PDF", "Leerstand mit Status, Beginn und Ende"],
-        ["§35a", `35a-hohenloher-str-78-${period}.pdf`, "PDF", "Selbstgenutztes Objekt, Arbeitslohn und Barzahlungspruefung"],
-        ["Steuerberater", `export-steuerberater-${period}.xlsx`, "Excel", "Strukturierte Uebergabedaten"],
-        ["Nebenkosten", `nebenkostenabrechnungen-${period}.pdf`, "PDF", "Nebenkosten- und Betriebskostenuebersicht"],
-        ["Portfolio", `portfolio-ausgaben-${period}.csv`, "CSV", "Allgemein / Portfolio-Ausgaben mit anteiliger Steuerlogik"],
+        ["01 Stammdaten", "01_Stammdaten_und_Checklisten/Stammdaten.pdf", "PDF/XLS", "Portfolio-Register aller sechs Immobilien"],
+        ["01 Vermögen", "01_Stammdaten_und_Checklisten/Vermoegen_Kredite_Gesamt.pdf", "PDF", "Finanzierung, Vermögen und Kredite"],
+        ["01 Checkliste", "01_Stammdaten_und_Checklisten/Chefliste.pdf", "PDF/CSV", "Dokumenten- und Abschlusskontrolle"],
+        ["02-06 Mietobjekte", "02_Objekt_... bis 06_Objekt_.../EUR_*.pdf", "PDF/CSV/XLS", "Strikt objektbezogene Anlage-V-Auswertungen"],
+        ["02-06 Fahrten", "02_Objekt_... bis 06_Objekt_.../Fahrtenbuch_*.pdf", "PDF/CSV", "Objektbezogene Fahrtkostennachweise"],
+        ["06 Neuzugang", "06_Objekt_Rosenstein_Str_NEU/AfA_Basis_Rosenstein.pdf", "PDF/CSV", "Anschaffungskosten und Kaufpreisaufteilung"],
+        ["06 15%-Check", "06_Objekt_Rosenstein_Str_NEU/15_Prozent_Check.pdf", "PDF/CSV", "§ 6 Abs. 1 Nr. 1a EStG Vorprüfung"],
+        ["07 Eigennutzung", "07_Objekt_Hohenloher_Str_Eigennutzung/AfA_Basis_Hohenloher.pdf", "PDF/CSV", "Neuzugang ohne Anlage-V-EÜR"],
+        ["07 §35a", `07_Objekt_Hohenloher_Str_Eigennutzung/35a_Hohenloher_${period}.pdf`, "PDF/CSV", "Haushaltsnahe Dienstleistungen und Handwerkerleistungen"],
       ]);
     }
 
@@ -3007,6 +3324,9 @@ function ReportsExportsPage() {
         report.profile.reportLabel,
         report.profile.usage === "rented_parking" ? "Stellplatz-Vermietung" : "Wohnraumvermietung",
         report.income,
+        report.coldRentIncome,
+        report.operatingCostAdvanceIncome,
+        report.settlementIncome,
         report.buildingAfa,
         report.inventoryAfa,
         report.loanInterest,
@@ -3025,6 +3345,9 @@ function ReportsExportsPage() {
         "Objekt",
         "Status",
         "Feld 1 Mieteinnahmen",
+        "davon Kaltmiete zugeflossen",
+        "davon Nebenkostenvorauszahlungen",
+        "davon Nachzahlungen abzgl. Erstattungen",
         "Feld 2 AfA",
         "Feld 3 Inventar-AfA",
         "Feld 4 Schuldzinsen",
@@ -3160,58 +3483,114 @@ function ReportsExportsPage() {
       return;
     }
 
-    const packageKinds: Array<{ folder: string; filename: string; kind: ReportKind }> = [
-      { folder: "01-anlage-v", filename: `anlage-v-paket-${period}`, kind: "anlage-v-package" },
-      { folder: "02-steuer-report", filename: `steuer-report-anlage-v-${period}`, kind: "tax" },
-      { folder: "03-mietkonto", filename: `mietkonto-check-${period}`, kind: "rent-account" },
-      { folder: "04-vermoegen-kredite", filename: `immobilien-vermoegen-kredite-${period}`, kind: "wealth" },
-      { folder: "05-tilgung-zins", filename: `tilgung-zins-${period}`, kind: "loan-interest" },
-      { folder: "06-leerstand", filename: `leerstandsbericht-${period}`, kind: "vacancy" },
-      { folder: "07-35a-hohenloher", filename: `35a-hohenloher-str-78-${period}`, kind: "section35a" },
-      { folder: "08-steuerberater-export", filename: `export-steuerberater-${period}`, kind: "advisor" },
-      { folder: "09-nebenkosten", filename: `nebenkostenabrechnungen-${period}`, kind: "utilities" },
-    ];
-
-    const rentedReportCount = taxAdvisorDashboard.AnlageVReports.length || 1;
-    const portfolioExpenseRows = taxAdvisorDashboard.AnlageVReports.flatMap((report) =>
-      report.portfolioAdministrationRows.map((entry) => {
-        const amount = Math.abs(Number(entry.amount ?? 0));
-        return [report.profile.reportLabel, entry.booking_date ?? "", entry.category ?? "", amount, amount / rentedReportCount, entry.note ?? ""];
-      })
-    );
-
-    const readyRentReport = getReadyRentReport();
-    if (!readyRentReport) {
-      window.alert("Der Mietkonto-Jahresreport wird noch aus der Seite Mieteingang geladen. Bitte einen Moment warten und den Export erneut starten.");
-      return;
-    }
-
     const files: Array<{ name: string; content: string | Blob }> = [
       { name: `${packageSlug}/00-zusammengefuehrter-steuerberater-report-${period}.pdf`, content: combinedPdf },
       { name: `${packageSlug}/00-paket-index.csv`, content: buildReportCsv("tax-data-package") },
       { name: `${packageSlug}/00-paket-index.xls`, content: csvToExcelHtml(packageTitle, buildReportCsv("tax-data-package")) },
       { name: `${packageSlug}/00-lesemich.txt`, content: buildSummaryText("tax-data-package") },
-      { name: `${packageSlug}/portfolio-ausgaben/portfolio-ausgaben-${period}.csv`, content: buildCsv(["Objekt", "Datum", "Kategorie", "Gesamtbetrag", "Objektanteil", "Notiz"], portfolioExpenseRows) },
-      { name: `${packageSlug}/portfolio-ausgaben/portfolio-ausgaben-${period}.xls`, content: csvToExcelHtml(`Portfolio-Ausgaben ${period}`, buildCsv(["Objekt", "Datum", "Kategorie", "Gesamtbetrag", "Objektanteil", "Notiz"], portfolioExpenseRows)) },
-      { name: `${packageSlug}/hinweis.txt`, content: "Dieses Datenpaket ist nach Steuerjahr gefiltert. Das zusammengefuehrte PDF ist die Leseakte; CSV/XLS-Dateien dienen der Detailpruefung. Allgemein / Portfolio-Ausgaben sind gesondert enthalten und werden in Anlage V anteilig verteilt." },
+      { name: `${packageSlug}/01_Stammdaten_und_Checklisten/Stammdaten.pdf`, content: createSimplePdf(reportTitle("portfolio-register"), buildPortfolioRegisterLines()) },
+      { name: `${packageSlug}/01_Stammdaten_und_Checklisten/Stammdaten.xls`, content: csvToExcelHtml(reportTitle("portfolio-register"), buildReportCsv("portfolio-register")) },
+      { name: `${packageSlug}/01_Stammdaten_und_Checklisten/Vermoegen_Kredite_Gesamt.pdf`, content: createSimplePdf(reportTitle("wealth"), buildReportLines("wealth")) },
+      { name: `${packageSlug}/01_Stammdaten_und_Checklisten/Chefliste.pdf`, content: createSimplePdf(reportTitle("tax-checklist"), buildTaxChecklistLines()) },
+      { name: `${packageSlug}/01_Stammdaten_und_Checklisten/Chefliste.csv`, content: buildReportCsv("tax-checklist") },
+      { name: `${packageSlug}/hinweis.txt`, content: "Read-only Steuerberater-Paket. Es werden ausschließlich die zentralen Fachquellen ausgewertet. Fehlende Stammdaten werden sichtbar markiert und nicht geschätzt. Steuerliche Prüffelder ersetzen keine Freigabe durch den Steuerberater." },
     ];
 
-    packageKinds.forEach((item) => {
-      const csv = buildReportCsv(item.kind);
+    const objectFolder = (label: string) => {
+      if (slugifyReportPart(label).includes("lilienthaler")) return "02_Objekt_Lilienthaler_Str";
+      if (slugifyReportPart(label).includes("elsasser")) return "03_Objekt_Elsasser_Str";
+      if (slugifyReportPart(label).includes("colmarer")) return "04_Objekt_Colmarer_Str";
+      if (slugifyReportPart(label).includes("fuerther")) return "05_Objekt_Fuerther_Str";
+      if (isRosensteinObject(label)) return "06_Objekt_Rosenstein_Str_NEU";
+      return "07_Objekt_Hohenloher_Str_Eigennutzung";
+    };
+    const reportsForObject = (object: (typeof objects)[number]) => taxAdvisorDashboard.AnlageVReports.filter((report) => (
+      isRosensteinObject(object.label)
+        ? report.profile.usage === "rented_parking"
+        : reportPropertyNamesMatch(report.profile.label, object.label)
+    ));
+    const bookingCsvForObject = (object: (typeof objects)[number]) => buildCsv([
+      "Datensatztyp", "Steuerjahr", "Objekt_ID", "Objekt_Name", "Wohnflaeche_qm", "Buchungsdatum_Zahlung",
+      "Kategorie_Name", "Amtliche_Formularzeile", "Buchungstext", "Einnahme_Betrag", "Ausgabe_Betrag",
+      "Umlagefaehig_Status", "Zahlungsstatus", "Pruefstatus",
+    ], reportsForObject(object).flatMap((report) => report.bookingRows.map((row) => [
+      row.recordType, row.taxYear, row.objectId, row.objectName, row.livingAreaM2 ?? "", row.bookingDate,
+      row.categoryName, row.officialFormLine, row.bookingText, row.incomeAmount, row.expenseAmount,
+      row.apportionableStatus, row.paymentStatus, row.reviewStatus,
+    ])));
+    const mileageCsvForObject = (object: (typeof objects)[number]) => buildCsv([
+      "Datum", "Grund", "Start", "Ziel", "Gefahrene_km", "Verkehrsmittel", "Fahrtkosten", "VMA", "Hotel", "Gesamt",
+    ], reportTripsForObject(object).map((trip) => [
+      trip.datum, trip.grund, trip.start_adresse, trip.zieladresse, trip.distanz_km * (trip.hin_und_rueckfahrt ? 2 : 1),
+      trip.verkehrsmittel, trip.fahrtkosten_betrag, trip.vma_betrag, trip.hotelkosten_brutto, trip.berechneter_betrag,
+    ]));
+    const mileageLinesForObject = (object: (typeof objects)[number]) => {
+      const trips = reportTripsForObject(object);
+      return [
+        `Objekt: ${object.label} | Steuerjahr: ${selectedYear}`,
+        `Quelle: Fahrtenbuch / Objekt-Fahrten | Pkw-Satz ${MILEAGE_RATE_EUR.toLocaleString("de-DE", { minimumFractionDigits: 2 })} EUR/gefahrenem km`,
+        ...(trips.length ? trips.map((trip) => `- ${formatDate(trip.datum)} | ${trip.grund} | ${trip.start_adresse} -> ${trip.zieladresse} | ${formatCurrency(trip.berechneter_betrag)}`) : ["Keine Fahrten dokumentiert."]),
+        `Summe: ${formatCurrency(trips.reduce((sum, trip) => sum + trip.berechneter_betrag, 0))}`,
+      ];
+    };
+
+    objects.filter((object) => !isHohenloherObject(object.label)).forEach((object) => {
+      const folder = `${packageSlug}/${objectFolder(object.label)}`;
+      const base = isRosensteinObject(object.label) ? "Rosenstein" : slugifyReportPart(object.label).split("-")[0];
+      const eurLines = reportsForObject(object).flatMap((report, index) => [
+        ...(index ? [PDF_PAGE_BREAK] : []),
+        ...buildAnlageVReportLines(report),
+      ]);
+      const eurCsv = bookingCsvForObject(object);
+      const tripCsv = mileageCsvForObject(object);
       files.push(
-        {
-          name: `${packageSlug}/${item.folder}/${item.filename}.pdf`,
-          content: item.kind === "rent-account"
-            ? createRentAccountPdf(readyRentReport, reportObjectName)
-            : item.kind === "loan-interest"
-              ? createLoanInterestReportPdf(loanInterestReport)
-              : createSimplePdf(reportTitle(item.kind), buildReportLines(item.kind)),
-        },
-        { name: `${packageSlug}/${item.folder}/${item.filename}.csv`, content: csv },
-        { name: `${packageSlug}/${item.folder}/${item.filename}.xls`, content: item.kind === "loan-interest" ? buildLoanInterestReportExcelHtml(loanInterestReport) : csvToExcelHtml(reportTitle(item.kind), csv) },
-        { name: `${packageSlug}/${item.folder}/${item.filename}.txt`, content: buildSummaryText(item.kind) },
+        { name: `${folder}/EUR_${base}_${period}.pdf`, content: createSimplePdf(`EÜR ${object.label} ${period}`, eurLines) },
+        { name: `${folder}/EUR_${base}_${period}.csv`, content: eurCsv },
+        { name: `${folder}/EUR_${base}_${period}.xls`, content: csvToExcelHtml(`EÜR ${object.label} ${period}`, eurCsv) },
+        { name: `${folder}/Fahrtenbuch_${base}_${period}.pdf`, content: createSimplePdf(`Fahrtkosten-Einzelnachweis ${object.label}`, mileageLinesForObject(object)) },
+        { name: `${folder}/Fahrtenbuch_${base}_${period}.csv`, content: tripCsv },
       );
     });
+
+    acquisitionObjects.forEach((object) => {
+      const folder = `${packageSlug}/${objectFolder(object.label)}`;
+      const base = isRosensteinObject(object.label) ? "Rosenstein" : "Hohenloher";
+      const profile = profileForReportObject(object);
+      const check = acquisitionCheckForObject(object);
+      const afaLines = [
+        `Objekt: ${object.label} | Neuzugang 2025`,
+        `Kaufdatum: ${profile.purchaseDate || "nicht gepflegt"}`,
+        `Kaufpreis Gebäude: ${reportNumber(profile.buildingPurchasePrice) > 0 ? formatCurrency(reportNumber(profile.buildingPurchasePrice)) : "FEHLT"}`,
+        `Kaufpreis Grund und Boden: ${reportNumber(profile.landPurchasePrice) > 0 ? formatCurrency(reportNumber(profile.landPurchasePrice)) : "nicht gepflegt"}`,
+        `Kaufpreis Stellplatz: ${reportNumber(profile.parkingPurchasePrice) > 0 ? formatCurrency(reportNumber(profile.parkingPurchasePrice)) : "nicht gepflegt"}`,
+        "Erwerbsbuchungen 2025:",
+        ...acquisitionRowsForObject(object).map((entry) => `- ${formatDate(entry.booking_date)} | ${entry.category ?? "-"} | ${formatCurrency(Math.abs(entry.amount))} | ${entry.note ?? ""}`),
+        "Finanzierungskosten separat:",
+        ...financingRowsForObject(object).map((entry) => `- ${formatDate(entry.booking_date)} | ${entry.category ?? "-"} | ${formatCurrency(Math.abs(entry.amount))} | ${entry.note ?? ""}`),
+      ];
+      const checkLines = [
+        `Objekt: ${object.label} | § 6 Abs. 1 Nr. 1a EStG`,
+        `Prüfzeitraum: ${check.purchaseDate} bis ${check.reportEnd} (Drei-Jahres-Ende ${check.cutoff})`,
+        `Gebäude-Basis: ${check.buildingBasis ? formatCurrency(check.buildingBasis) : "FEHLT"}`,
+        `15%-Grenze: ${check.buildingBasis ? formatCurrency(check.threshold) : "nicht berechenbar"}`,
+        `Kosten: ${formatCurrency(check.costs)} | Quote: ${check.ratio === null ? "nicht berechenbar" : `${(check.ratio * 100).toLocaleString("de-DE", { maximumFractionDigits: 2 })}%`}`,
+        `Status Vorprüfung: [${check.status}]`,
+        "Hinweis: Nettowerte/Umsatzsteuer durch Steuerberater bestätigen.",
+        ...check.rows.map((entry) => `- ${formatDate(entry.booking_date)} | ${entry.category ?? "-"} | ${formatCurrency(Math.abs(entry.amount))}`),
+      ];
+      files.push(
+        { name: `${folder}/AfA_Basis_${base}.pdf`, content: createSimplePdf(`Anschaffungskosten & AfA-Basis ${object.label}`, afaLines) },
+        { name: `${folder}/AfA_Basis_${base}.csv`, content: buildCsv(["Feld", "Wert"], [["Gebäude", profile.buildingPurchasePrice || ""], ["Grund und Boden", profile.landPurchasePrice || ""], ["Stellplatz", profile.parkingPurchasePrice || ""]]) },
+        { name: `${folder}/15_Prozent_Check.pdf`, content: createSimplePdf(`15%-Check ${object.label}`, checkLines) },
+        { name: `${folder}/15_Prozent_Check.csv`, content: buildCsv(["Objekt", "Gebäude-Basis", "Grenze", "Kosten", "Quote", "Status"], [[object.label, check.buildingBasis, check.threshold, check.costs, check.ratio === null ? "" : check.ratio * 100, check.status]]) },
+      );
+    });
+
+    const hohenloherFolder = `${packageSlug}/07_Objekt_Hohenloher_Str_Eigennutzung`;
+    files.push(
+      { name: `${hohenloherFolder}/35a_Hohenloher_${period}.pdf`, content: createSimplePdf(reportTitle("section35a"), buildReportLines("section35a")) },
+      { name: `${hohenloherFolder}/35a_Hohenloher_${period}.csv`, content: buildReportCsv("section35a") },
+    );
 
     downloadBlob(`${packageSlug}.zip`, await createZipWithBinary(files));
   }
@@ -3336,13 +3715,63 @@ function ReportsExportsPage() {
   const reportCards = [
     {
       title: "Steuerberater-Datenpaket",
-      description: "Ein Jahrespaket mit zusammengefuehrtem PDF, Einzel-PDFs, CSV-/Excel-Tabellen und Portfolio-Ausgaben fuer die direkte Uebergabe an den Steuerberater.",
+      description: "Neue Sieben-Berichte-Architektur: objektbezogene PDFs und strukturierte Daten in der verbindlichen Steuerberater-Ordnerstruktur.",
       icon: PackageCheck,
       actions: [
         { label: "Data-Package ZIP", kind: "tax-data-package", format: "zip", primary: true },
         { label: "Zusammengeführtes PDF", kind: "tax-data-package", format: "pdf" },
         { label: "Paket-Index Excel", kind: "tax-data-package", format: "excel" },
         { label: "Paket-Index CSV", kind: "tax-data-package", format: "csv" },
+      ],
+    },
+    {
+      title: "Immobilien-Stammdaten (Portfolio-Register)",
+      description: "Kompaktes Register aller sechs Immobilien mit Objekt-ID, Fläche, Nutzung, Eigentumsquoten, Kaufdatum und Übergang von Nutzen und Lasten.",
+      icon: Building2,
+      actions: [
+        { label: "Register-PDF", kind: "portfolio-register", format: "pdf", primary: true },
+        { label: "Excel", kind: "portfolio-register", format: "excel" },
+        { label: "CSV", kind: "portfolio-register", format: "csv" },
+      ],
+    },
+    {
+      title: "Anschaffungskosten & AfA-Basis 2025",
+      description: "Getrennte Neuzugangsprüfung für Rosenstein und Hohenloher mit Kaufpreisaufteilung, Erwerbsbuchungen und separat ausgewiesenen Finanzierungskosten.",
+      icon: ReceiptText,
+      actions: [
+        { label: "AfA-Basis-PDF", kind: "acquisition-afa", format: "pdf", primary: true },
+        { label: "Excel", kind: "acquisition-afa", format: "excel" },
+        { label: "CSV", kind: "acquisition-afa", format: "csv" },
+      ],
+    },
+    {
+      title: "15%-Check Anschaffungsnahe Herstellungskosten",
+      description: "Überwacht Rosenstein und Hohenloher ab Kaufdatum; fehlende Gebäude- oder Nettowerte werden ausdrücklich zur Prüfung markiert und nie geschätzt.",
+      icon: ShieldCheck,
+      actions: [
+        { label: "15%-Check-PDF", kind: "acquisition-15-check", format: "pdf", primary: true },
+        { label: "Excel", kind: "acquisition-15-check", format: "excel" },
+        { label: "CSV", kind: "acquisition-15-check", format: "csv" },
+      ],
+    },
+    {
+      title: "Fahrtkosten-Einzelnachweis",
+      description: "Chronologisches Fahrten-Logbuch pro Mietobjekt; die Objektsummen werden aus derselben Quelle in Anlage V übernommen.",
+      icon: Car,
+      actions: [
+        { label: "Fahrtenbuch-PDF", kind: "mileage-log", format: "pdf", primary: true },
+        { label: "Excel", kind: "mileage-log", format: "excel" },
+        { label: "CSV", kind: "mileage-log", format: "csv" },
+      ],
+    },
+    {
+      title: "Chef-Kontrollbericht",
+      description: "Druckfertige Dokumenten-Checkliste mit Kontrollkästchen pro Immobilie und Abschlussfreigabe für das Steuerberater-Paket.",
+      icon: ListChecks,
+      actions: [
+        { label: "Chefliste-PDF", kind: "tax-checklist", format: "pdf", primary: true },
+        { label: "Excel", kind: "tax-checklist", format: "excel" },
+        { label: "CSV", kind: "tax-checklist", format: "csv" },
       ],
     },
     {

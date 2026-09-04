@@ -81,6 +81,9 @@ export type AnlageVReport = {
   profile: TaxObjectProfile;
   incomeLabel: string;
   income: number;
+  coldRentIncome: number;
+  operatingCostAdvanceIncome: number;
+  settlementIncome: number;
   buildingAfa: number;
   inventoryAfa: number;
   loanInterest: number;
@@ -194,8 +197,8 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     usage: "rented_parking",
     aliases: ["p250", "p250-e008440000121", "p250 e008440000121", "e008440000121"],
     buildingYear: 1960,
-    acquisitionPrice: 20406.42,
-    afaRate: 0.02,
+    acquisitionPrice: 0,
+    afaRate: 0,
     bankAccountFlatFee: 5.33,
     homeOfficePercentage: 0,
   },
@@ -207,8 +210,8 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     usage: "rented_parking",
     aliases: ["p253", "p253-e008440000122", "p253 e008440000122", "e008440000122"],
     buildingYear: 1960,
-    acquisitionPrice: 20406.42,
-    afaRate: 0.02,
+    acquisitionPrice: 0,
+    afaRate: 0,
     bankAccountFlatFee: 5.33,
     homeOfficePercentage: 0,
   },
@@ -220,8 +223,8 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     usage: "rented_parking",
     aliases: ["p254", "p254-e008440000123", "p254 e008440000123", "e008440000123"],
     buildingYear: 1960,
-    acquisitionPrice: 20406.42,
-    afaRate: 0.02,
+    acquisitionPrice: 0,
+    afaRate: 0,
     bankAccountFlatFee: 5.34,
     homeOfficePercentage: 0,
   },
@@ -602,6 +605,9 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
     return details?.allocatedPerRentedObject ?? 0;
   });
   const income = sumCurrency(bookingRows, (row) => row.incomeAmount);
+  const coldRentIncome = sumCurrency(bookingRows.filter((row) => row.categoryName === "Kaltmiete"), (row) => row.incomeAmount);
+  const operatingCostAdvanceIncome = sumCurrency(bookingRows.filter((row) => row.categoryName === "Nebenkostenvorauszahlung"), (row) => row.incomeAmount);
+  const settlementIncome = sumCurrency(bookingRows.filter((row) => row.categoryName === "Mietnachzahlungen & Erstattungen"), (row) => row.incomeAmount);
   const buildingAfa = profile.buildingYear <= 2021 ? roundCurrency(profile.acquisitionPrice * profile.afaRate) : 0;
   const inventoryAfa = sumCurrency(
     profileEntries.filter((entry) => entry.entry_type === "expense" && categoryMatches(entry, INVENTORY_CATEGORIES, profile)),
@@ -645,6 +651,9 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
       ? "Einnahmen aus Vermietung anderer Immobilien / Stellplätze ohne Wohnraum"
       : "Einnahmen aus Wohnraumvermietung",
     income,
+    coldRentIncome,
+    operatingCostAdvanceIncome,
+    settlementIncome,
     buildingAfa,
     inventoryAfa,
     loanInterest,
@@ -831,6 +840,9 @@ export function buildAnlageVReportLines(report: AnlageVReport): string[] {
     `AfA-Satz: ${(report.profile.afaRate * 100).toLocaleString("de-DE")} %`,
     "",
     `Feld 1 - ${report.incomeLabel}: ${formatTaxCurrency(report.income)}`,
+    `  davon tatsächlich zugeflossene Kaltmiete: ${formatTaxCurrency(report.coldRentIncome)}`,
+    `  davon Nebenkostenvorauszahlungen: ${formatTaxCurrency(report.operatingCostAdvanceIncome)}`,
+    `  davon Nachzahlungen abzüglich Erstattungen: ${formatTaxCurrency(report.settlementIncome)}`,
     `Feld 2 - Gebaeude-/Teileigentum-AfA: ${formatTaxCurrency(report.buildingAfa)}`,
     `Feld 3 - Einbaukuechen & Inventar-AfA: ${formatTaxCurrency(report.inventoryAfa)}`,
     `Feld 4 - Schuldzinsen: ${formatTaxCurrency(report.loanInterest)}`,

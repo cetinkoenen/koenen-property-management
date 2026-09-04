@@ -23,7 +23,7 @@ assert.match(app, /application\/vnd\.ms-excel;charset=utf-8/, "Excel-kompatible 
 assert.match(app, /function reportActionReady\(kind: ReportKind\)/, "Alle Berichtsschaltflächen müssen eine zentrale Bereitschaftsprüfung verwenden");
 assert.match(app, /kind === "rent-account"\) return rentReportReady/, "Mietkonto-Exporte dürfen erst nach dem Jahresreport freigegeben werden");
 assert.match(app, /kind === "vacancy"\) return vacancyReportReady/, "Leerstandsexporte dürfen erst nach der Leerstandsquelle freigegeben werden");
-assert.match(app, /kind === "tax-data-package"\) return rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady/, "Das Steuerberaterpaket muss auf alle enthaltenen Zusatzquellen warten");
+assert.match(app, /kind === "tax-data-package"\) return objectFilter === "all" && wealthProfilesLoaded && rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady/, "Das Steuerberaterpaket muss das Gesamtportfolio erzwingen und auf alle enthaltenen Zusatzquellen warten");
 assert.match(app, /disabled=\{!reportActionReady\(action\.kind\) \|\| activeExport !== null\}/, "Nicht bereite oder bereits laufende Exporte müssen deaktiviert sein");
 assert.match(app, /aria-busy=\{busy \|\| undefined\}/, "Laufende Exporte müssen barrierefrei als beschäftigt markiert sein");
 assert.match(app, /role="status"/, "Die App muss den Exportstatus sichtbar melden");
@@ -84,5 +84,21 @@ assert.match(app, /key === "modernizationCosts"[\s\S]*selectedDossierRepairSumma
 assert.match(app, /PDF_PAGE_BREAK[\s\S]*`\$\{groupIndex \+ 1\}\. \$\{group\.title\}:`/, "Die Hauptgruppen der Immobilienakte müssen professionell mit Seitenwechseln und Überschriften gegliedert werden");
 assert.match(app, /PROPERTY_DOSSIER_PDF_GROUPS[\s\S]*Flächen und Nutzung[\s\S]*Ausstattung[\s\S]*Wertansätze[\s\S]*Bereits durchgeführte Modernisierungen[\s\S]*Darlehen 1[\s\S]*Konditionen/, "Die PDF muss die Eigenschaftsgruppen der Immobilienseite vollständig spiegeln");
 assert.match(app, /PROPERTY_DOSSIER_LABELS\.get\(key\)[\s\S]*valueFor\(key\)/, "Jedes konfigurierte Immobilienfeld muss mit Beschriftung und Wert in die PDF gelangen");
+assert.match(app, /"portfolio-register"[\s\S]*"acquisition-afa"[\s\S]*"acquisition-15-check"[\s\S]*"mileage-log"[\s\S]*"tax-checklist"/, "Die fünf neuen Steuerberater-Berichte müssen als Berichtstypen registriert sein");
+assert.match(app, /01_Stammdaten_und_Checklisten\/Stammdaten\.pdf/, "Das Datenpaket muss das Portfolio-Register in der vorgegebenen Ordnerstruktur enthalten");
+assert.match(app, /02_Objekt_Lilienthaler_Str[\s\S]*03_Objekt_Elsasser_Str[\s\S]*04_Objekt_Colmarer_Str[\s\S]*05_Objekt_Fuerther_Str/, "Die vier vermieteten Wohnobjekte müssen getrennte Paketordner besitzen");
+assert.match(app, /06_Objekt_Rosenstein_Str_NEU[\s\S]*07_Objekt_Hohenloher_Str_Eigennutzung/, "Die beiden Neuzugänge müssen eigene Paketordner besitzen");
+assert.match(app, /EUR_\$\{base\}_\$\{period\}\.pdf[\s\S]*EUR_\$\{base\}_\$\{period\}\.csv[\s\S]*EUR_\$\{base\}_\$\{period\}\.xls/, "Jede vermietete Immobilie muss eine PDF- und strukturierte EÜR erhalten");
+assert.match(app, /AfA_Basis_\$\{base\}\.pdf[\s\S]*15_Prozent_Check\.pdf/, "Rosenstein und Hohenloher müssen AfA-Basis und 15%-Check erhalten");
+assert.match(app, /35a_Hohenloher_\$\{period\}\.pdf/, "Hohenloher muss im Eigennutzungsordner einen §35a-Bericht erhalten");
+assert.match(app, /unitValueFileNumber[\s\S]*ownershipHusbandPercent[\s\S]*ownershipWifePercent[\s\S]*transferBenefitsDate/, "Das Portfolio-Register muss die erweiterten steuerlichen Stammdatenfelder verwenden");
+assert.match(app, /buildingBasis \* 0\.15/, "Der Risiko-Bericht muss die 15%-Vergleichsgrenze aus der Gebäude-Basis berechnen");
+assert.match(app, /Buchungen kein separates Netto-\/USt-Feld besitzen/, "Der 15%-Check muss seine Netto-/USt-Datengrenze offenlegen");
+assert.match(app, /isHohenloherObject\(object\.label\)[\s\S]*Eigennutzung/, "Hohenloher muss im Portfolio-Register als Eigennutzung gekennzeichnet sein");
+assert.match(taxEngine, /coldRentIncome[\s\S]*operatingCostAdvanceIncome[\s\S]*settlementIncome/, "Anlage V muss Kaltmiete, NK-Vorauszahlungen und Abrechnungssalden getrennt ausweisen");
+assert.match(taxEngine, /davon tatsächlich zugeflossene Kaltmiete[\s\S]*davon Nebenkostenvorauszahlungen[\s\S]*Nachzahlungen abzüglich Erstattungen/, "Der EÜR-PDF-Inhalt muss die Einnahmenarten getrennt darstellen");
+assert.match(app, /Read-only Steuerberater-Paket/, "Das Paket muss seine schreibgeschützte Auswertungsarchitektur dokumentieren");
+assert.match(taxEngine, /key: "rosenstein-p250"[\s\S]*acquisitionPrice: 0[\s\S]*afaRate: 0/, "Für Rosenstein darf ohne bestätigte Gebäudeaufteilung keine AfA geschätzt werden");
+assert.match(app, /acquisitionRowsForObject[\s\S]*!financingKeyword\.test/, "Finanzierungskosten dürfen nicht doppelt als Anschaffungskosten erscheinen");
 
-console.log("66 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("82 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");

@@ -154,6 +154,10 @@ const EMPTY_DRAFT: WealthDraft = {
   buildingPurchasePrice: "",
   landPurchasePrice: "",
   parkingPurchasePrice: "",
+  unitValueFileNumber: "",
+  ownershipHusbandPercent: "",
+  ownershipWifePercent: "",
+  transferBenefitsDate: "",
   usageType: "",
   unitCount: "",
   totalArea: "",
@@ -350,6 +354,10 @@ const SECTION_FIELDS: Array<{ title: string; description: string; icon: typeof H
       { key: "buildingPurchasePrice", label: "Kaufpreis Anteil Gebäude (€)", type: "number" },
       { key: "landPurchasePrice", label: "Kaufpreis Anteil Grund/Boden (€)", type: "number" },
       { key: "parkingPurchasePrice", label: "Kaufpreis Anteil Stellplatz (€)", type: "number" },
+      { key: "unitValueFileNumber", label: "Einheitswert-Aktenzeichen" },
+      { key: "ownershipHusbandPercent", label: "Eigentumsquote Ehemann (%)", type: "number" },
+      { key: "ownershipWifePercent", label: "Eigentumsquote Ehefrau (%)", type: "number" },
+      { key: "transferBenefitsDate", label: "Übergang Nutzen und Lasten", type: "date" },
     ],
   },
   {
@@ -445,7 +453,7 @@ const DETAIL_TEMPLATE_SECTIONS: Array<{
     columns: [
       { title: "Vorhaben", fields: ["financingReason", "propertyType", "name"] },
       { title: "Adresse und Kontaktdaten", fields: ["street", "houseNumber", "postalCode", "city", "state", "inhabitants", "surroundings"] },
-      { title: "Kostenaufstellung", fields: ["purchasePrice", "purchaseDate", "purchaseYear", "buildingPurchasePrice", "landPurchasePrice", "parkingPurchasePrice"] },
+      { title: "Kostenaufstellung", fields: ["purchasePrice", "purchaseDate", "purchaseYear", "buildingPurchasePrice", "landPurchasePrice", "parkingPurchasePrice", "unitValueFileNumber", "ownershipHusbandPercent", "ownershipWifePercent", "transferBenefitsDate"] },
     ],
   },
   {
