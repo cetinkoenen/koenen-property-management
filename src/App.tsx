@@ -86,6 +86,7 @@ import type { RentAnnualReportSnapshot } from "./pages/Mietuebersicht";
 import { loadCanonicalPropertyLoanHistory } from "./services/propertyLoanLedgerService";
 import { fetchPropertyWealthProfiles, type PropertyWealthProfile } from "./services/propertyExtraService";
 import { portfolioGalleryItems } from "./data/portfolioGallery";
+import { buildRepairCapexSummary } from "./lib/repairCapex";
 import {
   buildLoanInterestReportCsv,
   buildLoanInterestReportExcelHtml,
@@ -1478,6 +1479,49 @@ const PROPERTY_DOSSIER_SECTIONS = [
     ],
   },
 ] as const;
+const PROPERTY_DOSSIER_PDF_GROUPS = [
+  {
+    title: "Vorhaben & Adresse",
+    sections: [
+      { title: "Vorhaben", fields: ["financingReason", "propertyType", "name"] },
+      { title: "Adresse und Kontaktdaten", fields: ["street", "houseNumber", "postalCode", "city", "state", "inhabitants", "surroundings"] },
+      { title: "Kostenaufstellung", fields: ["purchasePrice", "purchaseDate", "purchaseYear", "buildingPurchasePrice", "landPurchasePrice", "parkingPurchasePrice"] },
+    ],
+  },
+  {
+    title: "Beschreibung",
+    sections: [
+      { title: "Flächen und Nutzung", fields: ["usageType", "unitCount", "totalArea", "coldRentMonthly", "landArea", "convertedSpace"] },
+      { title: "Ausstattung", fields: ["equipmentYear", "constructionType", "constructionSpecials", "equipmentRating", "floors", "elevator", "condition", "attic", "cellar"] },
+      { title: "Stellplätze", fields: ["parkingSpaces"] },
+    ],
+  },
+  {
+    title: "Bewertung",
+    sections: [
+      { title: "Wertansätze", fields: ["marketValue", "landValue", "estimatedMarketValue"] },
+      { title: "Erwerb", fields: ["acquisitionSpecials", "heritableBuildingRight"] },
+    ],
+  },
+  {
+    title: "Energie und Modernisierungen",
+    sections: [
+      { title: "Energie", fields: ["energyClass", "primaryEnergyDemand", "primaryEnergyConsumption", "co2Emissions"] },
+      { title: "Bereits durchgeführte Modernisierungen", fields: ["modernizations", "lastModernizationYear", "modernizationCosts"] },
+    ],
+  },
+  {
+    title: "Bestehende Darlehen",
+    sections: [
+      { title: "Darlehen 1", fields: ["lender", "ibanBic", "loanNumber", "landRegisterRank", "subsidizedLoan"] },
+      { title: "Konditionen", fields: ["originalLoanAmount", "currentMonthlyRate", "agreedFutureRate", "interestRate", "interestBinding", "fullRepaymentDate"] },
+      { title: "Ablösung", fields: ["release", "shouldBeRedeemed", "expectedEndDate", "borrowers"] },
+    ],
+  },
+] as const;
+const PROPERTY_DOSSIER_LABELS = new Map(
+  PROPERTY_DOSSIER_SECTIONS.flatMap((section) => section.fields.map(([key, label]) => [key, label])),
+);
 type AnlageVReportDataRow = Omit<AnlageVBookingExportRow, "recordType" | "paymentStatus"> & {
   recordType: AnlageVBookingExportRow["recordType"] | "Leerstand" | "Offene Miete";
   paymentStatus: AnlageVBookingExportRow["paymentStatus"] | "Nicht anwendbar";
@@ -2093,7 +2137,7 @@ function ReportActionButton({
 }
 
 function ReportsExportsPage() {
-  const { objects, entries, loanRows, portfolioRows, getPropertyName, loading: appDataLoading } = useAppData();
+  const { objects, entries, loanRows, portfolioRows, getPropertyName, getExpenseEntriesForProperty, loading: appDataLoading } = useAppData();
   const currentYear = new Date().getFullYear();
   const [objectFilter, setObjectFilter] = useState("all");
   const [period, setPeriod] = useState(String(currentYear));
@@ -2167,6 +2211,11 @@ function ReportsExportsPage() {
       return item.matchTerms.some((term) => reportPropertyNamesMatch(selectedDossierObject.label, term));
     })
     : undefined;
+  const selectedDossierRepairSummary = buildRepairCapexSummary(
+    selectedDossierObject
+      ? getExpenseEntriesForProperty(selectedDossierPortfolio?.property_id ?? selectedDossierObject.id)
+      : [],
+  );
   const yearEntries = entries.filter((entry) => entry.booking_date?.startsWith(`${period}-`));
   const matchesSelectedObject = (entry: FinanceEntry) => {
     if (!selectedObject) return true;
@@ -2534,24 +2583,60 @@ function ReportsExportsPage() {
 
   function buildPropertyDossierLines(): string[] {
     if (!selectedDossierObject) return ["Bitte zuerst eine Immobilie auswählen."];
-    const valueFor = (key: string) => String(selectedDossierProfile[key] ?? "").trim().replace(/\s*\n\s*/g, ", ") || "—";
+    const manualModernizations = String(selectedDossierProfile.modernizations ?? "")
+      .replace(/Automatisch aus Reparatur-\/Capex-Buchungen:[\s\S]*$/m, "")
+      .trim();
+    const valueFor = (key: string) => {
+      if (key === "modernizations") {
+        const sources = [
+          manualModernizations ? "Manuelle Dokumentation vorhanden" : "",
+          selectedDossierRepairSummary.entries.length
+            ? `${selectedDossierRepairSummary.entries.length} Reparatur-/Capex-Buchungen automatisch übernommen`
+            : "",
+        ].filter(Boolean);
+        return sources.join("; ") || "—";
+      }
+      if (key === "lastModernizationYear" && selectedDossierRepairSummary.latestYear) {
+        return String(selectedDossierRepairSummary.latestYear);
+      }
+      if (key === "modernizationCosts" && selectedDossierRepairSummary.entries.length) {
+        return formatCurrency(selectedDossierRepairSummary.totalAmount);
+      }
+      return String(selectedDossierProfile[key] ?? "").trim().replace(/\s*\n\s*/g, ", ") || "—";
+    };
     return [
       `Immobilie: ${selectedDossierObject.label}`,
       `Erstellt: ${new Date().toLocaleString("de-DE")}`,
       "Hauptquelle: Immobilienvermögen > jeweilige Immobilie > Detailmaske",
       "Restschuldquelle: Darlehen / property_loan_ledger (nicht parallel editierbar)",
       "",
-      ...PROPERTY_DOSSIER_SECTIONS.flatMap((section, index) => [
-        `${index + 1}. ${section.title}`,
-        ...section.fields.map(([key, label]) => `${label}: ${valueFor(key)}`),
-        ...(section.title === "Darlehensangaben"
-          ? [
-              `Aktuelle Restschuld: ${formatCurrency(selectedDossierLoan?.last_balance ?? 0)}`,
-              `Zinsen gesamt: ${formatCurrency(selectedDossierLoan?.interest_total ?? 0)}`,
-              `Tilgung gesamt: ${formatCurrency(selectedDossierLoan?.principal_total ?? 0)}`,
-            ]
-          : []),
-        "",
+      PDF_PAGE_BREAK,
+      ...PROPERTY_DOSSIER_PDF_GROUPS.flatMap((group, groupIndex) => [
+        ...(groupIndex > 0 ? [PDF_PAGE_BREAK] : []),
+        `${groupIndex + 1}. ${group.title}:`,
+        ...group.sections.flatMap((section) => [
+          `${section.title}:`,
+          ...section.fields.map((key) => `${PROPERTY_DOSSIER_LABELS.get(key) ?? key}: ${valueFor(key)}`),
+          ...(section.title === "Bereits durchgeführte Modernisierungen"
+            ? [
+                "Modernisierungsdetails:",
+                ...(manualModernizations
+                  ? [`Manuell dokumentiert: ${manualModernizations.replace(/\s*\n\s*/g, ", ")}`]
+                  : ["Manuell dokumentiert: —"]),
+                ...(selectedDossierRepairSummary.lines.length
+                  ? selectedDossierRepairSummary.lines
+                  : ["Keine Reparatur-/Capex-Buchungen für diese Immobilie gefunden."]),
+              ]
+            : []),
+          ...(section.title === "Ablösung"
+            ? [
+                `Aktuelle Restschuld: ${formatCurrency(selectedDossierLoan?.last_balance ?? 0)}`,
+                `Zinsen gesamt: ${formatCurrency(selectedDossierLoan?.interest_total ?? 0)}`,
+                `Tilgung gesamt: ${formatCurrency(selectedDossierLoan?.principal_total ?? 0)}`,
+              ]
+            : []),
+          "",
+        ]),
       ]),
       "Notizen:",
       valueFor("notes"),

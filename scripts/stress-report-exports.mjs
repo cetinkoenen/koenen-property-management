@@ -77,5 +77,12 @@ assert.match(app, /selectedDossierProfileKeys[\s\S]*Object\.entries\(wealthProfi
 assert.match(app, /portfolioGalleryItems[\s\S]*selectedDossierPhoto/, "Die Immobilienakte muss das Foto aus derselben Objektgalerie wie die App auswählen");
 assert.match(app, /\/PropertyPhoto Do/, "Das Immobilienfoto muss als echtes Bildobjekt in die PDF eingebettet werden");
 assert.match(app, /kind === "property-dossier"[\s\S]*await loadPdfJpegImage\(selectedDossierPhoto\.imageUrl\)/, "Der Immobilienakten-Export muss das ausgewählte Objektfoto laden");
+assert.match(app, /buildRepairCapexSummary[\s\S]*selectedDossierRepairSummary/, "Die Immobilienakte muss dieselbe Reparatur-/Capex-Quelle wie die Immobilienseite verwenden");
+assert.match(app, /getExpenseEntriesForProperty\(selectedDossierPortfolio\?\.property_id \?\? selectedDossierObject\.id\)/, "Modernisierungen müssen objektbezogen über die zentrale ID geladen werden");
+assert.match(app, /Modernisierungsdetails:[\s\S]*selectedDossierRepairSummary\.lines/, "Alle automatischen Modernisierungsbuchungen müssen in der PDF einzeln dokumentiert werden");
+assert.match(app, /key === "modernizationCosts"[\s\S]*selectedDossierRepairSummary\.totalAmount/, "Die Modernisierungssumme der PDF muss der Immobilienseite entsprechen");
+assert.match(app, /PDF_PAGE_BREAK[\s\S]*`\$\{groupIndex \+ 1\}\. \$\{group\.title\}:`/, "Die Hauptgruppen der Immobilienakte müssen professionell mit Seitenwechseln und Überschriften gegliedert werden");
+assert.match(app, /PROPERTY_DOSSIER_PDF_GROUPS[\s\S]*Flächen und Nutzung[\s\S]*Ausstattung[\s\S]*Wertansätze[\s\S]*Bereits durchgeführte Modernisierungen[\s\S]*Darlehen 1[\s\S]*Konditionen/, "Die PDF muss die Eigenschaftsgruppen der Immobilienseite vollständig spiegeln");
+assert.match(app, /PROPERTY_DOSSIER_LABELS\.get\(key\)[\s\S]*valueFor\(key\)/, "Jedes konfigurierte Immobilienfeld muss mit Beschriftung und Wert in die PDF gelangen");
 
-console.log("59 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("66 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
