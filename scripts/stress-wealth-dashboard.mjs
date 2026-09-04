@@ -5,6 +5,8 @@ const wealthSource = readFileSync(new URL("../src/pages/ImmobilienVermoegen.tsx"
 assert.match(wealthSource, /inputMode=\{field\.type === "number" \? "decimal" : undefined\}/, "Gespeicherte Zahlenfelder müssen auch mit deutscher Dezimalschreibweise erneut editierbar bleiben");
 assert.match(wealthSource, /Bearbeitbar/, "Eigenschaftsgruppen müssen ihren Bearbeitungsstatus sichtbar anzeigen");
 assert.match(wealthSource, /aria-label=\{`\$\{column\.title\} speichern`\}/, "Jede Eigenschaftsgruppe muss eine eigene Speicheraktion anbieten");
+assert.match(wealthSource, /const storageId = card\?\.row\?\.property_id \?\? id/, "Feldänderungen müssen unter der zentralen Supabase-Objekt-ID gespeichert werden");
+assert.match(wealthSource, /\[storageId\]: \{/, "Die zentrale Objekt-ID muss beim lokalen Formularzustand Vorrang haben");
 assert.match(wealthSource, /field\.key === "remainingDebt"/, "Die zentrale Restschuld muss auf der Vermögensseite schreibgeschützt bleiben");
 
 const EMPTY_DRAFT = {

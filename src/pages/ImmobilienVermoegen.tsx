@@ -1928,12 +1928,17 @@ export default function ImmobilienVermoegen() {
   }), [cards.length, wealthTotals]);
 
   function updateDraft(id: string, key: string, value: string) {
+    const card = cards.find((candidate) => candidate.id === id);
+    // Das zentrale Supabase-Profil der Kernobjekt-ID hat beim Zusammenführen
+    // Vorrang. Änderungen müssen deshalb direkt unter derselben ID landen,
+    // sonst würde der zuvor gespeicherte Wert beim nächsten Rendern gewinnen.
+    const storageId = card?.row?.property_id ?? id;
     setStoredDrafts((current) => {
       const next = {
         ...current,
-        [id]: {
-          ...(cards.find((card) => card.id === id)?.draft ?? EMPTY_DRAFT),
-          ...(current[id] ?? {}),
+        [storageId]: {
+          ...(card?.draft ?? EMPTY_DRAFT),
+          ...(current[storageId] ?? {}),
           [key]: value,
         },
       };
