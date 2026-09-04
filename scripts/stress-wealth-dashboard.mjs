@@ -131,6 +131,26 @@ function vacancyMatchesParkingUnit(vacancy, card, unit) {
   return Boolean(unitLabel && (unitLabel.includes(vacancyUnit) || vacancyUnit.includes(unitLabel)));
 }
 
+function contractMatchesWealthCard(contract, card, objects) {
+  const row = card.row;
+  const cardLabel = normalize(`${card.draft.name} ${row?.property_name ?? ""}`);
+  const matchingObjects = objects.filter((object) => {
+    const objectLabel = normalize(object.label);
+    return Boolean(
+      (row?.property_id && (object.id === row.property_id || object.aliases?.includes(row.property_id))) ||
+      (row?.portfolio_property_id && (object.id === row.portfolio_property_id || object.aliases?.includes(row.portfolio_property_id))) ||
+      (objectLabel && cardLabel && (objectLabel.includes(cardLabel) || cardLabel.includes(objectLabel))),
+    );
+  });
+  const identifiers = new Set(
+    [card.id, row?.property_id, row?.portfolio_property_id, ...matchingObjects.flatMap((object) => [object.id, object.code, ...(object.aliases ?? [])])]
+      .flatMap((value) => (value ? [normalize(value)] : [])),
+  );
+  if ([contract.property_id, contract.object_code].some((value) => Boolean(value && identifiers.has(normalize(value))))) return true;
+  const contractLabel = normalize(`${contract.object_code ?? ""} ${contract.unit_label ?? ""}`);
+  return Boolean(contractLabel && cardLabel && contractLabel.includes("rosenstein") && cardLabel.includes("rosenstein"));
+}
+
 function isVacancyEffectivelyActiveInRange(vacancy, start, end) {
   if (vacancy.status === "ended") return false;
   if (vacancy.start_date > end) return false;
@@ -290,6 +310,26 @@ const tests = [
     assert.equal(julyUnits.filter((unit) => unit.status === "vacant").map((unit) => unit.shortLabel).join(","), "P254");
     assert.equal(julyUnits.filter((unit) => unit.status === "rented").reduce((sum, unit) => sum + unit.monthlyRent, 0), 170);
     assert.equal(augustUnits.filter((unit) => unit.status === "vacant").length, 1, "Basis-P254 bleibt als Leerstand gefuehrt, bis Vermietung explizit gepflegt wird");
+  },
+  () => {
+    const cards = buildCards(rows, stored);
+    const rosenstein = cards.find((card) => card.id === "rosensteinstr-25");
+    const objects = [{
+      id: "object-master-rosenstein",
+      code: "Objekt_6",
+      label: "Rosenstein Str. 25",
+      aliases: ["p6", "pf6"],
+    }];
+    assert.equal(
+      contractMatchesWealthCard({ property_id: "object-master-rosenstein", object_code: "Objekt_6", unit_label: "P250" }, rosenstein, objects),
+      true,
+      "Rosenstein-Vertraege muessen ueber die zentrale Objektbruecke mit der Vermoegenskarte verknuepft werden",
+    );
+    assert.equal(
+      contractMatchesWealthCard({ property_id: "foreign-object", object_code: "Objekt_2", unit_label: "P250" }, rosenstein, objects),
+      false,
+      "Eine gleiche Einheitsbezeichnung allein darf kein anderes Objekt verknuepfen",
+    );
   },
   () => {
     const cards = buildCards(rows, stored);

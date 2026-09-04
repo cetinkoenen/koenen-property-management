@@ -20,7 +20,7 @@ import { EmptyState, PageHeader, SectionPanel } from "@/components/ui/profession
 import { useAuth } from "@/auth/AuthProvider";
 import { isAdminEmail } from "@/auth/accessControl";
 import { portfolioGalleryItems, type PortfolioGalleryItem } from "@/data/portfolioGallery";
-import { useAppData, type FinanceEntry, type PortfolioLoanRow } from "@/state/AppDataContext";
+import { useAppData, type AppObject, type FinanceEntry, type PortfolioLoanRow } from "@/state/AppDataContext";
 import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
 import { buildRepairCapexSummary, type RepairCapexSummary } from "@/lib/repairCapex";
 import {
@@ -615,11 +615,29 @@ function vacancyMatchesParkingUnit(vacancy: UnitVacancy, card: WealthCard, unit:
   return Boolean(unitLabel && (unitLabel.includes(vacancyUnit) || vacancyUnit.includes(unitLabel)));
 }
 
-function contractMatchesWealthCard(contract: TenantContract, card: WealthCard): boolean {
+function contractMatchesWealthCard(contract: TenantContract, card: WealthCard, objects: AppObject[]): boolean {
   const row = card.row;
-  if (contract.property_id && (contract.property_id === row?.property_id || contract.property_id === row?.portfolio_property_id || contract.property_id === card.id)) return true;
-  const contractLabel = normalize(`${contract.object_code ?? ""} ${contract.unit_label ?? ""}`);
   const cardLabel = normalize(`${card.draft.name} ${row?.property_name ?? ""}`);
+  const matchingObjects = objects.filter((object) => {
+    const objectLabel = normalize(object.label);
+    return Boolean(
+      (row?.property_id && (object.id === row.property_id || object.aliases?.includes(row.property_id))) ||
+      (row?.portfolio_property_id && (object.id === row.portfolio_property_id || object.aliases?.includes(row.portfolio_property_id))) ||
+      (objectLabel && cardLabel && (objectLabel.includes(cardLabel) || cardLabel.includes(objectLabel))),
+    );
+  });
+  const identifiers = new Set(
+    [
+      card.id,
+      row?.property_id,
+      row?.portfolio_property_id,
+      ...matchingObjects.flatMap((object) => [object.id, object.code, ...(object.aliases ?? [])]),
+    ]
+      .flatMap((value) => (value ? [normalize(value)] : [])),
+  );
+
+  if ([contract.property_id, contract.object_code].some((value) => Boolean(value && identifiers.has(normalize(value))))) return true;
+  const contractLabel = normalize(`${contract.object_code ?? ""} ${contract.unit_label ?? ""}`);
   return Boolean(contractLabel && cardLabel && contractLabel.includes("rosenstein") && cardLabel.includes("rosenstein"));
 }
 
@@ -650,6 +668,7 @@ function buildRosensteinParkingUnits(
   card: WealthCard,
   vacancies: UnitVacancy[],
   tenants: TenantProfileWithContracts[],
+  objects: AppObject[],
   entries: FinanceEntry[],
   year: number,
 ): ParkingUnit[] {
@@ -665,7 +684,7 @@ function buildRosensteinParkingUnits(
     const tenantContract = tenants.flatMap((tenant) =>
       (tenant.tenant_contracts ?? []).map((contract) => ({ tenant, contract })),
     ).find(({ contract }) =>
-      contractMatchesWealthCard(contract, card) &&
+      contractMatchesWealthCard(contract, card, objects) &&
       contractMatchesParkingUnit(contract, unit) &&
       isContractActiveOn(contract, today),
     );
@@ -1972,7 +1991,7 @@ export default function ImmobilienVermoegen() {
     const extra = extraInfo[propertyId] ?? emptyPropertyExtra;
     const finance = getFinanceForCard(selectedCard);
     const image = getPropertyImage(selectedCard.draft.name || selectedCard.row?.property_name || "");
-    const parkingUnits = isRosensteinCard(selectedCard) ? buildRosensteinParkingUnits(selectedCard, vacancies, tenantProfiles, appData.entries, year) : [];
+    const parkingUnits = isRosensteinCard(selectedCard) ? buildRosensteinParkingUnits(selectedCard, vacancies, tenantProfiles, appData.objects, appData.entries, year) : [];
     return (
       <>
         <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleExposeUpload} />
@@ -2037,7 +2056,7 @@ export default function ImmobilienVermoegen() {
         {cards.map((card) => {
           const finance = getFinanceForCard(card);
           const isRosenstein = isRosensteinCard(card);
-          const rosensteinUnits = isRosenstein ? buildRosensteinParkingUnits(card, vacancies, tenantProfiles, appData.entries, year) : [];
+          const rosensteinUnits = isRosenstein ? buildRosensteinParkingUnits(card, vacancies, tenantProfiles, appData.objects, appData.entries, year) : [];
           const rentedCount = rosensteinUnits.filter((unit) => unit.status === "rented").length;
           const vacantUnits = rosensteinUnits.filter((unit) => unit.status === "vacant");
           const monthlyTarget = rosensteinUnits
