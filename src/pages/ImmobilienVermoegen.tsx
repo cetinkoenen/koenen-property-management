@@ -1517,7 +1517,14 @@ function DetailPage({
                   <div className="grid gap-5 bg-slate-50/70 p-5 lg:grid-cols-2 2xl:grid-cols-3">
                     {section.columns.map((column) => (
                       <div key={column.title} className="rounded-[16px] border border-slate-200 bg-white p-4 shadow-sm">
-                        <h3 className="text-base font-black text-slate-950">{column.title}</h3>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h3 className="text-base font-black text-slate-950">{column.title}</h3>
+                          {isAdmin ? (
+                            <span className="inline-flex min-h-7 items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-700">
+                              Bearbeitbar
+                            </span>
+                          ) : null}
+                        </div>
                         {column.description ? <p className="mt-1 text-sm font-bold leading-6 text-slate-500">{column.description}</p> : null}
                         <div className="mt-4 grid gap-3">
                           {column.fields.map((fieldKey) => {
@@ -1535,6 +1542,16 @@ function DetailPage({
                           })}
                         </div>
                         {renderAction(column.action)}
+                        {isAdmin ? (
+                          <button
+                            type="button"
+                            onClick={() => onSave(card.id)}
+                            className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#255f6f] px-4 text-sm font-black text-white shadow-sm transition hover:bg-[#1d4f5d] focus:outline-none focus:ring-2 focus:ring-teal-200"
+                            aria-label={`${column.title} speichern`}
+                          >
+                            <Save size={17} /> {column.title} speichern
+                          </button>
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -1554,7 +1571,7 @@ function DetailPage({
       </SectionPanel>
 
       <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-[24px] border border-white/70 bg-white/90 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm font-bold text-slate-600">{!isAdmin ? "Nur-Lesen-Zugang: Die Detailmaske ist geschützt." : saveStatus ?? "Alle Felder bleiben nach dem Speichern erneut editierbar. Nur die Restschuld wird ausschließlich auf der Seite Darlehen gepflegt."}</p>
+        <p className="text-sm font-bold text-slate-600">{!isAdmin ? "Nur-Lesen-Zugang: Die Detailmaske ist geschützt." : saveStatus ?? "Jede Eigenschaftsgruppe kann direkt oder gemeinsam gespeichert und danach erneut bearbeitet werden. Nur die Restschuld wird ausschließlich auf der Seite Darlehen gepflegt."}</p>
         <button
           type="button"
           onClick={() => onSave(card.id)}

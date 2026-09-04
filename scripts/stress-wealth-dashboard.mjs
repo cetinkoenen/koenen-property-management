@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 
 const wealthSource = readFileSync(new URL("../src/pages/ImmobilienVermoegen.tsx", import.meta.url), "utf8");
 assert.match(wealthSource, /inputMode=\{field\.type === "number" \? "decimal" : undefined\}/, "Gespeicherte Zahlenfelder müssen auch mit deutscher Dezimalschreibweise erneut editierbar bleiben");
+assert.match(wealthSource, /Bearbeitbar/, "Eigenschaftsgruppen müssen ihren Bearbeitungsstatus sichtbar anzeigen");
+assert.match(wealthSource, /aria-label=\{`\$\{column\.title\} speichern`\}/, "Jede Eigenschaftsgruppe muss eine eigene Speicheraktion anbieten");
 assert.match(wealthSource, /field\.key === "remainingDebt"/, "Die zentrale Restschuld muss auf der Vermögensseite schreibgeschützt bleiben");
 
 const EMPTY_DRAFT = {
