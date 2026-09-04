@@ -33,6 +33,8 @@ assert.match(rentOverview, /rentAdjustmentsLoading/, "Mietkonto-Exporte müssen 
 assert.match(rentOverview, /if \(!onAnnualReportChange \|\| reportDataLoading\) return;/, "Ein noch unvollständiger Jahresreport darf nicht als exportbereit gemeldet werden");
 assert.match(rentOverview, /disabled=\{reportDataLoading\}/, "PDF-Export muss bis zum Laden aller Reportquellen deaktiviert sein");
 assert.match(rentOverview, /Buchungen, Mietverträge, Mietanpassungen und Leerstände werden geladen/, "Die Oberfläche muss den gemeinsamen Ladezustand verständlich anzeigen");
+assert.match(rentOverview, /if \(adjustmentLabel\) \{[\s\S]{0,500}?enoughAddressOverlap\(adjustmentLabel, objectLabel\)/, "Mieteingang muss bei Mietanpassungen die konkrete Objektbezeichnung vor historischen Alias-IDs priorisieren");
+assert.match(rentOverview, /if \(propertyId\) return propertyId === object\.id \|\| candidateIds\.includes\(propertyId\);/, "Eine abweichende Objekt-ID darf nicht über eine unscharfe Notizsuche auf ein anderes Objekt fallen");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
-console.log("21 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("23 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

@@ -587,8 +587,23 @@ function rentAdjustmentMatchesObject(
   object: { id: string; code: string | null; label: string },
   candidateIds: string[],
 ): boolean {
+  // Die fachliche Objektbezeichnung der Mietanpassung ist hier die stärkste
+  // Zuordnung. Portfolio-/Kern-IDs können in historischen Bridge-Daten als
+  // Alias auch bei einem anderen Objekt auftauchen. Würden wir dann nur der ID
+  // vertrauen, könnte z. B. eine Lilienthaler-Anpassung (1.542,55 EUR) als
+  // Sollmiete der Fürther Wohnung verwendet werden.
+  const adjustmentLabel = normalizeReferenceText(row.object_label);
+  const objectLabel = normalizeReferenceText(object.label);
+  if (adjustmentLabel) {
+    return adjustmentLabel === objectLabel
+      || adjustmentLabel.startsWith(`${objectLabel} `)
+      || objectLabel.startsWith(`${adjustmentLabel} `)
+      || enoughAddressOverlap(adjustmentLabel, objectLabel);
+  }
+
   const propertyId = row.property_id == null ? "" : String(row.property_id);
-  if (propertyId && (propertyId === object.id || candidateIds.includes(propertyId))) return true;
+  if (propertyId) return propertyId === object.id || candidateIds.includes(propertyId);
+
   const rowText = normalizeReferenceText(`${row.object_label ?? ""} ${row.object_code ?? ""} ${row.note ?? ""}`);
   const objectText = normalizeReferenceText(`${object.label} ${object.code ?? ""}`);
   return enoughTokenOverlap(rowText, objectText) || compactReferenceText(rowText).includes(compactReferenceText(object.label));
