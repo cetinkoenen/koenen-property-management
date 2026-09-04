@@ -61,6 +61,8 @@ assert.match(app, /value=\{loanDetailMode\}[\s\S]*value="selected-year"[\s\S]*va
 assert.match(app, /buildTaxLoanOverviewLines\(\)[\s\S]*PDF_PAGE_BREAK/, "Die Anlage V muss eine eigene Tilgung-und-Zins-Seite erzeugen");
 assert.match(app, /if \(rawLine === PDF_PAGE_BREAK\)/, "Der Steuerreport muss den Seitenwechsel für den Darlehensnachweis verarbeiten");
 assert.match(app, /kind === "tax"[\s\S]*\.\.\.buildTaxLoanOverviewLines\(\)/, "Der Steuer-Report Anlage V muss den Darlehensnachweis enthalten");
+assert.match(app, /title: "Anlage V – Steuerberater-Übergabe"/, "Das Übergabepaket muss eindeutig als Steuerberater-Übergabe bezeichnet sein");
+assert.match(app, /title: "Anlage V – Detailprüfung"/, "Der fachliche Prüfbericht muss eindeutig als Detailprüfung bezeichnet sein");
 assert.match(loanLedgerService, /loadCanonicalPropertyLoanHistory[\s\S]*from\(LEDGER_TABLE\)[\s\S]*\.lte\("year", maximumYear\)/, "Historische Darlehenswerte müssen aus der zentralen Ledger-Quelle bis zum aktuellen Jahr geladen werden");
 assert.match(loanInterestReport, /for \(let year = firstYear; year <= input\.currentYear; year \+= 1\)/, "Das Deckblatt muss für jedes Jahr bis zum aktuellen Jahr eine Zeile enthalten");
 assert.match(loanInterestReport, /createLoanInterestReportPdf[\s\S]*model\.sections\.forEach/, "Der PDF-Bericht muss nach dem Deckblatt eine Seite je Immobilie erzeugen");

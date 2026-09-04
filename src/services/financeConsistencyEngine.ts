@@ -227,7 +227,7 @@ function addSteuerberichtSourceChecks(
     propertyId: null,
     propertyName: "Alle Objekte",
     detail: `${stEntries.length} als St bestätigte Buchungen mit ${stTotal.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € wurden als Steuer-Quellen erkannt.`,
-    repairHint: "Diese Summe ist die Kontrollbasis für Steuer-Center, Anlage-V-Paket, §35a-Bericht und Steuerberater-Datenpaket.",
+    repairHint: "Diese Summe ist die Kontrollbasis für Steuer-Center, Anlage V – Steuerberater-Übergabe, §35a-Bericht und Steuerberater-Datenpaket.",
     actualValue: stTotal,
   });
 
@@ -320,7 +320,7 @@ function addSteuerberichtSourceChecks(
       propertyId: null,
       propertyName: profile.reportLabel,
       detail: `Steuerquellen erkannt: ${profileRows.length} Objektbuchungen, Mieteinnahmen ${income.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €, St-Ausgaben ${expenses.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € plus Portfolio-Anteil ${portfolioShare.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €.` ,
-      repairHint: "Diese Werte werden im Anlage-V-Paket objektbezogen verarbeitet; Portfolio-Ausgaben werden zusätzlich anteilig unter Verwaltungskosten & Pauschalen ausgewiesen.",
+      repairHint: "Diese Werte werden in der Anlage V – Steuerberater-Übergabe objektbezogen verarbeitet; Portfolio-Ausgaben werden zusätzlich anteilig unter Verwaltungskosten & Pauschalen ausgewiesen.",
       expectedValue: portfolioShare,
       actualValue: round2(income + expenses + portfolioShare),
     });

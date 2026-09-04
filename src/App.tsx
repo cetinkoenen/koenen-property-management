@@ -727,7 +727,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     source: "Buchhaltung, Steuer-Center, Nebenkosten, Darlehen",
     subpages: buchhaltungSubpages,
     tabs: [
-      { label: "Steuer-Report", description: "Anlage V, Einnahmen, Ausgaben und Darlehenszinsen als Jahrespaket." },
+      { label: "Anlage V – Detailprüfung", description: "Einnahmen, Ausgaben und Darlehenszinsen als fachlicher Detailreport." },
       { label: "Steuerberater", description: "Export-Datei mit sauber strukturierten Buchungen und Belegen vorbereiten." },
       { label: "Mietkonto", description: "Offene Zahlungen und Mietkonten pro Objekt prüfen." },
       { label: "Nebenkosten & Vermögen", description: "PDF-Pakete für Nebenkosten, Immobilienvermögen und Kredite erzeugen." },
@@ -2596,9 +2596,9 @@ function ReportsExportsPage() {
 
   function reportTitle(kind: ReportKind): string {
     const titles: Record<ReportKind, string> = {
-      tax: "Steuer-Report Anlage V",
+      tax: "Anlage V – Detailprüfung",
       advisor: "Export für den Steuerberater",
-      "anlage-v-package": "Anlage-V Exportpaket",
+      "anlage-v-package": "Anlage V – Steuerberater-Übergabe",
       section35a: "§35a Bericht Hohenloher Str. 78",
       "rent-account": "Mietkonto-Check und offene Zahlungen",
       utilities: "Nebenkostenabrechnungen",
@@ -3030,7 +3030,7 @@ function ReportsExportsPage() {
       const blockedCount = dataRows.filter((row) => row.reviewStatus === "Blockiert").length;
       const reviewCount = dataRows.filter((row) => row.reviewStatus === "Prüfung erforderlich").length;
       return [
-        `Steuer-Report Anlage V ${selectedYear}`,
+        `Anlage V – Detailprüfung ${selectedYear}`,
         "Datenbasis: Buchungen, Darlehensmodul, Fahrtenbuch, Mieteingang, Leerstand und Immobilien-Stammdaten.",
         "Zeitraumregel: Es werden ausschließlich tatsächliche Zahlungsdaten vom 01.01. bis 31.12. des Steuerjahres berücksichtigt (§ 11 EStG).",
         "Ausschluss: Hohenloher Str. 78 ist selbstgenutzt und vollständig aus Anlage V ausgeschlossen.",
@@ -3775,18 +3775,18 @@ function ReportsExportsPage() {
       ],
     },
     {
-      title: "Anlage-V-Paket für Steuerberater",
+      title: "Anlage V – Steuerberater-Übergabe",
       description: "Erzeugt 7 getrennte Steuerobjekte: 4 Wohnungen plus die Rosenstein-Stellplätze P250, P253 und P254. Hohenloher bleibt gesperrt.",
       icon: FileText,
       actions: [
-        { label: "Anlage-V-Paket ZIP", kind: "anlage-v-package", format: "zip", primary: true },
+        { label: "Übergabepaket ZIP", kind: "anlage-v-package", format: "zip", primary: true },
         { label: "Jahresakte-PDF", kind: "anlage-v-package", format: "pdf" },
         { label: "Excel", kind: "anlage-v-package", format: "excel" },
         { label: "Gesamtübersicht CSV", kind: "anlage-v-package", format: "csv" },
       ],
     },
     {
-      title: "Steuer-Report (Anlage V)",
+      title: "Anlage V – Detailprüfung",
       description: "Fachlicher Detailreport mit Formularzeile, Wohnfläche, getrennten Miet-/Kostenarten, Leerstand und offenen Mieten. Neu: eigene Tilgung-&-Zins-Seite für jede Immobilie im gewählten Steuerjahr. Objektfilter: Alle Objekte.",
       icon: Euro,
       actions: [
