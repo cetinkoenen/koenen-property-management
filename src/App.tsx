@@ -1649,12 +1649,34 @@ async function loadPdfJpegImage(imageUrl: string): Promise<PdfJpegImage> {
   const response = await fetch(imageUrl);
   if (!response.ok) throw new Error(`Immobilienfoto konnte nicht geladen werden (${response.status}).`);
   const sourceBlob = await response.blob();
-  const bitmap = await createImageBitmap(sourceBlob);
+  let source: CanvasImageSource;
+  let sourceWidth: number;
+  let sourceHeight: number;
+  let releaseSource: () => void = () => {};
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(sourceBlob);
+    source = bitmap;
+    sourceWidth = bitmap.width;
+    sourceHeight = bitmap.height;
+    releaseSource = () => bitmap.close();
+  } else {
+    const objectUrl = URL.createObjectURL(sourceBlob);
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("Immobilienfoto konnte nicht geöffnet werden."));
+      element.src = objectUrl;
+    });
+    source = image;
+    sourceWidth = image.naturalWidth;
+    sourceHeight = image.naturalHeight;
+    releaseSource = () => URL.revokeObjectURL(objectUrl);
+  }
   const maxWidth = 1400;
   const maxHeight = 900;
-  const scale = Math.min(1, maxWidth / bitmap.width, maxHeight / bitmap.height);
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const scale = Math.min(1, maxWidth / sourceWidth, maxHeight / sourceHeight);
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -1662,8 +1684,8 @@ async function loadPdfJpegImage(imageUrl: string): Promise<PdfJpegImage> {
   if (!context) throw new Error("Immobilienfoto konnte nicht für die PDF vorbereitet werden.");
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, width, height);
-  context.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
+  context.drawImage(source, 0, 0, width, height);
+  releaseSource();
   const jpegBlob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Immobilienfoto konnte nicht als JPEG erzeugt werden.")), "image/jpeg", 0.88);
   });
@@ -2125,17 +2147,21 @@ function ReportsExportsPage() {
     : undefined;
   const selectedDossierProfileKeys = selectedDossierObject
     ? [
-        selectedDossierObject.id,
         ...(selectedDossierObject.aliases ?? []),
-        selectedDossierPortfolio?.property_id,
+        selectedDossierObject.id,
         selectedDossierPortfolio?.portfolio_property_id,
         selectedDossierLoan?.property_id,
+        // Die Kernobjekt-ID ist die Schreibquelle der Detailmaske und gewinnt.
+        selectedDossierPortfolio?.property_id,
       ].filter((value): value is string => Boolean(value))
     : [];
   const selectedDossierProfile = selectedDossierProfileKeys
-    .map((key) => wealthProfiles[key])
-    .find((profile) => profile && Object.keys(profile).length > 0)
-    ?? {};
+    .reduce<PropertyWealthProfile>((merged, key) => {
+      const nonEmptyFields = Object.fromEntries(
+        Object.entries(wealthProfiles[key] ?? {}).filter(([, value]) => String(value ?? "").trim() !== ""),
+      );
+      return { ...merged, ...nonEmptyFields };
+    }, {});
   const selectedDossierPhoto = selectedDossierObject
     ? portfolioGalleryItems.find((item) => {
       return item.matchTerms.some((term) => reportPropertyNamesMatch(selectedDossierObject.label, term));

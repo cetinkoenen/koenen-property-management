@@ -73,7 +73,7 @@ assert.match(app, /title: "Immobilien-Eigenschaften & Darlehen"[\s\S]*kind: "pro
 assert.match(app, /Immobilie für die PDF-Akte[\s\S]*value=\{effectiveDossierObjectId\}/, "Die Immobilienakte muss eine separate Objektauswahl besitzen");
 assert.match(app, /Restschuldquelle: Darlehen \/ property_loan_ledger/, "Die Immobilienakte muss die zentrale Restschuldquelle dokumentieren");
 assert.match(app, /selectedDossierPortfolio[\s\S]*selectedDossierPortfolio\?\.property_id[\s\S]*selectedDossierProfileKeys/, "Die Immobilienakte muss das gespeicherte Profil über die zentrale Portfolio-/Kernobjekt-ID auflösen");
-assert.match(app, /selectedDossierProfileKeys[\s\S]*Object\.keys\(profile\)\.length > 0/, "Die Immobilienakte darf kein leeres Alias-Profil einer befüllten Quelle vorziehen");
+assert.match(app, /selectedDossierProfileKeys[\s\S]*Object\.entries\(wealthProfiles\[key\] \?\? \{\}\)\.filter[\s\S]*return \{ \.\.\.merged, \.\.\.nonEmptyFields \}/, "Die Immobilienakte muss befüllte Alias- und Kernprofile ohne überschreibende Leerwerte zusammenführen");
 assert.match(app, /portfolioGalleryItems[\s\S]*selectedDossierPhoto/, "Die Immobilienakte muss das Foto aus derselben Objektgalerie wie die App auswählen");
 assert.match(app, /\/PropertyPhoto Do/, "Das Immobilienfoto muss als echtes Bildobjekt in die PDF eingebettet werden");
 assert.match(app, /kind === "property-dossier"[\s\S]*await loadPdfJpegImage\(selectedDossierPhoto\.imageUrl\)/, "Der Immobilienakten-Export muss das ausgewählte Objektfoto laden");
