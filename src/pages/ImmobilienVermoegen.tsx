@@ -1450,8 +1450,20 @@ function DetailPage({
           </button>
         </div>
 
+        <nav aria-label="Immobilienbereiche" className="mb-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          {[
+            ["#objektuebersicht", "Objektübersicht"],
+            ["#miete", "Miete"],
+            ["#cashflow", "Cashflow"],
+            ["#darlehen", "Darlehen"],
+          ].map(([href, label], index) => (
+            <a key={href} href={href} className={["inline-flex min-h-11 items-center justify-center rounded-xl px-3 text-center text-sm font-black no-underline transition", index === 0 ? "bg-[#255f6f] text-white" : "border border-slate-200 bg-white text-slate-700 hover:border-teal-200 hover:bg-teal-50"].join(" ")}>{label}</a>
+          ))}
+          <Link to={`/nebenkosten/wohnungen?object=${encodeURIComponent(propertyId)}`} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-center text-sm font-black text-slate-700 no-underline transition hover:border-teal-200 hover:bg-teal-50">Nebenkosten</Link>
+        </nav>
+
         <div className="space-y-5">
-            <article className="grid gap-4 rounded-[18px] border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[280px_1fr]">
+            <article id="objektuebersicht" className="scroll-mt-6 grid gap-4 rounded-[18px] border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[280px_1fr]">
               <PropertyImageButton image={image} label={card.draft.name || "Immobilie"} className="min-h-[190px]" onOpen={onImageOpen} />
               <div className="flex flex-col justify-center">
                 <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Objektfoto</p>
@@ -1461,7 +1473,7 @@ function DetailPage({
                 </p>
               </div>
             </article>
-            <PropertyEconomicOverview finance={finance} year={year} />
+            <div id="cashflow" className="scroll-mt-6"><PropertyEconomicOverview finance={finance} year={year} /></div>
             {isRosensteinCard(card) ? <RosensteinUnitOverview entries={entries} year={year} parkingUnits={parkingUnits} /> : null}
 
             <article className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
@@ -1492,6 +1504,7 @@ function DetailPage({
               </p>
             </article>
 
+            <div id="miete" className="scroll-mt-6">
             {isRosensteinCard(card) ? (
               <RosensteinRentInfoPanel entries={entries} year={year} parkingUnits={parkingUnits} />
             ) : (
@@ -1505,6 +1518,7 @@ function DetailPage({
                 onExtraSave={onExtraSave}
               />
             )}
+            </div>
 
             {DETAIL_TEMPLATE_SECTIONS.map((section) => {
               const Icon = section.icon;

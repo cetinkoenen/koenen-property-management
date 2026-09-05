@@ -1062,6 +1062,27 @@ function ProtectedAppShell() {
 }
 
 function NebenkostenIndexPage() {
+  const [workflowCounts, setWorkflowCounts] = useState<Record<string, number>>({});
+  const [workflowLoading, setWorkflowLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    supabase.from("apartment_billing_workspaces").select("data").then(({ data, error }) => {
+      if (!active) return;
+      if (error) { setWorkflowLoading(false); return; }
+      const next: Record<string, number> = { offen: 0, "In Arbeit": 0, "in Prüfung": 0, Freigegeben: 0, Korrigiert: 0 };
+      for (const row of data ?? []) {
+        const payload = row.data as { billings?: Array<{ workspace?: { meta?: { workflowStatus?: string; locked?: boolean } } }> } | null;
+        for (const billing of payload?.billings ?? []) {
+          const status = billing.workspace?.meta?.workflowStatus ?? (billing.workspace?.meta?.locked ? "Freigegeben" : "offen");
+          next[status] = (next[status] ?? 0) + 1;
+        }
+      }
+      setWorkflowCounts(next); setWorkflowLoading(false);
+    });
+    return () => { active = false; };
+  }, []);
+
   return (
     <div className="space-y-5">
       <PageHeader
@@ -1073,6 +1094,12 @@ function NebenkostenIndexPage() {
           { label: "Modus", value: "Bestand erhalten" },
         ]}
       />
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Nebenkosten-Workflowstatus">
+        {["offen", "In Arbeit", "in Prüfung", "Freigegeben", "Korrigiert"].map((status) => (
+          <KpiCard key={status} label={status} value={workflowLoading ? "…" : workflowCounts[status] ?? 0} detail="Wohnungsabrechnungen" icon={ClipboardList} tone={status === "Freigegeben" ? "green" : status === "in Prüfung" ? "amber" : "slate"} />
+        ))}
+      </section>
 
       <section className="grid gap-4 md:grid-cols-2">
         <ModuleCard
@@ -1451,7 +1478,7 @@ function OrganisationHubPage({ kind }: { kind: "ticketing" | "dokumente" | "prod
   );
 }
 
-type ReportKind = "tax" | "advisor" | "anlage-v-package" | "section35a" | "rent-account" | "utilities" | "wealth" | "property-dossier" | "loan-interest" | "handover" | "vacancy" | "tax-data-package" | "portfolio-register" | "acquisition-afa" | "acquisition-15-check" | "mileage-log" | "tax-checklist";
+type ReportKind = "tax" | "advisor" | "anlage-v-package" | "section35a" | "rent-account" | "utilities" | "wealth" | "property-dossier" | "loan-interest" | "handover" | "vacancy" | "tax-data-package" | "test-tax-advisor" | "portfolio-register" | "acquisition-afa" | "acquisition-15-check" | "mileage-log" | "tax-checklist";
 type ReportFormat = "pdf" | "csv" | "excel" | "zip";
 const PDF_PAGE_BREAK = "[[PDF_PAGE_BREAK]]";
 const PROPERTY_DOSSIER_SECTIONS = [
@@ -2651,6 +2678,13 @@ function ReportsExportsPage() {
     if (kind === "anlage-v-package") return mileageReportReady && taxLoanReportReady;
     if (kind === "tax") return objectFilter === "all" && rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady && loanHistoryLoaded && !loanHistoryError;
     if (kind === "tax-data-package") return objectFilter === "all" && wealthProfilesLoaded && rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady && loanHistoryLoaded && !loanHistoryError;
+    // Der konsolidierte Bericht bleibt exportierbar, sobald seine beiden
+    // Pflichtquellen bereit sind. Optionale Leerstands-, Fahrten- und
+    // Darlehensquellen dokumentieren Ladefehler im Bericht statt den gesamten
+    // Jahresabschluss dauerhaft zu blockieren.
+    if (kind === "test-tax-advisor") return objectFilter === "all" && wealthProfilesLoaded && rentReportReady
+      && vacancyLoadedRange === vacancyRangeKey && mileageLoadedYear === selectedYear
+      && taxLoanLoadedYear === selectedYear && loanHistoryLoaded;
     return true;
   }
 
@@ -2684,6 +2718,7 @@ function ReportsExportsPage() {
       handover: "Übergabeprotokolle und Zählerstände",
       vacancy: "Leerstandsbericht",
       "tax-data-package": "Steuerberater-Datenpaket",
+      "test-tax-advisor": `Test-Steuerberater-Bericht ${period}`,
       "portfolio-register": "Immobilien-Stammdaten (Portfolio-Register)",
       "acquisition-afa": "Anschaffungskosten & AfA-Basis 2025",
       "acquisition-15-check": "15%-Check anschaffungsnahe Herstellungskosten",
@@ -3107,6 +3142,7 @@ function ReportsExportsPage() {
     if (kind === "tax-data-package") {
       return buildTaxDataPackageLines();
     }
+    if (kind === "test-tax-advisor") return buildTestTaxAdvisorLines();
 
     if (kind === "tax") {
       const dataRows = buildAnlageVReportDataRows();
@@ -3281,7 +3317,82 @@ function ReportsExportsPage() {
     ].filter(Boolean);
   }
 
+  function buildTestTaxAdvisorLines(): string[] {
+    const rent = getReadyRentReport();
+    const grossIncome = scopedEntries.filter((entry) => entry.entry_type === "income").reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
+    const grossExpenses = scopedEntries.filter((entry) => entry.entry_type === "expense").reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
+    const rentedRows = rent?.rows.filter((row) => row.months.some((month) => month.expected > 0 && month.kpi !== "Leerstand")) ?? [];
+    const totalRows = rent?.rows.length ?? 0;
+    const occupiedMonths = rent?.rows.reduce((sum, row) => sum + row.months.filter((month) => month.kpi !== "Leerstand" && month.expected > 0).length, 0) ?? 0;
+    const possibleMonths = Math.max(1, totalRows * 12);
+    const sections = [
+      { title: "1. Deckblatt und Portfolio-KPIs", lines: [
+        `Steuerjahr: ${period}`,
+        `Berichtszeitraum: ${periodLabel}`,
+        `Bruttoeinnahmen: ${formatCurrency(grossIncome)}`,
+        `Bruttoausgaben: ${formatCurrency(grossExpenses)}`,
+        `Ergebnis / Überschuss: ${formatCurrency(grossIncome - grossExpenses)}`,
+        `Sollmieten: ${formatCurrency(rent?.totals.expected ?? 0)}`,
+        `Tatsächliche Mietzahlungen: ${formatCurrency(rent?.totals.paid ?? 0)}`,
+        `Zahlungsquote: ${((rent?.totals.expected ?? 0) > 0 ? ((rent?.totals.paid ?? 0) / (rent?.totals.expected ?? 1)) * 100 : 0).toLocaleString("de-DE", { maximumFractionDigits: 2 })} %`,
+        `Vermietungsquote: ${(occupiedMonths / possibleMonths * 100).toLocaleString("de-DE", { maximumFractionDigits: 2 })} %`,
+        `Vermietete / gesamte Einheiten: ${rentedRows.length} / ${totalRows}`,
+      ] },
+      { title: "2. Einnahmen-Überschuss-Rechnung nach amtlichen Kategorien", lines: [
+        "Ausweis Netto | Steuer | Brutto: Mangels expliziter Umsatzsteuerfelder werden keine Netto- oder Steuerbeträge geschätzt. Der nachgewiesene Bruttobetrag bleibt die Buchungsquelle.",
+        "Darlehen: Nur Zinsen werden steuerlich ausgewiesen; Tilgung bleibt nicht abzugsfähig.",
+        ...buildReportLines("anlage-v-package"),
+      ] },
+      { title: "3. Objektübersicht, Einheiten und aktuelle Mietverhältnisse", lines: [
+        ...buildPortfolioRegisterLines(),
+        "Einheiten Details und aktuelle Mietverhältnisse:",
+        ...(rent?.rows.flatMap((row) => [
+          `${row.objectLabel} | ${row.unitLabel} | Mieter ${row.tenantName || "—"} | Soll Jahr ${formatCurrency(row.yearExpected)} | Ist Jahr ${formatCurrency(row.yearPaid)}`,
+        ]) ?? ["Keine Mieteingangszeilen vorhanden."]),
+      ] },
+      { title: "4. Soll-/Ist-Zahlungsmatrix Januar bis Dezember", lines: buildRentAccountLines() },
+      { title: "5. Buchungsjournal chronologisch", lines: scopedEntries
+        .slice().sort((a, b) => String(a.booking_date ?? "").localeCompare(String(b.booking_date ?? "")))
+        .map((entry) => `${formatDate(entry.booking_date)} | ${entry.entry_type === "income" ? "Einnahme" : "Ausgabe"} | ${entry.category ?? "—"} | ${getPropertyName(entry.object_id) || entry.objekt_code || "Allgemein"} | ${entry.note ?? "—"} | Eingang ${entry.entry_type === "income" ? formatCurrency(Math.abs(entry.amount)) : "0,00 €"} | Ausgang ${entry.entry_type === "expense" ? formatCurrency(Math.abs(entry.amount)) : "0,00 €"} | In EÜR ${entry.tax_relevant === true ? "Ja" : "Nein"}`) },
+      { title: "6. Einnahmen-/Ausgabendetails", lines: scopedEntries
+        .slice().sort((a, b) => String(a.booking_date ?? "").localeCompare(String(b.booking_date ?? "")))
+        .map((entry) => `${formatDate(entry.booking_date)} | ${entry.category ?? "—"} | Brutto ${formatCurrency(Math.abs(entry.amount))} | USt nicht separat gepflegt | NK ${entry.nk_relevant === true ? "Ja" : "Nein"} | St ${entry.tax_relevant === true ? "Ja" : "Nein"}`) },
+      { title: "7. Anlagen und Kontrollnachweise", lines: [
+        ...buildReportLines("wealth"), PDF_PAGE_BREAK,
+        ...buildReportLines("loan-interest"), PDF_PAGE_BREAK,
+        ...buildAcquisition15CheckLines(), PDF_PAGE_BREAK,
+        ...buildMileageLogLines(), PDF_PAGE_BREAK,
+        ...buildTaxChecklistLines(),
+      ] },
+    ];
+    let nextPage = 3;
+    const toc = sections.map((section) => {
+      const line = `${section.title} | Seite ${nextPage}`;
+      nextPage += Math.max(1, Math.ceil(section.lines.filter((value) => value !== PDF_PAGE_BREAK).length / 34) + section.lines.filter((value) => value === PDF_PAGE_BREAK).length);
+      return line;
+    });
+    return [
+      `Test-Steuerberater-Bericht ${period}`,
+      "Konsolidierter Jahresbericht aus den bestehenden Single-Source-of-Truth-Daten der App. Fehlende Steuer- oder Nettowerte werden nicht geschätzt.",
+      `Zeitraum: ${periodLabel}`,
+      PDF_PAGE_BREAK,
+      "Dynamisches Inhaltsverzeichnis:",
+      ...toc,
+      ...sections.flatMap((section) => [PDF_PAGE_BREAK, `${section.title}:`, ...section.lines]),
+    ];
+  }
+
   function buildReportCsv(kind: ReportKind): string {
+    if (kind === "test-tax-advisor") {
+      let runningBalance = 0;
+      const rows = scopedEntries.slice().sort((a, b) => String(a.booking_date ?? "").localeCompare(String(b.booking_date ?? ""))).map((entry) => {
+        const inflow = entry.entry_type === "income" ? Math.abs(entry.amount) : 0;
+        const outflow = entry.entry_type === "expense" ? Math.abs(entry.amount) : 0;
+        runningBalance += inflow - outflow;
+        return [entry.booking_date ?? "", entry.entry_type === "income" ? "Einnahme" : "Ausgabe", entry.category ?? "", getPropertyName(entry.object_id) || entry.objekt_code || "Allgemein", entry.note ?? "", inflow, outflow, runningBalance, entry.tax_relevant === true ? "Ja" : "Nein", entry.nk_relevant === true ? "Ja" : "Nein"];
+      });
+      return buildCsv(["Datum", "Typ", "Kategorie_Konto", "Immobilie_Einheit", "Beschreibung", "Zufluss", "Abfluss", "Kumulierter_Saldo", "In_EÜR", "Umlagefähig_NK"], rows);
+    }
     if (kind === "property-dossier") {
       const valueFor = (key: string) => String(selectedDossierProfile[key] ?? "").trim();
       const rows = PROPERTY_DOSSIER_SECTIONS.flatMap((section) => section.fields.map(([key, label]) => [section.title, label, valueFor(key)]));
@@ -3824,6 +3935,16 @@ function ReportsExportsPage() {
   }
 
   const reportCards = [
+    {
+      title: `Test-Steuerberater-Bericht ${period}`,
+      description: "Ein konsolidierter Jahresbericht mit Deckblatt-KPIs, dynamischem Inhaltsverzeichnis, EÜR, Objekt-/Mietdaten, vollständigem Buchungsjournal sowie Darlehens-, §6-, Fahrten- und Kontrollanlagen. Excel enthält das strukturierte Buchungsjournal.",
+      icon: BriefcaseBusiness,
+      actions: [
+        { label: "Gesamtbericht PDF", kind: "test-tax-advisor", format: "pdf", primary: true },
+        { label: "Datenpaket Excel", kind: "test-tax-advisor", format: "excel" },
+        { label: "Buchungsjournal CSV", kind: "test-tax-advisor", format: "csv" },
+      ],
+    },
     {
       title: "Steuerberater-Datenpaket",
       description: "Neue Sieben-Berichte-Architektur: objektbezogene PDFs und strukturierte Daten in der verbindlichen Steuerberater-Ordnerstruktur.",
@@ -4867,30 +4988,27 @@ function AppShell() {
       { to: "/dashboard/finanz-kennzahlen", label: "Cockpit", group: "Dashboard", icon: LayoutDashboard },
       { to: "/dashboard/vermoegen-cashflow", label: "Vermögen & Cashflow", group: "Dashboard", icon: TrendingUp },
       { to: "/dashboard/warnmeldungen", label: "Warnungen", group: "Dashboard", icon: Bell },
-      { to: "/immobilien/immobilie-anlegen", label: "Immobilie anlegen", group: "Immobilien", icon: PlusCircle },
-      { to: "/leerstand", label: "Leerstand", group: "Immobilien", icon: DoorOpen },
-      { to: "/immobilienvermoegen", label: "Dashboard", group: "Immobilienvermögen", icon: Landmark },
       { to: "/immobilienvermoegen/lilienthaler-str-54", label: "Lilienthaler Str. 54", group: "Immobilienvermögen", icon: Building2 },
       { to: "/immobilienvermoegen/elsasser-str-52", label: "Elsasser Str. 52", group: "Immobilienvermögen", icon: Building2 },
       { to: "/immobilienvermoegen/colmarer-str-45", label: "Colmarer Str. 45", group: "Immobilienvermögen", icon: Building2 },
       { to: "/immobilienvermoegen/fuerther-str-74", label: "Fürther Str. 74", group: "Immobilienvermögen", icon: Building2 },
-      { to: "/immobilienvermoegen/hohenloher-str-78", label: "Hohenloher Str. 78", group: "Immobilienvermögen", icon: Building2 },
+      { to: "/immobilienvermoegen/hohenloher-str-78", label: "Hohenloher Str. 78 (Eigennutzung)", group: "Immobilienvermögen", icon: Building2 },
       { to: "/immobilienvermoegen/rosensteinstr-25", label: "Rosensteinstr. 25", group: "Immobilienvermögen", icon: Building2 },
-      { to: "/investment-bericht", label: "Investment-Bericht", group: "Investment", icon: BookOpenCheck },
-      { to: "/mieter/register", label: "Mieterregister", group: "Mieter", icon: Users },
-      { to: "/mieter/stammdaten", label: "Stammdaten", group: "Mieter", icon: Users },
-      { to: "/mieter/mietentwicklung", label: "Mietentwicklung", group: "Mieter", icon: TrendingUp },
-      { to: "/mieter/mieteingang", label: "Mieteingang", group: "Mieter", icon: CalendarCheck },
-      { to: "/ein-auszug", label: "Ein-/Auszug", group: "Mieter", icon: KeyRound },
       { to: "/buchhaltung/einnahmen-ausgaben", label: "Einnahmen & Ausgaben", group: "Buchhaltung", icon: PlusCircle },
       { to: "/buchhaltung/buchungen", label: "Buchungen", group: "Buchhaltung", icon: WalletCards },
-      { to: "/buchhaltung/steuer-center-berater", label: "Steuer", group: "Buchhaltung", icon: Euro },
-      { to: "/buchhaltung/fahrtenbuch", label: "Fahrtenbuch", group: "Buchhaltung", icon: Car },
-      { to: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", group: "Buchhaltung", icon: BarChart3 },
-      { to: "/darlehen", label: "Übersicht", group: "Darlehen", icon: Landmark },
+      { to: "/mieter/mieteingang", label: "Mieteingang", group: "Buchhaltung", icon: CalendarCheck },
+      { to: "/mieter/mietentwicklung", label: "Mietentwicklung", group: "Buchhaltung", icon: TrendingUp },
       { to: "/nebenkosten", label: "Übersicht", group: "Nebenkosten", icon: ClipboardList },
       { to: "/nebenkosten/wohnungen", label: "Wohnungen", group: "Nebenkosten", icon: Building2 },
       { to: "/nebenkosten/tiefgarage", label: "Tiefgarage", group: "Nebenkosten", icon: DoorOpen },
+      { to: "/ein-auszug", label: "Ein-/Auszug", group: "Mieterregister", icon: KeyRound },
+      { to: "/leerstand", label: "Leerstand", group: "Mieterregister", icon: DoorOpen },
+      { to: "/buchhaltung/fahrtenbuch", label: "Fahrtenbuch", group: "Steuer", icon: Car },
+      { to: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", group: "Steuer", icon: BarChart3 },
+      { to: "/darlehen", label: "Übersicht", group: "Darlehen", icon: Landmark },
+      { to: "/investment-bericht", label: "Investment-Bericht", group: "Investment", icon: BookOpenCheck },
+      { to: "/immobilien/immobilie-anlegen", label: "Immobilie anlegen", group: "Immobilien", icon: PlusCircle },
+      { to: "/mieter/stammdaten", label: "Stammdaten", group: "Immobilien", icon: Users },
       { to: "/mahnwesen", label: "Mahnwesen", group: "Aufgaben", icon: Bell },
       { to: "/ticketsystem/schadenmeldungen", label: "Tickets", group: "Aufgaben", icon: FolderKanban },
       { to: "/dokumente", label: "Archiv", group: "Dokumente", icon: FolderOpen },
@@ -4902,7 +5020,7 @@ function AppShell() {
 
   const navGroups = useMemo(
     () =>
-      ["Dashboard", "Immobilien", "Immobilienvermögen", "Investment", "Mieter", "Buchhaltung", "Darlehen", "Nebenkosten", "Aufgaben", "Dokumente", "Einstellungen"].map((group) => ({
+      ["Dashboard", "Immobilienvermögen", "Buchhaltung", "Nebenkosten", "Mieterregister", "Steuer", "Darlehen", "Investment", "Immobilien", "Aufgaben", "Dokumente", "Einstellungen"].map((group) => ({
         group,
         items: navItems.filter((item) => item.group === group),
       })).filter((group) => group.items.length > 0),
