@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { supabase } from "../lib/supabase";
 import { APP_DATA_CACHE_KEY } from "../lib/appCache";
 import { isPureRentBackPayment } from "../lib/financeCategories";
+import { effectiveRentYearMonth } from "../lib/rentMonth";
 import { loadCanonicalPropertyLoanSnapshots } from "@/services/propertyLoanLedgerService";
 
 export type AppObject = {
@@ -387,19 +388,8 @@ function getEntryYearMonth(value: string | null): { year: number; month: number 
   return { year, month };
 }
 
-function getEffectiveRentYearMonth(value: string | null): { year: number; month: number } | null {
-  if (!value || value.length < 10) return getEntryYearMonth(value);
-  const ym = getEntryYearMonth(value);
-  if (!ym) return null;
-  const day = Number(value.slice(8, 10));
-  if (!Number.isFinite(day) || day < 25) return ym;
-  const nextMonth = ym.month === 12 ? 1 : ym.month + 1;
-  const nextYear = ym.month === 12 ? ym.year + 1 : ym.year;
-  return { year: nextYear, month: nextMonth };
-}
-
 function isEffectiveRentMonth(entry: FinanceEntry, year: number, month: number): boolean {
-  const ym = getEffectiveRentYearMonth(entry.booking_date);
+  const ym = effectiveRentYearMonth(entry.booking_date);
   return ym?.year === year && ym.month === month;
 }
 
@@ -407,7 +397,7 @@ function buildMonthlyRentSummariesFromEntries(entries: FinanceEntry[]): MonthlyR
   const map = new Map<string, MonthlyRentSummaryRow>();
   for (const entry of entries) {
     if (!entry.object_id || !isRentEntry(entry)) continue;
-    const ym = getEffectiveRentYearMonth(entry.booking_date);
+    const ym = effectiveRentYearMonth(entry.booking_date);
     if (!ym) continue;
     const key = `${entry.object_id}|${entry.objekt_code ?? ""}|${ym.year}|${ym.month}`;
     const existing = map.get(key) ?? {
@@ -443,7 +433,7 @@ function buildYearlyFinanceSummariesFromEntries(entries: FinanceEntry[]): Yearly
     if (entry.entry_type === "income") existing.einnahmen += entry.amount;
     if (entry.entry_type === "expense") existing.ausgaben += entry.amount;
     if (isRentEntry(entry)) {
-      const rentYm = getEffectiveRentYearMonth(entry.booking_date);
+      const rentYm = effectiveRentYearMonth(entry.booking_date);
       if (rentYm?.year === ym.year) existing.mieteingaenge += entry.amount;
     }
     map.set(key, existing);

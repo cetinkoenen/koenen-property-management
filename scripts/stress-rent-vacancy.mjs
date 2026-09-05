@@ -46,12 +46,13 @@ function isVacancyEffectivelyActiveInRange(vacancy, start, end) {
 }
 
 function effectiveRentMonth(entry, isLilienthaler = false) {
-  const date = new Date(`${entry.booking_date}T00:00:00`);
+  const year = Number(entry.booking_date.slice(0, 4));
+  const month = Number(entry.booking_date.slice(5, 7));
   const day = Number(entry.booking_date.slice(8, 10));
   if (!isLilienthaler && day >= 25 && /miete|warmmiete|kaltmiete|mietbestandteil/i.test(`${entry.category} ${entry.note}`)) {
-    date.setMonth(date.getMonth() + 1);
+    return month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
   }
-  return { year: date.getFullYear(), month: date.getMonth() + 1 };
+  return { year, month };
 }
 
 function rentReferenceText(entry) {
@@ -226,6 +227,9 @@ const tests = [
   () => {
     assert.deepEqual(effectiveRentMonth({ booking_date: "2026-01-25", category: "Miete", note: "" }), { year: 2026, month: 2 });
     assert.deepEqual(effectiveRentMonth({ booking_date: "2026-01-25", category: "Miete", note: "" }, true), { year: 2026, month: 1 });
+    assert.deepEqual(effectiveRentMonth({ booking_date: "2026-08-31", category: "Miete", note: "Fürther Str. 74" }), { year: 2026, month: 9 });
+    assert.deepEqual(effectiveRentMonth({ booking_date: "2024-02-29", category: "Miete", note: "Fürther Str. 74" }), { year: 2024, month: 3 });
+    assert.deepEqual(effectiveRentMonth({ booking_date: "2026-12-31", category: "Miete", note: "Fürther Str. 74" }), { year: 2027, month: 1 });
   },
   () => {
     assert.equal(

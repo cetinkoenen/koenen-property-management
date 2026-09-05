@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import brandLogo from "../assets/koenen-brand-logo.webp";
 import { supabase } from "../lib/supabase";
 import { MIETBESTANDTEIL_NK_CATEGORY, isPureRentBackPayment } from "../lib/financeEntryLabels";
+import { shiftIsoDateByMonthsClamped } from "../lib/rentMonth";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
 import {
   isVacancyInRange,
@@ -258,12 +259,6 @@ function normalizedContractEndDate(contract: Pick<TenantContractProfileRow, "sta
   // und wird wie ein offener Vertrag behandelt.
   if (startDate && endDate && endDate < startDate) return null;
   return endDate;
-}
-
-function shiftIsoDateByMonths(value: string, months: number): string {
-  const [year, month, day] = value.split("-").map(Number);
-  if (!year || !month || !day) return value;
-  return toIso(new Date(year, month - 1 + months, day));
 }
 
 function bookingDayOfMonth(value: string | null | undefined): number | null {
@@ -1093,7 +1088,7 @@ function attributedRentDateForUnit(booking: FinanceEntry, objectLabel: string, u
     day !== null &&
     (((day >= 25 && hasStrictRentText(booking)) && !keepSameMonthForLilienthaler) || (day >= 24 && isHohenloherNkComponent))
   ) {
-    return shiftIsoDateByMonths(booking.booking_date, 1);
+    return shiftIsoDateByMonthsClamped(booking.booking_date, 1);
   }
 
   return booking.booking_date;

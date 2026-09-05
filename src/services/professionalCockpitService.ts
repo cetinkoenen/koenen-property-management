@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { effectiveRentDate } from "../lib/rentMonth";
 import {
   effectiveVacancyStartDate,
   isVacancyEffectivelyActiveInRange,
@@ -217,12 +218,7 @@ function expectedRent(contract: ContractRow): number {
 }
 
 function bookingEffectiveMonthDate(bookingDate: string | null): string | null {
-  if (!bookingDate) return null;
-  const day = Number(bookingDate.slice(8, 10));
-  const date = new Date(`${bookingDate}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return bookingDate;
-  if (Number.isFinite(day) && day >= 25) date.setMonth(date.getMonth() + 1);
-  return isoDate(date);
+  return effectiveRentDate(bookingDate);
 }
 
 function isRentPayment(row: FinanceRow): boolean {
