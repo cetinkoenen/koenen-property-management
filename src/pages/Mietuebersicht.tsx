@@ -903,7 +903,7 @@ function bookingMatchesObject(booking: FinanceEntry, objectId: string, objectCod
 
 function isPositiveIncomeInMonthForObject(booking: FinanceEntry, objectId: string, objectCode: string | null | undefined, objectLabel: string, start: string, end: string): boolean {
   const effectiveDate = attributedRentDateForUnit(booking, objectLabel, "hauptmiete");
-  const inMonth = isDateInRange(effectiveDate, start, end) || isDateInRange(booking.booking_date, start, end);
+  const inMonth = isDateInRange(effectiveDate, start, end);
   if (!inMonth || booking.entry_type !== "income" || booking.amount <= 0 || isClearlyExcludedFromRent(booking)) return false;
 
   // Priorität für echte Miet-Referenzen aus Monate/Buchungen. Dadurch wird ein Eingang
@@ -1096,7 +1096,7 @@ function attributedRentDateForUnit(booking: FinanceEntry, objectLabel: string, u
 
 function isBookingRelevantForDisplayedMonth(booking: FinanceEntry, objectLabel: string, unitRef: string, start: string, end: string): boolean {
   const effectiveDate = attributedRentDateForUnit(booking, objectLabel, unitRef);
-  return isDateInRange(effectiveDate, start, end) || isDateInRange(booking.booking_date, start, end);
+  return isDateInRange(effectiveDate, start, end);
 }
 
 function rentAmountKey(amount: number): string {
@@ -1582,7 +1582,7 @@ export default function Mietuebersicht({
                 if (isClearlyExcludedFromRent(booking)) return false;
 
                 const effectiveDate = attributedRentDateForUnit(booking, object.label, unit.ref);
-                if (requireCurrentMonth && !isDateInRange(effectiveDate, period.start, period.end) && !isDateInRange(booking.booking_date, period.start, period.end)) return false;
+                if (requireCurrentMonth && !isDateInRange(effectiveDate, period.start, period.end)) return false;
 
                 const isRentPayment = hasStrictRentText(booking) || matchesTenantName(booking, tenantForMatch);
                 if (!isRentPayment) return false;
@@ -1600,7 +1600,7 @@ export default function Mietuebersicht({
               const tenantTokens = referenceTokens(`${tenantForMatch.firstName} ${tenantForMatch.lastName}`);
               unitBookings = monthlyKnownBookings.filter((booking) => {
                 const effectiveDate = attributedRentDateForUnit(booking, object.label, unit.ref);
-                const inMonth = isDateInRange(effectiveDate, period.start, period.end) || isDateInRange(booking.booking_date, period.start, period.end);
+                const inMonth = isDateInRange(effectiveDate, period.start, period.end);
                 if (!inMonth || booking.entry_type !== "income" || booking.amount <= 0 || isClearlyExcludedFromRent(booking) || isRentBackPaymentBooking(booking)) return false;
                 const text = monthlyRentTextForBooking(booking);
                 return tenantTokens.some((token) => text.includes(token));

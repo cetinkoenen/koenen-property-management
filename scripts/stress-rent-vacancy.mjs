@@ -55,6 +55,11 @@ function effectiveRentMonth(entry, isLilienthaler = false) {
   return { year, month };
 }
 
+function isRentAssignedToMonth(entry, year, month, isLilienthaler = false) {
+  const effective = effectiveRentMonth(entry, isLilienthaler);
+  return effective.year === year && effective.month === month;
+}
+
 function rentReferenceText(entry) {
   return String(`${entry.category ?? ""} ${entry.note ?? ""} ${entry.objekt_code ?? ""}`)
     .toLowerCase()
@@ -230,6 +235,9 @@ const tests = [
     assert.deepEqual(effectiveRentMonth({ booking_date: "2026-08-31", category: "Miete", note: "Fürther Str. 74" }), { year: 2026, month: 9 });
     assert.deepEqual(effectiveRentMonth({ booking_date: "2024-02-29", category: "Miete", note: "Fürther Str. 74" }), { year: 2024, month: 3 });
     assert.deepEqual(effectiveRentMonth({ booking_date: "2026-12-31", category: "Miete", note: "Fürther Str. 74" }), { year: 2027, month: 1 });
+    assert.equal(isRentAssignedToMonth({ booking_date: "2026-08-31", category: "Miete", note: "Fürther Str. 74" }, 2026, 8), false, "Die September-Miete darf nicht zugleich im August erscheinen");
+    assert.equal(isRentAssignedToMonth({ booking_date: "2026-08-31", category: "Miete", note: "Fürther Str. 74" }, 2026, 9), true, "Die Zahlung am 31.08. muss genau September zugeordnet sein");
+    assert.equal(isRentAssignedToMonth({ booking_date: "2026-09-04", category: "Miete", note: "Fürther Str. 74" }, 2026, 9), true, "Eine frühe Monatszahlung bleibt im selben Monat");
   },
   () => {
     assert.equal(
