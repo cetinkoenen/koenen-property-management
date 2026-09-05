@@ -87,6 +87,8 @@ assert.match(app, /PDF_PAGE_BREAK[\s\S]*`\$\{groupIndex \+ 1\}\. \$\{group\.titl
 assert.match(app, /PROPERTY_DOSSIER_PDF_GROUPS[\s\S]*Flächen und Nutzung[\s\S]*Ausstattung[\s\S]*Wertansätze[\s\S]*Bereits durchgeführte Modernisierungen[\s\S]*Darlehen 1[\s\S]*Konditionen/, "Die PDF muss die Eigenschaftsgruppen der Immobilienseite vollständig spiegeln");
 assert.match(app, /PROPERTY_DOSSIER_LABELS\.get\(key\)[\s\S]*valueFor\(key\)/, "Jedes konfigurierte Immobilienfeld muss mit Beschriftung und Wert in die PDF gelangen");
 assert.match(app, /"portfolio-register"[\s\S]*"acquisition-afa"[\s\S]*"acquisition-15-check"[\s\S]*"mileage-log"[\s\S]*"tax-checklist"/, "Die fünf neuen Steuerberater-Berichte müssen als Berichtstypen registriert sein");
+assert.doesNotMatch(app, /Chef-Kontrollbericht|Chefliste/, "Die alte Bezeichnung darf weder in der Oberfläche noch in Exportdateien verbleiben");
+assert.match(app, /Kontrollbericht-Checkliste/, "Der Bericht muss überall als Kontrollbericht-Checkliste bezeichnet sein");
 assert.match(app, /01_Stammdaten_und_Checklisten\/Stammdaten\.pdf/, "Das Datenpaket muss das Portfolio-Register in der vorgegebenen Ordnerstruktur enthalten");
 assert.match(app, /02_Objekt_Lilienthaler_Str[\s\S]*03_Objekt_Elsasser_Str[\s\S]*04_Objekt_Colmarer_Str[\s\S]*05_Objekt_Fuerther_Str/, "Die vier vermieteten Wohnobjekte müssen getrennte Paketordner besitzen");
 assert.match(app, /06_Objekt_Rosenstein_Str_NEU[\s\S]*07_Objekt_Hohenloher_Str_Eigennutzung/, "Die beiden Neuzugänge müssen eigene Paketordner besitzen");

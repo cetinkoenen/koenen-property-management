@@ -2612,7 +2612,7 @@ function ReportsExportsPage() {
       "acquisition-afa": "Anschaffungskosten & AfA-Basis 2025",
       "acquisition-15-check": "15%-Check anschaffungsnahe Herstellungskosten",
       "mileage-log": "Fahrtkosten-Einzelnachweis",
-      "tax-checklist": "Chef-Kontrollbericht",
+      "tax-checklist": "Kontrollbericht-Checkliste",
     };
     return titles[kind];
   }
@@ -2987,7 +2987,7 @@ function ReportsExportsPage() {
     ];
     return [
       `Steuerjahr: ${selectedYear}`,
-      "Chefliste - externe Originalunterlagen vor Übergabe an den Steuerberater abhaken.",
+      "Kontrollbericht-Checkliste - externe Originalunterlagen vor Übergabe an den Steuerberater abhaken.",
       ...objects.flatMap((object, index) => [
         PDF_PAGE_BREAK,
         `${index + 1}. ${object.label}:`,
@@ -3177,7 +3177,7 @@ function ReportsExportsPage() {
       { title: "4. Finanzierung, Vermögen & Kredite", kind: "wealth" },
       { title: "5. Risiko- und Überwachungsbericht 15%-Grenze", kind: "acquisition-15-check" },
       { title: "6. Fahrtkosten-Einzelnachweis", kind: "mileage-log" },
-      { title: "7. Chef-Kontrollbericht", kind: "tax-checklist" },
+      { title: "7. Kontrollbericht-Checkliste", kind: "tax-checklist" },
     ];
 
     return [
@@ -3309,7 +3309,7 @@ function ReportsExportsPage() {
       return buildCsv(["Bereich", "Datei", "Format", "Beschreibung"], [
         ["01 Stammdaten", "01_Stammdaten_und_Checklisten/Stammdaten.pdf", "PDF/XLS", "Portfolio-Register aller sechs Immobilien"],
         ["01 Vermögen", "01_Stammdaten_und_Checklisten/Vermoegen_Kredite_Gesamt.pdf", "PDF", "Finanzierung, Vermögen und Kredite"],
-        ["01 Checkliste", "01_Stammdaten_und_Checklisten/Chefliste.pdf", "PDF/CSV", "Dokumenten- und Abschlusskontrolle"],
+        ["01 Checkliste", "01_Stammdaten_und_Checklisten/Kontrollbericht-Checkliste.pdf", "PDF/CSV", "Dokumenten- und Abschlusskontrolle"],
         ["02-06 Mietobjekte", "02_Objekt_... bis 06_Objekt_.../EUR_*.pdf", "PDF/CSV/XLS", "Strikt objektbezogene Anlage-V-Auswertungen"],
         ["02-06 Fahrten", "02_Objekt_... bis 06_Objekt_.../Fahrtenbuch_*.pdf", "PDF/CSV", "Objektbezogene Fahrtkostennachweise"],
         ["06 Neuzugang", "06_Objekt_Rosenstein_Str_NEU/AfA_Basis_Rosenstein.pdf", "PDF/CSV", "Anschaffungskosten und Kaufpreisaufteilung"],
@@ -3491,8 +3491,8 @@ function ReportsExportsPage() {
       { name: `${packageSlug}/01_Stammdaten_und_Checklisten/Stammdaten.pdf`, content: createSimplePdf(reportTitle("portfolio-register"), buildPortfolioRegisterLines()) },
       { name: `${packageSlug}/01_Stammdaten_und_Checklisten/Stammdaten.xls`, content: csvToExcelHtml(reportTitle("portfolio-register"), buildReportCsv("portfolio-register")) },
       { name: `${packageSlug}/01_Stammdaten_und_Checklisten/Vermoegen_Kredite_Gesamt.pdf`, content: createSimplePdf(reportTitle("wealth"), buildReportLines("wealth")) },
-      { name: `${packageSlug}/01_Stammdaten_und_Checklisten/Chefliste.pdf`, content: createSimplePdf(reportTitle("tax-checklist"), buildTaxChecklistLines()) },
-      { name: `${packageSlug}/01_Stammdaten_und_Checklisten/Chefliste.csv`, content: buildReportCsv("tax-checklist") },
+      { name: `${packageSlug}/01_Stammdaten_und_Checklisten/Kontrollbericht-Checkliste.pdf`, content: createSimplePdf(reportTitle("tax-checklist"), buildTaxChecklistLines()) },
+      { name: `${packageSlug}/01_Stammdaten_und_Checklisten/Kontrollbericht-Checkliste.csv`, content: buildReportCsv("tax-checklist") },
       { name: `${packageSlug}/hinweis.txt`, content: "Read-only Steuerberater-Paket. Es werden ausschließlich die zentralen Fachquellen ausgewertet. Fehlende Stammdaten werden sichtbar markiert und nicht geschätzt. Steuerliche Prüffelder ersetzen keine Freigabe durch den Steuerberater." },
     ];
 
@@ -3765,11 +3765,11 @@ function ReportsExportsPage() {
       ],
     },
     {
-      title: "Chef-Kontrollbericht",
+      title: "Kontrollbericht-Checkliste",
       description: "Druckfertige Dokumenten-Checkliste mit Kontrollkästchen pro Immobilie und Abschlussfreigabe für das Steuerberater-Paket.",
       icon: ListChecks,
       actions: [
-        { label: "Chefliste-PDF", kind: "tax-checklist", format: "pdf", primary: true },
+        { label: "Checklisten-PDF", kind: "tax-checklist", format: "pdf", primary: true },
         { label: "Excel", kind: "tax-checklist", format: "excel" },
         { label: "CSV", kind: "tax-checklist", format: "csv" },
       ],
