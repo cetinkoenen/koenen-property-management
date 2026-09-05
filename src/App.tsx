@@ -3384,14 +3384,25 @@ function ReportsExportsPage() {
 
   function buildReportCsv(kind: ReportKind): string {
     if (kind === "test-tax-advisor") {
+      const rent = getReadyRentReport();
       let runningBalance = 0;
-      const rows = scopedEntries.slice().sort((a, b) => String(a.booking_date ?? "").localeCompare(String(b.booking_date ?? ""))).map((entry) => {
+      const journalRows = scopedEntries.slice().sort((a, b) => String(a.booking_date ?? "").localeCompare(String(b.booking_date ?? ""))).map((entry) => {
         const inflow = entry.entry_type === "income" ? Math.abs(entry.amount) : 0;
         const outflow = entry.entry_type === "expense" ? Math.abs(entry.amount) : 0;
         runningBalance += inflow - outflow;
-        return [entry.booking_date ?? "", entry.entry_type === "income" ? "Einnahme" : "Ausgabe", entry.category ?? "", getPropertyName(entry.object_id) || entry.objekt_code || "Allgemein", entry.note ?? "", inflow, outflow, runningBalance, entry.tax_relevant === true ? "Ja" : "Nein", entry.nk_relevant === true ? "Ja" : "Nein"];
+        return ["Buchungsjournal", entry.booking_date ?? "", getPropertyName(entry.object_id) || entry.objekt_code || "Allgemein", entry.category ?? "", entry.note ?? "", inflow, outflow, runningBalance, `EÜR ${entry.tax_relevant === true ? "Ja" : "Nein"}; NK ${entry.nk_relevant === true ? "Ja" : "Nein"}`, "Buchhaltung / finance_entry"];
       });
-      return buildCsv(["Datum", "Typ", "Kategorie_Konto", "Immobilie_Einheit", "Beschreibung", "Zufluss", "Abfluss", "Kumulierter_Saldo", "In_EÜR", "Umlagefähig_NK"], rows);
+      const rentRows = rent?.rows.flatMap((row) => row.months.map((month) => ["Mietkonto", `${period}-${String(month.month).padStart(2, "0")}`, row.objectLabel, row.unitLabel, row.tenantName, month.paid, 0, month.expected, month.kpi, month.expectedSource])) ?? [];
+      const propertyRows = portfolioRegisterRows.map((row) => ["Immobilien-Stammdaten", period, row.object.label, row.objectId, row.address, 0, 0, row.livingArea, row.usage, "Immobilienvermögen"]);
+      const loanRowsForExport = loanInterestReport.sections.flatMap((section) => section.rows.map((row) => ["Darlehen", row.year, section.propertyName, "Zins / Tilgung", `Restschuld ${formatCurrency(row.balance)}`, row.interest, row.principal, row.interest + row.principal, "Tilgung nicht abzugsfähig", row.source ?? "property_loan_ledger"]));
+      const grossIncome = scopedEntries.filter((entry) => entry.entry_type === "income").reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
+      const grossExpenses = scopedEntries.filter((entry) => entry.entry_type === "expense").reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
+      const coverRows = [
+        ["Deckblatt", period, "Gesamtportfolio", "Bruttoeinnahmen", periodLabel, grossIncome, 0, grossIncome - grossExpenses, "Jahres-KPI", "Buchhaltung"],
+        ["Deckblatt", period, "Gesamtportfolio", "Bruttoausgaben", periodLabel, 0, grossExpenses, grossIncome - grossExpenses, "Jahres-KPI", "Buchhaltung"],
+        ["Deckblatt", period, "Gesamtportfolio", "Soll-/Ist-Miete", "Zahlungskalender", rent?.totals.paid ?? 0, 0, rent?.totals.expected ?? 0, `Offen ${formatCurrency(rent?.totals.open ?? 0)}`, "Mieteingang"],
+      ];
+      return buildCsv(["Bereich", "Datum_Jahr", "Immobilie", "Einheit_Kategorie", "Beschreibung", "Einnahme_Zins_Ist", "Ausgabe_Tilgung", "Saldo_Soll_Kapitaldienst", "Status", "Quelle"], [...coverRows, ...propertyRows, ...rentRows, ...journalRows, ...loanRowsForExport]);
     }
     if (kind === "property-dossier") {
       const valueFor = (key: string) => String(selectedDossierProfile[key] ?? "").trim();
