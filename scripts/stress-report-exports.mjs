@@ -8,6 +8,9 @@ const portfolioExpense = await readFile(new URL("../src/lib/portfolioExpense.ts"
 const appData = await readFile(new URL("../src/state/AppDataContext.tsx", import.meta.url), "utf8");
 const loanInterestReport = await readFile(new URL("../src/lib/loanInterestReport.ts", import.meta.url), "utf8");
 const loanLedgerService = await readFile(new URL("../src/services/propertyLoanLedgerService.ts", import.meta.url), "utf8");
+const repairCapex = await readFile(new URL("../src/lib/repairCapex.ts", import.meta.url), "utf8");
+const cashflowDashboard = await readFile(new URL("../src/pages/WealthCashflowDashboard.tsx", import.meta.url), "utf8");
+const loanRatePlanService = await readFile(new URL("../src/services/loanRatePlanService.ts", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -105,4 +108,15 @@ assert.match(app, /Read-only Steuerberater-Paket/, "Das Paket muss seine schreib
 assert.match(taxEngine, /key: "rosenstein-p250"[\s\S]*acquisitionPrice: 0[\s\S]*afaRate: 0/, "Für Rosenstein darf ohne bestätigte Gebäudeaufteilung keine AfA geschätzt werden");
 assert.match(app, /acquisitionRowsForObject[\s\S]*!financingKeyword\.test/, "Finanzierungskosten dürfen nicht doppelt als Anschaffungskosten erscheinen");
 
-console.log("82 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+assert.match(app, /dashboard\/vermoegen-cashflow/, "Das Vermögens- und Cashflow-Dashboard muss erreichbar und navigierbar sein");
+assert.match(cashflowDashboard, /Mieteinnahmen vs\. Kreditrate[\s\S]*Cashflow-Detailansicht[\s\S]*Kumulierter Cashflow[\s\S]*Ausgabenverteilung/, "Alle vier geforderten Dashboard-Auswertungen müssen vorhanden sein");
+assert.match(cashflowDashboard, /\['Annuität','annuity'[\s\S]*\['Mieteinnahmen','rent'[\s\S]*\['Überschuss','surplus'/, "Die synchrone Vergleichstabelle muss exakt die drei fachlichen Zeilen besitzen");
+assert.match(loanRatePlanService, /listLoanRatePlanRowsForYear[\s\S]*property_loan_rate_plan[\s\S]*\.eq\("plan_year", year\)/, "Annuitäten müssen jahresgenau aus dem zentralen Tilgungsplan kommen");
+assert.match(app, /isAcquisitionAdjacentCostEntry/, "Der 15%-Check muss den steuerlich engen Baukostenfilter verwenden");
+assert.match(repairCapex, /PURE_RUNNING_MAINTENANCE_TERMS[\s\S]*heizungswartung[\s\S]*return false/, "Reine laufende Wartung muss aus dem 15%-Check ausgeschlossen werden");
+assert.match(app, /Detaillierte Leerstands-Begründung für Objekt/, "Die Checkliste muss bei Leerstand die Begründungsprüfung ergänzen");
+assert.match(app, /Neue Inserat-Nachweise \(z\.B\. Immobilienscout24-PDF\)/, "Die Checkliste muss bei Leerstand den Inserat-Nachweis ergänzen");
+assert.match(app, /category: "expose"[\s\S]*Leerstand_Nachweise/, "Inserat-Nachweise müssen zentral gespeichert und dem Objektordner im ZIP zugeordnet werden");
+assert.match(app, /Bodenrichtwert \(€\/m²\)[\s\S]*Primärenergiebedarf \(kWh\/\(m²a\)\)[\s\S]*Primärenergieverbrauch \(kWh\/\(m²a\)\)/, "Immobilien-PDFs müssen die geforderten Wert- und Energieeinheiten ausweisen");
+
+console.log("92 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");

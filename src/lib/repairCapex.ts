@@ -29,6 +29,29 @@ const REPAIR_CAPEX_TERMS = [
   "capex",
 ];
 
+const ACQUISITION_ADJACENT_TERMS = [
+  "bauleistung",
+  "baumassnahme",
+  "schoenheitsreparatur",
+  "reparatur",
+  "instandsetzung",
+  "sanierung",
+  "modernisierung",
+  "renovierung",
+  "handwerker",
+  "umbau",
+];
+
+const PURE_RUNNING_MAINTENANCE_TERMS = [
+  "wartung",
+  "heizungswartung",
+  "thermenwartung",
+  "inspektion",
+  "kehrgebuehr",
+  "schornsteinfeger",
+  "laufender service",
+];
+
 function toNumber(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(String(value ?? "").replace(/\./g, "").replace(",", "."));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -64,6 +87,18 @@ export function isRepairCapexEntry(entry: RepairCapexEntryLike): boolean {
 
   const searchable = normalizeFinanceCategoryText(`${entry.category ?? ""} ${entry.note ?? ""}`);
   return REPAIR_CAPEX_TERMS.some((term) => searchable.includes(term));
+}
+
+/**
+ * Enger, nachvollziehbarer Filter für die Vorprüfung nach § 6 Abs. 1 Nr. 1a
+ * EStG. Laufende Wartung wird ausdrücklich ausgeschlossen; es findet keine
+ * Schätzung und keine pauschale Umdeutung unklarer Buchungen statt.
+ */
+export function isAcquisitionAdjacentCostEntry(entry: RepairCapexEntryLike): boolean {
+  if (entry.entry_type !== "expense") return false;
+  const searchable = normalizeFinanceCategoryText(`${entry.category ?? ""} ${entry.note ?? ""}`);
+  if (PURE_RUNNING_MAINTENANCE_TERMS.some((term) => searchable.includes(normalizeFinanceCategoryText(term)))) return false;
+  return ACQUISITION_ADJACENT_TERMS.some((term) => searchable.includes(normalizeFinanceCategoryText(term)));
 }
 
 export function getRepairCapexDisplayCategory(entry: RepairCapexEntryLike): string | null {

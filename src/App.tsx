@@ -85,8 +85,14 @@ import { canonicalCategoryForTax } from "./lib/taxClassification";
 import type { RentAnnualReportSnapshot } from "./pages/Mietuebersicht";
 import { loadCanonicalPropertyLoanHistory } from "./services/propertyLoanLedgerService";
 import { fetchPropertyWealthProfiles, type PropertyWealthProfile } from "./services/propertyExtraService";
+import {
+  getPropertyDocumentSignedUrl,
+  listPropertyDocuments,
+  uploadPropertyDocument,
+  type PropertyDocumentRow,
+} from "./services/documentArchiveService";
 import { portfolioGalleryItems } from "./data/portfolioGallery";
-import { buildRepairCapexSummary } from "./lib/repairCapex";
+import { buildRepairCapexSummary, isAcquisitionAdjacentCostEntry } from "./lib/repairCapex";
 import {
   buildLoanInterestReportCsv,
   buildLoanInterestReportExcelHtml,
@@ -165,6 +171,7 @@ class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundary
 
 const EntryAdd = lazy(() => import("./pages/EntryAdd"));
 const Cockpit = lazy(() => import("./pages/Cockpit"));
+const WealthCashflowDashboard = lazy(() => import("./pages/WealthCashflowDashboard"));
 const Monate = lazy(() => import("./pages/Monate"));
 const Auswertung = lazy(() => import("./pages/Auswertung"));
 const SteuerCenter = lazy(() => import("./pages/SteuerCenter"));
@@ -210,6 +217,7 @@ function RouteFallback() {
 
 const routePreloaders: Record<string, () => Promise<unknown>> = {
   "/dashboard/finanz-kennzahlen": () => import("./pages/Cockpit"),
+  "/dashboard/vermoegen-cashflow": () => import("./pages/WealthCashflowDashboard"),
   "/dashboard/warnmeldungen": () => import("./pages/Datenpruefung"),
   "/dashboard/aktuelle-todos": async () => undefined,
   "/immobilienvermoegen": () => import("./pages/ImmobilienVermoegen"),
@@ -416,6 +424,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     source: "Cockpit, Buchhaltung, Mieteingang, Leerstand, Darlehen",
     subpages: [
       { path: "/dashboard/finanz-kennzahlen", label: "Finanz-Kennzahlen", icon: BarChart3 },
+      { path: "/dashboard/vermoegen-cashflow", label: "Vermögen & Cashflow", icon: TrendingUp },
       { path: "/dashboard/warnmeldungen", label: "Warnmeldungen", icon: Bell },
       { path: "/dashboard/aktuelle-todos", label: "Aktuelle To-dos", icon: ListChecks },
     ],
@@ -435,6 +444,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     source: "Datenprüfung, Mieteingang, Leerstand, Mahnwesen",
     subpages: [
       { path: "/dashboard/finanz-kennzahlen", label: "Finanz-Kennzahlen", icon: BarChart3 },
+      { path: "/dashboard/vermoegen-cashflow", label: "Vermögen & Cashflow", icon: TrendingUp },
       { path: "/dashboard/warnmeldungen", label: "Warnmeldungen", icon: Bell },
       { path: "/dashboard/aktuelle-todos", label: "Aktuelle To-dos", icon: ListChecks },
     ],
@@ -454,6 +464,7 @@ const workspaceConfigs: Record<string, WorkspaceConfig> = {
     source: "Ein-/Auszug, Nebenkosten, Mahnwesen, Ticketing",
     subpages: [
       { path: "/dashboard/finanz-kennzahlen", label: "Finanz-Kennzahlen", icon: BarChart3 },
+      { path: "/dashboard/vermoegen-cashflow", label: "Vermögen & Cashflow", icon: TrendingUp },
       { path: "/dashboard/warnmeldungen", label: "Warnmeldungen", icon: Bell },
       { path: "/dashboard/aktuelle-todos", label: "Aktuelle To-dos", icon: ListChecks },
     ],
@@ -1449,9 +1460,9 @@ const PROPERTY_DOSSIER_SECTIONS = [
     fields: [
       ["financingReason", "Finanzierungsgrund"], ["propertyType", "Immobilientyp"], ["name", "Immobilienbezeichnung"],
       ["street", "Straße"], ["houseNumber", "Hausnummer"], ["postalCode", "PLZ"], ["city", "Ort"], ["state", "Bundesland"],
-      ["inhabitants", "Einwohnerklasse"], ["surroundings", "Umgebung"], ["purchasePrice", "Kaufpreis / Baukosten"],
-      ["purchaseDate", "Kaufdatum"], ["purchaseYear", "Kauf-/Fertigstellungsjahr"], ["buildingPurchasePrice", "Kaufpreisanteil Gebäude"],
-      ["landPurchasePrice", "Kaufpreisanteil Grund/Boden"], ["parkingPurchasePrice", "Kaufpreisanteil Stellplatz"],
+      ["inhabitants", "Einwohnerklasse"], ["surroundings", "Umgebung"], ["purchasePrice", "Kaufpreis / Baukosten (€)"],
+      ["purchaseDate", "Kaufdatum"], ["purchaseYear", "Kauf-/Fertigstellungsjahr"], ["buildingPurchasePrice", "Kaufpreisanteil Gebäude (€)"],
+      ["landPurchasePrice", "Kaufpreisanteil Grund/Boden (€)"], ["parkingPurchasePrice", "Kaufpreisanteil Stellplatz (€)"],
       ["unitValueFileNumber", "Einheitswert-Aktenzeichen"], ["ownershipHusbandPercent", "Eigentumsquote Ehemann (%)"],
       ["ownershipWifePercent", "Eigentumsquote Ehefrau (%)"], ["transferBenefitsDate", "Übergang Nutzen und Lasten"],
     ],
@@ -1460,22 +1471,22 @@ const PROPERTY_DOSSIER_SECTIONS = [
     title: "Immobilieneigenschaften",
     fields: [
       ["usageType", "Nutzungstyp"], ["unitCount", "Anzahl Einheiten"], ["totalArea", "Gesamtfläche (m²)"],
-      ["coldRentMonthly", "Monatliche Netto-Kaltmiete"], ["landArea", "Grundstücksfläche (m²)"], ["convertedSpace", "Umbauter Raum (m³)"],
+      ["coldRentMonthly", "Monatliche Netto-Kaltmiete (€)"], ["landArea", "Grundstücksfläche (m²)"], ["convertedSpace", "Umbauter Raum (m³)"],
       ["equipmentYear", "Baujahr / Ausstattungsjahr"], ["constructionType", "Bauweise"], ["constructionSpecials", "Besonderheiten der Bauart"],
       ["equipmentRating", "Ausstattungsbeurteilung"], ["floors", "Vollgeschosse"], ["elevator", "Aufzug"], ["condition", "Zustand"],
-      ["attic", "Dachgeschoss"], ["cellar", "Keller"], ["parkingSpaces", "Stellplätze"], ["marketValue", "Marktwert"],
-      ["landValue", "Bodenrichtwert"], ["estimatedMarketValue", "Geschätzter Marktwert"], ["acquisitionSpecials", "Erwerbsbesonderheiten"],
-      ["heritableBuildingRight", "Erbbaurecht"], ["energyClass", "Energieeffizienzklasse"], ["primaryEnergyDemand", "Primärenergiebedarf"],
-      ["primaryEnergyConsumption", "Primärenergieverbrauch"], ["co2Emissions", "CO₂-Emissionen"], ["modernizations", "Modernisierungen"],
-      ["lastModernizationYear", "Letzte Modernisierung"], ["modernizationCosts", "Modernisierungskosten"],
+      ["attic", "Dachgeschoss"], ["cellar", "Keller"], ["parkingSpaces", "Stellplätze"], ["marketValue", "Marktwert (€)"],
+      ["landValue", "Bodenrichtwert (€/m²)"], ["estimatedMarketValue", "Geschätzter Marktwert (€)"], ["acquisitionSpecials", "Erwerbsbesonderheiten"],
+      ["heritableBuildingRight", "Erbbaurecht"], ["energyClass", "Energieeffizienzklasse"], ["primaryEnergyDemand", "Primärenergiebedarf (kWh/(m²a))"],
+      ["primaryEnergyConsumption", "Primärenergieverbrauch (kWh/(m²a))"], ["co2Emissions", "CO₂-Emissionen"], ["modernizations", "Modernisierungen"],
+      ["lastModernizationYear", "Letzte Modernisierung"], ["modernizationCosts", "Modernisierungskosten (€)"],
     ],
   },
   {
     title: "Darlehensangaben",
     fields: [
       ["lender", "Darlehensgeber"], ["ibanBic", "BLZ / BIC"], ["loanNumber", "Darlehensnummer"], ["landRegisterRank", "Rangstelle Grundbuch"],
-      ["subsidizedLoan", "Förderdarlehen"], ["originalLoanAmount", "Ursprüngliche Darlehenssumme"], ["currentMonthlyRate", "Aktuelle Monatsrate"],
-      ["agreedFutureRate", "Zukünftige Monatsrate"], ["interestRate", "Sollzins (%)"], ["interestBinding", "Sollzinsbindung"],
+      ["subsidizedLoan", "Förderdarlehen"], ["originalLoanAmount", "Ursprüngliche Darlehenssumme (€)"], ["currentMonthlyRate", "Aktuelle Monatsrate (€)"],
+      ["agreedFutureRate", "Zukünftige Monatsrate (€)"], ["interestRate", "Sollzins (%)"], ["interestBinding", "Sollzinsbindung"],
       ["fullRepaymentDate", "Datum Vollauszahlung"], ["release", "Ablösung"], ["shouldBeRedeemed", "Ablösung vorgesehen"],
       ["expectedEndDate", "Voraussichtliches Laufzeitende"], ["borrowers", "Darlehensnehmer"],
     ],
@@ -1569,7 +1580,13 @@ function downloadBlob(filename: string, blob: Blob) {
 }
 
 function buildCsv(headers: string[], rows: Array<Array<unknown>>): string {
-  return [headers, ...rows].map((row) => row.map(csvValue).join(";")).join("\n");
+  const headersWithUnits = headers.map((header) => {
+    if (/[€%²³]|EUR|km|Datum|Jahr|Anzahl|Status|Quote/i.test(header)) return header;
+    return /(betrag|kosten|einnahme|ausgabe|miete|annuität|zins|tilgung|rate|saldo|restschuld|kaufpreis|cashflow|überzahlung|offen)/i.test(header)
+      ? `${header} (€)`
+      : header;
+  });
+  return [headersWithUnits, ...rows].map((row) => row.map(csvValue).join(";")).join("\n");
 }
 
 function escapeHtml(value: unknown): string {
@@ -2162,6 +2179,9 @@ function ReportsExportsPage() {
   const [rentAnnualReport, setRentAnnualReport] = useState<RentAnnualReportSnapshot | null>(null);
   const [activeExport, setActiveExport] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [vacancyProofs, setVacancyProofs] = useState<PropertyDocumentRow[]>([]);
+  const [vacancyProofMessage, setVacancyProofMessage] = useState<string | null>(null);
+  const [vacancyProofUploading, setVacancyProofUploading] = useState<string | null>(null);
   const rentReportRef = useRef<HTMLElement | null>(null);
   const isPortfolioReportFilter = objectFilter === "portfolio";
   const selectedObject = isPortfolioReportFilter ? undefined : objects.find((object) => object.id === objectFilter);
@@ -2292,7 +2312,6 @@ function ReportsExportsPage() {
   const acquisitionObjects = objects.filter((object) => isRosensteinObject(object.label) || isHohenloherObject(object.label));
   const acquisitionKeyword = /(kaufpreis|grunderwerb|notar|gericht|grundbuch|makler|anschaffung|erwerbsneben|modernisierung)/i;
   const financingKeyword = /(grundschuld|geldbeschaffung|darlehensgeb|bankgeb|disagio|damnum)/i;
-  const maintenanceKeyword = /(reparatur|instandhaltung|instandsetzung|modernisierung|renovierung|handwerker|wartung)/i;
   const acquisitionRowsForObject = (object: (typeof objects)[number]) => reportEntriesForObject(object)
     .filter((entry) => entry.entry_type === "expense" && entry.booking_date?.startsWith("2025-"))
     .filter((entry) => acquisitionKeyword.test(`${entry.category ?? ""} ${entry.note ?? ""}`))
@@ -2305,17 +2324,18 @@ function ReportsExportsPage() {
     const purchaseDate = profile.purchaseDate || `${selectedYear}-01-01`;
     const purchaseYear = Number(purchaseDate.slice(0, 4)) || selectedYear;
     const cutoff = `${purchaseYear + 3}-${purchaseDate.slice(5) || "12-31"}`;
+    const reportStart = periodStart > purchaseDate ? periodStart : purchaseDate;
     const reportEnd = periodEnd < cutoff ? periodEnd : cutoff;
     const buildingBasis = reportNumber(profile.buildingPurchasePrice);
     const rows = reportEntriesForObject(object)
       .filter((entry) => entry.entry_type === "expense" && Boolean(entry.booking_date))
-      .filter((entry) => String(entry.booking_date) >= purchaseDate && String(entry.booking_date) <= reportEnd)
-      .filter((entry) => maintenanceKeyword.test(`${entry.category ?? ""} ${entry.note ?? ""}`));
+      .filter((entry) => String(entry.booking_date) >= reportStart && String(entry.booking_date) <= reportEnd)
+      .filter(isAcquisitionAdjacentCostEntry);
     const costs = rows.reduce((sum, entry) => sum + Math.abs(Number(entry.amount ?? 0)), 0);
     const threshold = buildingBasis * 0.15;
     const ratio = buildingBasis > 0 ? costs / buildingBasis : null;
     const status = buildingBasis <= 0 ? "PRÜFEN" : ratio! > 0.15 ? "KRITISCH" : ratio! >= 0.12 ? "WARNUNG" : "OK";
-    return { profile, purchaseDate, cutoff, reportEnd, buildingBasis, rows, costs, threshold, ratio, status };
+    return { profile, purchaseDate, cutoff, reportStart, reportEnd, buildingBasis, rows, costs, threshold, ratio, status };
   };
   const yearEntries = entries.filter((entry) => entry.booking_date?.startsWith(`${period}-`));
   const matchesSelectedObject = (entry: FinanceEntry) => {
@@ -2348,6 +2368,23 @@ function ReportsExportsPage() {
       .filter(Boolean);
     return candidates.some((candidate) => haystack.includes(candidate) || candidate.includes(haystack));
   };
+  const vacanciesForReportObject = (object: (typeof objects)[number]) => vacancies.filter((vacancy) => {
+    if (!isVacancyInRange(vacancy, periodStart, periodEnd)) return false;
+    if (vacancy.property_id === object.id || vacancy.object_code === object.code) return true;
+    const source = `${vacancy.object_label ?? ""} ${vacancy.object_code ?? ""} ${vacancy.property_id ?? ""}`.toLowerCase();
+    return [object.label, object.code ?? "", object.id, ...(object.aliases ?? [])]
+      .map((value) => value.toLowerCase().trim())
+      .filter(Boolean)
+      .some((candidate) => source.includes(candidate) || candidate.includes(source));
+  });
+  const monthsWithoutActiveContractForObject = (object: (typeof objects)[number]) => (rentAnnualReport?.rows ?? [])
+    .filter((row) => row.objectId === object.id || reportPropertyNamesMatch(row.objectLabel, object.label))
+    .flatMap((row) => row.months)
+    .filter((month) => month.status === "vacant" || /kein aktiver vermietungszeitraum/i.test(month.expectedSource));
+  const hasVacancyOrMissingContract = (object: (typeof objects)[number]) => (
+    vacanciesForReportObject(object).length > 0 || monthsWithoutActiveContractForObject(object).length > 0
+  );
+  const rentalObjectsWithVacancy = objects.filter((object) => !isHohenloherObject(object.label) && hasVacancyOrMissingContract(object));
   const scopedVacancies = isPortfolioReportFilter
     ? []
     : vacancies
@@ -2414,6 +2451,44 @@ function ReportsExportsPage() {
       alive = false;
     };
   }, [periodEnd, periodStart, vacancyRangeKey]);
+
+  useEffect(() => {
+    let alive = true;
+    async function loadVacancyProofs() {
+      try {
+        const rows = await listPropertyDocuments({ year: selectedYear });
+        if (alive) setVacancyProofs(rows.filter((row) => row.category === "expose"));
+      } catch (error) {
+        if (alive) setVacancyProofMessage(`Inserat-Nachweise konnten nicht geladen werden: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    void loadVacancyProofs();
+    return () => { alive = false; };
+  }, [selectedYear]);
+
+  async function handleVacancyProofUpload(object: (typeof objects)[number], file: File | null) {
+    if (!file) return;
+    setVacancyProofUploading(object.id);
+    setVacancyProofMessage(null);
+    try {
+      const uploaded = await uploadPropertyDocument({
+        file,
+        title: `Inserat-Nachweis ${object.label} ${selectedYear}`,
+        category: "expose",
+        propertyId: object.id,
+        objektCode: object.code,
+        propertyName: object.label,
+        documentYear: selectedYear,
+        notes: `Nachweis für Leerstand im Kontrollbericht-Checkliste ${selectedYear}`,
+      });
+      setVacancyProofs((current) => [uploaded, ...current]);
+      setVacancyProofMessage(`Inserat-Nachweis für ${object.label} wurde sicher gespeichert.`);
+    } catch (error) {
+      setVacancyProofMessage(`Upload fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setVacancyProofUploading(null);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -2570,7 +2645,8 @@ function ReportsExportsPage() {
     if (kind === "section35a") return mileageReportReady;
     if (kind === "loan-interest") return loanHistoryLoaded && !loanHistoryError && !isPortfolioReportFilter;
     if (kind === "property-dossier") return wealthProfilesLoaded && Boolean(selectedDossierObject && selectedDossierProfileKeys.length);
-    if (kind === "portfolio-register" || kind === "acquisition-afa" || kind === "acquisition-15-check" || kind === "tax-checklist") return wealthProfilesLoaded;
+    if (kind === "tax-checklist") return wealthProfilesLoaded && rentReportReady && vacancyReportReady;
+    if (kind === "portfolio-register" || kind === "acquisition-afa" || kind === "acquisition-15-check") return wealthProfilesLoaded;
     if (kind === "mileage-log") return mileageReportReady;
     if (kind === "anlage-v-package") return mileageReportReady && taxLoanReportReady;
     if (kind === "tax") return objectFilter === "all" && rentReportReady && vacancyReportReady && mileageReportReady && taxLoanReportReady && loanHistoryLoaded && !loanHistoryError;
@@ -2928,15 +3004,16 @@ function ReportsExportsPage() {
 
   function buildAcquisition15CheckLines(): string[] {
     return [
-      `Prüfstand bis: ${periodEnd}`,
+      `Automatischer Buchungsscan: ${periodLabel}`,
       "Rechtsgrundlage: § 6 Abs. 1 Nr. 1a EStG - 15%-Grenze ohne Umsatzsteuer innerhalb von drei Jahren nach Anschaffung.",
-      "Die App zeigt eine Vorprüfung auf Basis der gespeicherten Buchungsbeträge. Da Buchungen kein separates Netto-/USt-Feld besitzen, ist der endgültige Nettobetrag vom Steuerberater zu bestätigen.",
+      "Einbezogen werden eindeutig bezeichnete Bauleistungen, Instandsetzungen, Renovierungen, Modernisierungen und Schönheitsreparaturen ab Anschaffung. Reine laufende Wartung (z.B. Heizungswartung) ist ausgeschlossen.",
+      "Die App zeigt eine Vorprüfung auf Basis der gespeicherten Buchungsbeträge. Da Buchungen kein separates Netto-/USt-Feld besitzen, wird kein Nettowert geschätzt; der endgültige Nettobetrag ist vom Steuerberater zu bestätigen.",
       ...acquisitionObjects.flatMap((object, index) => {
         const check = acquisitionCheckForObject(object);
         return [
           PDF_PAGE_BREAK,
           `${index + 1}. ${object.label}:`,
-          `Kaufdatum: ${check.purchaseDate} | Drei-Jahres-Ende: ${check.cutoff} | berücksichtigt bis ${check.reportEnd}`,
+          `Kaufdatum: ${check.purchaseDate} | Berichtsjahr: ${selectedYear} | berücksichtigt ${check.reportStart} bis ${check.reportEnd}`,
           `Gebäude-Anschaffungskosten: ${check.buildingBasis > 0 ? formatCurrency(check.buildingBasis) : "FEHLT"}`,
           `15%-Vergleichswert: ${check.buildingBasis > 0 ? formatCurrency(check.threshold) : "nicht berechenbar"}`,
           `Erfasste Instandsetzungs-/Modernisierungskosten: ${formatCurrency(check.costs)}`,
@@ -3003,6 +3080,12 @@ function ReportsExportsPage() {
         ...(isHohenloherObject(object.label)
           ? ["[ ] §35a-Bescheinigungen mit unbarer Zahlung vorhanden"]
           : ["[ ] Anlage-V-Objektbericht und Fahrtkostennachweis geprüft"]),
+        ...(!isHohenloherObject(object.label) && hasVacancyOrMissingContract(object)
+          ? [
+              `[ ] Detaillierte Leerstands-Begründung für Objekt ${object.code || object.id} prüfen.`,
+              `[ ] Neue Inserat-Nachweise (z.B. Immobilienscout24-PDF) für Objekt ${object.code || object.id} hochladen.`,
+            ]
+          : []),
       ]),
       PDF_PAGE_BREAK,
       "Abschlussfreigabe:",
@@ -3240,14 +3323,14 @@ function ReportsExportsPage() {
     }
     if (kind === "acquisition-15-check") {
       return buildCsv([
-        "Objekt_ID", "Immobilie", "Kaufdatum", "Pruefzeitraum_bis", "Gebaeude_Basis", "15_Prozent_Grenze",
-        "Instandsetzung_Modernisierung", "Quote_Prozent", "Status_Vorpruefung", "Hinweis",
+        "Objekt_ID", "Immobilie", "Kaufdatum", "Prüfzeitraum_von", "Prüfzeitraum_bis", "Gebäude-Basis (€)", "15-Prozent-Grenze (€)",
+        "Instandsetzung/Modernisierung (€)", "Quote (%)", "Status_Vorprüfung", "Hinweis",
       ], acquisitionObjects.map((object) => {
         const check = acquisitionCheckForObject(object);
         return [
-          object.code || object.id, object.label, check.purchaseDate, check.reportEnd, check.buildingBasis,
+          object.code || object.id, object.label, check.purchaseDate, check.reportStart, check.reportEnd, check.buildingBasis,
           check.threshold, check.costs, check.ratio === null ? "" : check.ratio * 100, check.status,
-          "Buchungsbeträge ohne separates Netto-/USt-Feld; Nettoprüfung durch Steuerberater erforderlich",
+          "Keine Nettoschätzung; laufende Wartung ausgeschlossen; Nettoprüfung durch Steuerberater erforderlich",
         ];
       }));
     }
@@ -3262,13 +3345,22 @@ function ReportsExportsPage() {
       ])));
     }
     if (kind === "tax-checklist") {
-      return buildCsv(["Immobilie", "Pruefpunkt", "Status"], objects.flatMap((object) => [
-        [object.label, "Buchungen 01.01.-31.12. vollständig", "offen"],
-        [object.label, "Bank-/Mietkontoabstimmung", "offen"],
-        [object.label, "Darlehens-Jahreskontoauszug / Saldenbestätigung", "offen"],
-        [object.label, "Rechnungen und Zahlungsnachweise", "offen"],
-        [object.label, "Eigentumsquote, Fläche und Objekt-ID", "offen"],
-      ]));
+      return buildCsv(["Immobilie", "Objekt_ID", "Pruefpunkt", "Status"], objects.flatMap((object) => {
+        const base = [
+          [object.label, object.code || object.id, "Buchungen 01.01.-31.12. vollständig", "offen"],
+          [object.label, object.code || object.id, "Bank-/Mietkontoabstimmung", "offen"],
+          [object.label, object.code || object.id, "Darlehens-Jahreskontoauszug / Saldenbestätigung", "offen"],
+          [object.label, object.code || object.id, "Rechnungen und Zahlungsnachweise", "offen"],
+          [object.label, object.code || object.id, "Eigentumsquote, Fläche und Objekt-ID", "offen"],
+        ];
+        if (!isHohenloherObject(object.label) && hasVacancyOrMissingContract(object)) {
+          base.push(
+            [object.label, object.code || object.id, "Detaillierte Leerstands-Begründung prüfen", "offen"],
+            [object.label, object.code || object.id, "Neue Inserat-Nachweise hochladen", "offen"],
+          );
+        }
+        return base;
+      }));
     }
 
     if (kind === "tax") {
@@ -3570,12 +3662,12 @@ function ReportsExportsPage() {
       ];
       const checkLines = [
         `Objekt: ${object.label} | § 6 Abs. 1 Nr. 1a EStG`,
-        `Prüfzeitraum: ${check.purchaseDate} bis ${check.reportEnd} (Drei-Jahres-Ende ${check.cutoff})`,
+        `Automatischer Buchungsscan: ${check.reportStart} bis ${check.reportEnd} (Drei-Jahres-Ende ${check.cutoff})`,
         `Gebäude-Basis: ${check.buildingBasis ? formatCurrency(check.buildingBasis) : "FEHLT"}`,
         `15%-Grenze: ${check.buildingBasis ? formatCurrency(check.threshold) : "nicht berechenbar"}`,
         `Kosten: ${formatCurrency(check.costs)} | Quote: ${check.ratio === null ? "nicht berechenbar" : `${(check.ratio * 100).toLocaleString("de-DE", { maximumFractionDigits: 2 })}%`}`,
         `Status Vorprüfung: [${check.status}]`,
-        "Hinweis: Nettowerte/Umsatzsteuer durch Steuerberater bestätigen.",
+        "Hinweis: Reine laufende Wartung ist ausgeschlossen. Nettowerte/Umsatzsteuer werden nicht geschätzt und sind durch den Steuerberater zu bestätigen.",
         ...check.rows.map((entry) => `- ${formatDate(entry.booking_date)} | ${entry.category ?? "-"} | ${formatCurrency(Math.abs(entry.amount))}`),
       ];
       files.push(
@@ -3591,6 +3683,25 @@ function ReportsExportsPage() {
       { name: `${hohenloherFolder}/35a_Hohenloher_${period}.pdf`, content: createSimplePdf(reportTitle("section35a"), buildReportLines("section35a")) },
       { name: `${hohenloherFolder}/35a_Hohenloher_${period}.csv`, content: buildReportCsv("section35a") },
     );
+
+    for (const object of rentalObjectsWithVacancy) {
+      const matchingProofs = vacancyProofs.filter((document) => (
+        document.document_year === selectedYear
+        && (document.property_id === object.id
+          || document.objekt_code === object.code
+          || reportPropertyNamesMatch(document.property_name ?? "", object.label))
+      ));
+      for (const document of matchingProofs) {
+        const signedUrl = await getPropertyDocumentSignedUrl(document.storage_path, 120, document.storage_bucket);
+        const response = await fetch(signedUrl);
+        if (!response.ok) throw new Error(`Inserat-Nachweis ${document.file_name} konnte nicht für das ZIP geladen werden.`);
+        const safeName = document.file_name.replace(/[^a-zA-Z0-9äöüÄÖÜß._-]+/g, "-");
+        files.push({
+          name: `${packageSlug}/${objectFolder(object.label)}/Leerstand_Nachweise/${safeName}`,
+          content: await response.blob(),
+        });
+      }
+    }
 
     downloadBlob(`${packageSlug}.zip`, await createZipWithBinary(files));
   }
@@ -3746,7 +3857,7 @@ function ReportsExportsPage() {
     },
     {
       title: "15%-Check Anschaffungsnahe Herstellungskosten",
-      description: "Überwacht Rosenstein und Hohenloher ab Kaufdatum; fehlende Gebäude- oder Nettowerte werden ausdrücklich zur Prüfung markiert und nie geschätzt.",
+      description: "Scannt das gewählte Berichtsjahr für Rosenstein und Hohenloher ab Kaufdatum. Klar bezeichnete Bau-/Renovierungs-/Modernisierungskosten werden aufgenommen, reine laufende Wartung wird ausgeschlossen; Nettowerte werden nie geschätzt.",
       icon: ShieldCheck,
       actions: [
         { label: "15%-Check-PDF", kind: "acquisition-15-check", format: "pdf", primary: true },
@@ -4003,6 +4114,31 @@ function ReportsExportsPage() {
           );
         })}
       </section>
+
+      {rentalObjectsWithVacancy.length ? (
+        <SectionPanel
+          eyebrow="Kontrollbericht-Checkliste"
+          title={`Inserat-Nachweise für Leerstände ${selectedYear}`}
+          description="Nur tatsächlich dokumentierte Leerstände erzeugen diese Upload-Felder. Die Dateien werden in der zentralen Dokumentenablage gespeichert und automatisch in den jeweiligen Objektordner des Steuerberater-Datenpakets aufgenommen."
+        >
+          {vacancyProofMessage ? <div role="status" className="mb-4 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm font-bold text-teal-900">{vacancyProofMessage}</div> : null}
+          <div className="grid gap-3 lg:grid-cols-2">
+            {rentalObjectsWithVacancy.map((object) => {
+              const proofCount = vacancyProofs.filter((document) => document.document_year === selectedYear && (document.property_id === object.id || document.objekt_code === object.code || reportPropertyNamesMatch(document.property_name ?? "", object.label))).length;
+              return (
+                <label key={object.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <span className="block text-sm font-black text-slate-950">{object.label}</span>
+                  <span className="mt-1 block text-xs font-bold text-slate-500">{vacanciesForReportObject(object).length} Leerstandszeitraum/-zeiträume · {monthsWithoutActiveContractForObject(object).length} Monat(e) ohne aktiven Vertrag · {proofCount} Nachweis(e) gespeichert</span>
+                  <span className="mt-3 inline-flex min-h-11 cursor-pointer items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 shadow-sm">
+                    {vacancyProofUploading === object.id ? "Upload läuft…" : "Inserat-Nachweis auswählen"}
+                  </span>
+                  <input type="file" accept="application/pdf,image/*" className="sr-only" disabled={vacancyProofUploading !== null} onChange={(event) => void handleVacancyProofUpload(object, event.target.files?.[0] ?? null)} />
+                </label>
+              );
+            })}
+          </div>
+        </SectionPanel>
+      ) : null}
 
       <section ref={rentReportRef} className="scroll-mt-24">
         <SectionPanel
@@ -4729,6 +4865,7 @@ function AppShell() {
   const navItems = useMemo<ShellNavItem[]>(
     () => [
       { to: "/dashboard/finanz-kennzahlen", label: "Cockpit", group: "Dashboard", icon: LayoutDashboard },
+      { to: "/dashboard/vermoegen-cashflow", label: "Vermögen & Cashflow", group: "Dashboard", icon: TrendingUp },
       { to: "/dashboard/warnmeldungen", label: "Warnungen", group: "Dashboard", icon: Bell },
       { to: "/immobilien/immobilie-anlegen", label: "Immobilie anlegen", group: "Immobilien", icon: PlusCircle },
       { to: "/leerstand", label: "Leerstand", group: "Immobilien", icon: DoorOpen },
@@ -5036,6 +5173,10 @@ export default function App() {
         <Route
           path="/dashboard/finanz-kennzahlen"
           element={<ModuleWorkspacePage config={workspaceConfigs.dashboardFinanz}><Cockpit /></ModuleWorkspacePage>}
+        />
+        <Route
+          path="/dashboard/vermoegen-cashflow"
+          element={<ModuleWorkspacePage config={workspaceConfigs.dashboardFinanz}><WealthCashflowDashboard /></ModuleWorkspacePage>}
         />
         <Route
           path="/dashboard/warnmeldungen"
