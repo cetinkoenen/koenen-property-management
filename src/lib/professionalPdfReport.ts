@@ -28,6 +28,7 @@ export type PdfReportOptions = {
   meta?: PdfReportMetric[];
   metrics?: PdfReportMetric[];
   sections: PdfReportSection[];
+  landscape?: boolean;
 };
 
 const FOOTER_TEXT = "Hohenloher Str. 78 74243 Langenbrettach - info.koenen@gmail.com";
@@ -77,7 +78,7 @@ function tableHtml(table: PdfReportTable) {
           ${
             table.rows.length
               ? table.rows
-                  .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell ?? "")}</td>`).join("")}</tr>`)
+                  .map((row) => `<tr>${row.map((cell) => `<td class="${String(cell).endsWith("· bezahlt") ? "payment-paid" : String(cell).endsWith("· offen") ? "payment-open" : ""}">${escapeHtml(cell ?? "")}</td>`).join("")}</tr>`)
                   .join("")
               : `<tr><td colspan="${table.headers.length}">Keine Daten vorhanden.</td></tr>`
           }
@@ -320,7 +321,16 @@ export function openProfessionalPdfReport(options: PdfReportOptions) {
       font-size: 10px;
       font-weight: 750;
     }
+    .payment-paid { background: #e2f4e8; color: #21603a; }
+    .payment-open { background: #fce6e5; color: #a02626; }
+    td, th { overflow-wrap: anywhere; }
     @media print {
+      @page { size: ${options.landscape ? "A4 landscape" : "A4"}; }
+      * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .section { break-inside: auto; }
+      .section-head, .table-title { break-after: avoid; }
+      thead { display: table-header-group; }
+      tr { break-inside: avoid; }
       body { background: #ffffff; }
       .page { padding: 0; max-width: none; }
       .hero, .section { box-shadow: none; }

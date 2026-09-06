@@ -119,6 +119,7 @@ type MietuebersichtProps = {
   reportYear?: number;
   reportObjectId?: string | null;
   onAnnualReportChange?: (snapshot: RentAnnualReportSnapshot) => void;
+  onAnnualReportStatusChange?: (status: { loading: boolean; error: string }) => void;
 };
 
 const emptyTenant: TenantInfo = { firstName: "", lastName: "", phone: "", email: "" };
@@ -1290,7 +1291,9 @@ export default function Mietuebersicht({
   reportYear,
   reportObjectId,
   onAnnualReportChange,
+  onAnnualReportStatusChange,
 }: MietuebersichtProps = {}) {
+  const [reportSourceErrors, setReportSourceErrors] = useState<Record<string, string>>({});
   const location = useLocation();
   const annualOverviewMode = embeddedAnnualReport || location.pathname.includes("jahresuebersicht");
   // Ab dem 25. gebuchte Mieten zählen fachlich zum Folgemonat.
@@ -1350,6 +1353,7 @@ export default function Mietuebersicht({
     let cancelled = false;
 
     async function loadPortfolioRentals() {
+      setReportSourceErrors(old => ({ ...old, rentals: "" }));
       setPortfolioRentalsLoading(true);
       try {
         const [propertiesRes, rentalsRes] = await Promise.all([
@@ -1377,6 +1381,7 @@ export default function Mietuebersicht({
         })));
       } catch (error) {
         if (cancelled) return;
+        setReportSourceErrors(old => ({ ...old, rentals: "Vermietungszeiträume konnten nicht geladen werden." }));
         console.warn("Vermietungszeiträume konnten nicht geladen werden:", error);
         setPortfolioProperties([]);
         setPortfolioRentals([]);
@@ -1401,6 +1406,7 @@ export default function Mietuebersicht({
     let cancelled = false;
 
     async function loadVacancies() {
+      setReportSourceErrors(old => ({ ...old, vacancies: "" }));
       setVacanciesLoading(true);
       try {
         const propertyIds = sourceObjects.map((object) => object.id);
@@ -1414,6 +1420,7 @@ export default function Mietuebersicht({
         setVacancies(monthRows);
       } catch (error) {
         if (cancelled) return;
+        setReportSourceErrors(old => ({ ...old, vacancies: "Leerstände konnten nicht geladen werden." }));
         console.warn("Leerstände konnten nicht geladen werden:", error);
         setVacancies([]);
       } finally {
@@ -1438,6 +1445,7 @@ export default function Mietuebersicht({
     let cancelled = false;
 
     async function loadTenantContracts() {
+      setReportSourceErrors(old => ({ ...old, contracts: "" }));
       setTenantContractsLoading(true);
       try {
         const { data, error } = await supabase
@@ -1475,6 +1483,7 @@ export default function Mietuebersicht({
         setStatus((prev) => ({ ...prev, __global: "Mieterdaten aus tenant_profiles/tenant_contracts geladen." }));
       } catch (error) {
         if (cancelled) return;
+        setReportSourceErrors(old => ({ ...old, contracts: "Mietverträge konnten nicht geladen werden." }));
         setTenantInfo({});
         setTenantContracts({});
         setTenantContractRows([]);
@@ -1498,6 +1507,7 @@ export default function Mietuebersicht({
     let cancelled = false;
 
     async function loadRentAdjustments() {
+      setReportSourceErrors(old => ({ ...old, adjustments: "" }));
       setRentAdjustmentsLoading(true);
       try {
         const { data, error } = await supabase
@@ -1510,6 +1520,7 @@ export default function Mietuebersicht({
         setRentAdjustments((data ?? []) as unknown as RentAdjustmentRow[]);
       } catch (error) {
         if (cancelled) return;
+        setReportSourceErrors(old => ({ ...old, adjustments: "Mietanpassungen konnten nicht geladen werden." }));
         console.warn("Mietanpassungen konnten nicht geladen werden:", error);
         setRentAdjustments([]);
       } finally {
@@ -1533,6 +1544,11 @@ export default function Mietuebersicht({
     || vacanciesLoading
     || tenantContractsLoading
     || rentAdjustmentsLoading;
+
+  const reportSourceError = Object.values(reportSourceErrors).filter(Boolean).join(" ");
+  useEffect(() => {
+    onAnnualReportStatusChange?.({ loading: reportDataLoading, error: reportSourceError });
+  }, [onAnnualReportStatusChange, reportDataLoading, reportSourceError]);
 
   const rows = useMemo<OverviewRow[]>(
     () =>
@@ -1781,7 +1797,7 @@ export default function Mietuebersicht({
   }), [annualRows]);
 
   useEffect(() => {
-    if (!onAnnualReportChange || reportDataLoading) return;
+    if (!onAnnualReportChange || reportDataLoading || reportSourceError) return;
     onAnnualReportChange({
       year: selectedPeriod.year,
       objectFilter,
@@ -1795,7 +1811,7 @@ export default function Mietuebersicht({
       }), { paid: 0, expected: 0, open: 0, overpaid: 0 }),
       kpis: annualKpis,
     });
-  }, [annualKpis, annualPropertyTotals, annualReportRows, objectFilter, onAnnualReportChange, reportDataLoading, selectedPeriod.year]);
+  }, [annualKpis, annualPropertyTotals, annualReportRows, objectFilter, onAnnualReportChange, reportDataLoading, reportSourceError, selectedPeriod.year]);
 
   const resetToRecommendedMonth = () => setSelectedPeriod(recommendedYearMonth());
   const shiftSelectedMonth = (offset: number) => setSelectedPeriod((value) => addMonthsToYearMonth(value.year, value.month, offset));

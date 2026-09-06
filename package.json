@@ -21,7 +21,8 @@
     "stress:loan-rate-plans": "node scripts/stress-loan-rate-plans.mjs",
     "stress:branding": "node scripts/stress-branding.mjs",
     "verify": "node scripts/verify-project.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:report-center": "node scripts/test-report-center.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

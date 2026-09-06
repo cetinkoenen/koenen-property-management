@@ -30,7 +30,7 @@ assert.match(rentOverview, /portfolioRentalsLoading/, "Mietkonto-Exporte müssen
 assert.match(rentOverview, /vacanciesLoading/, "Mietkonto-Exporte müssen den Ladezustand der Leerstände kennen");
 assert.match(rentOverview, /tenantContractsLoading/, "Mietkonto-Exporte müssen den Ladezustand der Sollmieten kennen");
 assert.match(rentOverview, /rentAdjustmentsLoading/, "Mietkonto-Exporte müssen den Ladezustand der Mietanpassungen kennen");
-assert.match(rentOverview, /if \(!onAnnualReportChange \|\| reportDataLoading\) return;/, "Ein noch unvollständiger Jahresreport darf nicht als exportbereit gemeldet werden");
+assert.match(rentOverview, /if \(!onAnnualReportChange \|\| reportDataLoading \|\| reportSourceError\) return;/, "Ein noch unvollständiger Jahresreport darf nicht als exportbereit gemeldet werden");
 assert.match(rentOverview, /disabled=\{reportDataLoading\}/, "PDF-Export muss bis zum Laden aller Reportquellen deaktiviert sein");
 assert.match(rentOverview, /Buchungen, Mietverträge, Mietanpassungen und Leerstände werden geladen/, "Die Oberfläche muss den gemeinsamen Ladezustand verständlich anzeigen");
 assert.match(rentOverview, /if \(adjustmentLabel\) \{[\s\S]{0,500}?enoughAddressOverlap\(adjustmentLabel, objectLabel\)/, "Mieteingang muss bei Mietanpassungen die konkrete Objektbezeichnung vor historischen Alias-IDs priorisieren");

@@ -183,6 +183,8 @@ const NebenkostenTiefgarage = lazy(() => import("./pages/NebenkostenTiefgarage")
 const NebenkostenWohnungen = lazy(() => import("./pages/NebenkostenWohnungen"));
 const Administrator = lazy(() => import("./pages/Administrator"));
 const Datenschutz = lazy(() => import("./pages/Datenschutz"));
+const ReportsHome = lazy(() => import("./pages/ReportsHome"));
+const ReportCenter = lazy(() => import("./pages/ReportCenter"));
 const Mietuebersicht = lazy(() => import("./pages/Mietuebersicht"));
 const Mietentwicklung = lazy(() => import("./pages/Mietentwicklung"));
 const MieterAnlegen = lazy(() => import("./pages/MieterAnlegen"));
@@ -235,7 +237,10 @@ const routePreloaders: Record<string, () => Promise<unknown>> = {
   "/buchhaltung/buchungen": async () => undefined,
   "/buchhaltung/steuer-center-berater": () => import("./pages/SteuerCenter"),
   "/buchhaltung/fahrtenbuch": () => import("./pages/Fahrtenbuch"),
-  "/buchhaltung/berichte-exporte": async () => undefined,
+  "/berichte": () => import("./pages/ReportsHome"),
+  "/berichte/steuerberater": () => import("./pages/ReportCenter"),
+  "/berichte/portfolio": () => import("./pages/ReportCenter"),
+  "/buchhaltung/berichte-exporte": () => import("./pages/ReportsHome"),
   "/darlehen": () => import("./pages/Darlehensuebersicht"),
   "/nebenkosten": () => import("./pages/NebenkostenWohnungen"),
   "/nebenkosten/wohnungen": () => import("./pages/NebenkostenWohnungen"),
@@ -395,7 +400,7 @@ const buchhaltungSubpages: WorkspaceSubpage[] = [
   { path: "/mieter/mieteingang", label: "Mieteingang", icon: CalendarCheck },
   { path: "/buchhaltung/steuer-center-berater", label: "Steuer-Center", icon: Euro },
   { path: "/buchhaltung/fahrtenbuch", label: "Fahrtenbuch", icon: Car },
-  { path: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", icon: BarChart3 },
+  { path: "/berichte", label: "Berichte & Reports", icon: BarChart3 },
 ];
 
 const immobilienSubpages: WorkspaceSubpage[] = [
@@ -5015,7 +5020,7 @@ function AppShell() {
       { to: "/ein-auszug", label: "Ein-/Auszug", group: "Mieterregister", icon: KeyRound },
       { to: "/leerstand", label: "Leerstand", group: "Mieterregister", icon: DoorOpen },
       { to: "/buchhaltung/fahrtenbuch", label: "Fahrtenbuch", group: "Steuer", icon: Car },
-      { to: "/buchhaltung/berichte-exporte", label: "Berichte & Exporte", group: "Steuer", icon: BarChart3 },
+      { to: "/berichte", label: "Berichte & Reports", group: "Steuer", icon: BarChart3 },
       { to: "/darlehen", label: "Übersicht", group: "Darlehen", icon: Landmark },
       { to: "/investment-bericht", label: "Investment-Bericht", group: "Investment", icon: BookOpenCheck },
       { to: "/immobilien/immobilie-anlegen", label: "Immobilie anlegen", group: "Immobilien", icon: PlusCircle },
@@ -5104,6 +5109,15 @@ function AppShell() {
                           </>
                         )}
                       </NavLink>
+                      {item.to === "/berichte" ? (
+                        <div className="ml-8 mt-1 grid gap-1 border-l border-white/10 pl-3" aria-label="Berichte Unterseiten">
+                          {[["steuerberater", "Steuerberater-Report"], ["portfolio", "Immobilien- & Portfolio-Analysen"]].map(([path, label]) => (
+                            <NavLink key={path} to={`/berichte/${path}`} className={({ isActive }) => `rounded-xl px-3 py-2 text-xs font-extrabold no-underline transition ${isActive ? "bg-white/10 text-white" : "text-slate-400 hover:bg-white/10 hover:text-white"}`}>
+                              {label}
+                            </NavLink>
+                          ))}
+                        </div>
+                      ) : null}
                       {item.to === "/auswertungen" && location.pathname === "/auswertungen" ? (
                         <div className="ml-8 mt-1 grid gap-1 border-l border-white/10 pl-3">
                           {auswertungSubNav.map((subItem) => {
@@ -5233,6 +5247,15 @@ function AppShell() {
                               <Icon size={16} />
                               <span>{item.label}</span>
                             </NavLink>
+                            {item.to === "/berichte" ? (
+                              <div className="mt-2 grid gap-2 pl-3" aria-label="Berichte Unterseiten">
+                                {[["steuerberater", "Steuerberater-Report"], ["portfolio", "Immobilien- & Portfolio-Analysen"]].map(([path, label]) => (
+                                  <NavLink key={path} to={`/berichte/${path}`} onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => `rounded-xl px-3 py-2 text-xs font-bold ${isActive ? "bg-indigo-50 text-indigo-800" : "text-slate-600"}`}>
+                                    {label}
+                                  </NavLink>
+                                ))}
+                              </div>
+                            ) : null}
                             {item.to === "/auswertungen" && location.pathname === "/auswertungen" ? (
                               <div className="mt-2 grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2">
                                 {auswertungSubNav.map((subItem) => {
@@ -5404,7 +5427,7 @@ export default function App() {
           element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungFahrtenbuch}><Fahrtenbuch /></ModuleWorkspacePage>}
         />
         <Route
-          path="/buchhaltung/berichte-exporte"
+          path="/buchhaltung/berichte-exporte/archiv"
           element={<ModuleWorkspacePage config={workspaceConfigs.buchhaltungBerichte}><ReportsExportsPage /></ModuleWorkspacePage>}
         />
         <Route
@@ -5439,7 +5462,10 @@ export default function App() {
         <Route path="/steuer/fahrtenbuch" element={<Navigate to="/buchhaltung/fahrtenbuch" replace />} />
         <Route path="/steuer" element={<Navigate to="/buchhaltung/steuer-center-berater" replace />} />
         <Route path="/auswertungen" element={<Auswertung />} />
-        <Route path="/berichte" element={<Auswertung />} />
+        <Route path="/berichte" element={<ReportsHome />} />
+        <Route path="/berichte/steuerberater" element={<ReportCenter />} />
+        <Route path="/berichte/portfolio" element={<ReportCenter portfolio />} />
+        <Route path="/buchhaltung/berichte-exporte" element={<Navigate to="/berichte" replace />} />
         <Route path="/funktionsvergleich" element={<Funktionsvergleich />} />
         <Route path="/investment-bericht" element={<InvestmentBericht />} />
         <Route path="/investment" element={<Navigate to="/investment-bericht" replace />} />
