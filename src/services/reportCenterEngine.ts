@@ -25,6 +25,7 @@ export const reportNames = [
   ['cashflow', 'Vermögen Cashflow Report'],
 ] as const;
 export const euro = (v: unknown) => v == null || v === '' ? 'Nicht gepflegt' : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(parseLocaleNumber(v, 0));
+const percent = (v: number, digits = 1) => `${new Intl.NumberFormat('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v)} %`;
 const n = (v: unknown) => parseLocaleNumber(v, 0);
 const record = (v: unknown): ReportRecord => v && typeof v === 'object' && !Array.isArray(v) ? v as ReportRecord : {};
 const records = (v: unknown): ReportRecord[] => Array.isArray(v) ? v.map(record) : [];
@@ -126,7 +127,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   }
   eurRows.push(amountRow('Summe Ausgaben',deductible),amountRow('Ergebnis (Überschuss)',revenue-deductible));
   const cover = module('cover', [table('Kennzahlen', ['Kennzahl','Summe'], [
-    ['Alle Geldbewegungen: Einnahmen',euro(total(incomes))],['Alle Geldbewegungen: Ausgaben',euro(total(expenses))],['Alle Geldbewegungen: Saldo',euro(total(incomes)-total(expenses))],['Steuerlich vorbereitete Einnahmen (EÜR)',euro(revenue)],['Steuerlich vorbereitete Ausgaben (EÜR)',euro(deductible)],['Steuerlich vorbereitetes Ergebnis (EÜR)',euro(revenue-deductible)],['Soll-Mieten', rent ? euro(expected) : 'Wird geladen'],['Ist-Mieten',rent ? euro(paid) : 'Wird geladen'],['Zahlungsquote', expected ? `${(paid/expected*100).toFixed(2)} %` : '—'],['Einheiten mit Soll-Miete / Mietkonto-Zeilen', rent ? `${rented}/${reportingUnits.length}` : 'Wird geladen'],
+    ['Alle Geldbewegungen: Einnahmen',euro(total(incomes))],['Alle Geldbewegungen: Ausgaben',euro(total(expenses))],['Alle Geldbewegungen: Saldo',euro(total(incomes)-total(expenses))],['Steuerlich vorbereitete Einnahmen (EÜR)',euro(revenue)],['Steuerlich vorbereitete Ausgaben (EÜR)',euro(deductible)],['Steuerlich vorbereitetes Ergebnis (EÜR)',euro(revenue-deductible)],['Soll-Mieten', rent ? euro(expected) : 'Wird geladen'],['Ist-Mieten',rent ? euro(paid) : 'Wird geladen'],['Zahlungsquote', expected ? percent(paid/expected*100, 2) : '—'],['Einheiten mit Soll-Miete / Mietkonto-Zeilen', rent ? `${rented}/${reportingUnits.length}` : 'Wird geladen'],
   ])], [rentNote, 'Alle Geldbewegungen stimmen mit dem Buchungsjournal überein. Die EÜR schließt Kautionen, Tilgung, Anschaffungskosten, als nicht steuerrelevant markierte Buchungen und die eigengenutzte Hohenloher Str. 78 aus.']);
   const eur = module('eur',[table('Einnahmen und Ausgaben',['Kategorie','Netto','Steuer','Brutto'],eurRows),table('Separat abzugrenzende Geldbewegungen',['Datum','Kategorie','Brutto'],excluded.map(e => [e.booking_date,e.category,euro(e.amount)]))],['Buchungen haben keine separaten Netto-/Steuerfelder. Unaufgeteilte Miete wird nicht als Kaltmiete ausgegeben. Nicht klassifizierte Kosten sind im Ergebnis enthalten und gesondert zu prüfen. AfA ist in diesem zahlungsbasierten Ergebnis nicht enthalten.']);
   const contractRows = contracts.filter(c => overlaps(c,from,to)).map(c => {
@@ -153,7 +154,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     const usefulArea = profiles(o).usableArea ?? profiles(o).commercialArea;
     const cold = cs.reduce((v,c) => v+n(currentRent(c,'cold_rent')),0);
     const occupied = rus.filter(({row}) => row.months.some(m => m.month >= firstMonth && m.month <= lastMonth && m.expected > 0)).length;
-    return [o.label,rus.length,residential,commercial,parking,0,/rosenstein/i.test(o.label)?'0':str(area),usefulArea == null ? 'Nicht erforderlich / nicht gepflegt' : str(usefulArea),euro(cold),euro(cs.reduce((v,c)=>v+n(currentRent(c,'operating_costs')),0)),euro(cs.reduce((v,c)=>v+n(currentRent(c,'total_rent')),0)),n(area)>0?euro(cold/n(area)):'—',rus.length?`${(occupied/rus.length*100).toFixed(1)} %`:'—'];
+    return [o.label,rus.length,residential,commercial,parking,0,/rosenstein/i.test(o.label)?'0':str(area),usefulArea == null ? 'Nicht erforderlich / nicht gepflegt' : str(usefulArea),euro(cold),euro(cs.reduce((v,c)=>v+n(currentRent(c,'operating_costs')),0)),euro(cs.reduce((v,c)=>v+n(currentRent(c,'total_rent')),0)),n(area)>0?euro(cold/n(area)):'—',rus.length?percent(occupied/rus.length*100):'—'];
   });
   const portfolioStats = table('Gesamtbestand · aktueller Stand', ['Kennzahl', 'Wert'], [
     ['Mietkonto-Zeilen gesamt', reportingUnits.length],
@@ -164,7 +165,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     ['Wohnfläche gesamt m²', objects.filter(o => !/rosenstein/i.test(o.label)).every(o => o.livingAreaM2 != null || profiles(o).livingArea || profiles(o).totalArea) ? objects.reduce((v,o) => v+n(o.livingAreaM2 ?? profiles(o).livingArea ?? profiles(o).totalArea),0) : 'Nicht vollständig gepflegt'],
     ['Nutzfläche gesamt m²', objects.some(o => profiles(o).usableArea != null || profiles(o).commercialArea != null) ? objects.reduce((v,o) => v+n(profiles(o).usableArea ?? profiles(o).commercialArea),0) : 'Nicht erforderlich / nicht gepflegt'],
     ...['cold_rent','operating_costs','total_rent'].map((key,i) => [ ['Kaltmiete monatlich','Nebenkosten monatlich','Gesamtmiete monatlich'][i],active.every(c => currentRent(c,key) != null) ? euro(active.reduce((v,c) => v+n(currentRent(c,key)),0)) : 'Nicht vollständig gepflegt']),
-    ['Vermietungsquote im Zeitraum', reportingUnits.length ? `${(rented/reportingUnits.length*100).toFixed(1)} %` : '—'],
+    ['Vermietungsquote im Zeitraum', reportingUnits.length ? percent(rented/reportingUnits.length*100) : '—'],
   ]);
   const areaStatus = objects.map(o => { const area=o.livingAreaM2 ?? profiles(o).livingArea ?? profiles(o).totalArea; const parkingOnly=/rosenstein/i.test(o.label); return [o.label,parkingOnly?'0 m² Wohnfläche (3 Stellplätze)':str(area),parkingOnly?'Nicht anwendbar':area?'Vollständig':'Fehlt',parkingOnly?'Mietkonto/Objektart':'Immobilienvermögen · property_extra_info']; });
   const unitDetails = reportingUnits.map(({object,row}) => { const parking=isParkingText(row.unitLabel); const area=parking?0:areaForObject(object); const activeInPeriod=row.months.some(m=>m.month>=firstMonth&&m.month<=lastMonth&&m.expected>0); return [row.objectLabel,row.unitLabel,parking?'Stellplatz / Garage':'Wohnung',parking?'0 (nicht anwendbar)':str(area),activeInPeriod?'Vermietet im Zeitraum':'Ohne Soll-Miete im Zeitraum',row.tenantName||'—']; });
