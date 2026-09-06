@@ -78,7 +78,7 @@ function tableHtml(table: PdfReportTable) {
           ${
             table.rows.length
               ? table.rows
-                  .map((row) => `<tr>${row.map((cell) => `<td class="${String(cell).endsWith("· bezahlt") ? "payment-paid" : String(cell).endsWith("· offen") ? "payment-open" : ""}">${escapeHtml(cell ?? "")}</td>`).join("")}</tr>`)
+                  .map((row) => `<tr>${row.map((cell) => { const value=String(cell); const cls=value.endsWith("· bezahlt")||value.startsWith("Guthaben ·")?"payment-paid":value.endsWith("· offen")||value.startsWith("Nachzahlung ·")?"payment-open":""; return `<td class="${cls}">${escapeHtml(cell ?? "")}</td>`; }).join("")}</tr>`)
                   .join("")
               : `<tr><td colspan="${table.headers.length}">Keine Daten vorhanden.</td></tr>`
           }

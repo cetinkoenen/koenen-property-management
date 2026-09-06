@@ -33,7 +33,8 @@ async function loadSources():Promise<ReportSources>{
   return Object.fromEntries(results.flatMap(r=>r.status==='fulfilled'?[r.value]:[]));
 }
 function Preview({module}:{module:ReportModule}){
-  return <section className="report-preview" aria-label={module.title}><h2>{module.title}</h2>{module.paragraphs?.map(p=><p key={p} className="report-note">{p}</p>)}{module.tables?.map((t,i)=><div key={i}><h3>{t.title}</h3><div className="report-table-scroll" tabIndex={0} role="region" aria-label={t.title}><table><thead><tr>{t.headers.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{t.rows.length?t.rows.map((row,ri)=><tr key={ri}>{row.map((v,ci)=><td key={ci} className={String(v).endsWith('· bezahlt')?'report-paid':String(v).endsWith('· offen')?'report-open':''}>{String(v??'—')}</td>)}</tr>):<tr><td colSpan={t.headers.length}>Keine gespeicherten Daten für diese Auswahl.</td></tr>}</tbody></table></div></div>)}</section>;
+  const cellClass=(value:unknown)=>{const cell=String(value);return cell.endsWith('· bezahlt')||cell.startsWith('Guthaben ·')?'report-paid':cell.endsWith('· offen')||cell.startsWith('Nachzahlung ·')?'report-open':'';};
+  return <section className="report-preview" aria-label={module.title}><h2>{module.title}</h2>{module.paragraphs?.map(p=><p key={p} className="report-note">{p}</p>)}{module.tables?.map((t,i)=><div key={i}><h3>{t.title}</h3><div className="report-table-scroll" tabIndex={0} role="region" aria-label={t.title}><table><thead><tr>{t.headers.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{t.rows.length?t.rows.map((row,ri)=><tr key={ri}>{row.map((v,ci)=><td key={ci} className={cellClass(v)}>{String(v??'—')}</td>)}</tr>):<tr><td colSpan={t.headers.length}>Keine gespeicherten Daten für diese Auswahl.</td></tr>}</tbody></table></div></div>)}</section>;
 }
 export default function ReportCenter({portfolio=false}:{portfolio?:boolean}){
   const app=useAppData();const year=new Date().getFullYear();

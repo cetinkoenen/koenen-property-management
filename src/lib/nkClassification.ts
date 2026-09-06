@@ -31,6 +31,9 @@ const NK_EXPENSE_WORDS = [
   "winterdienst",
   "muell",
   "müll",
+  "abfall",
+  "abfallgebuehr",
+  "abfallgebühr",
   "reinigung",
   "gebaeudereinigung",
   "gebäudereinigung",
@@ -122,6 +125,8 @@ export function inferNkRelevant(entry: NkClassificationInput): boolean {
 
 export function classifyNkRelevance(entry: NkClassificationInput): NkClassificationResult {
   const text = normalizeNkText(`${entry.category ?? ""} ${entry.note ?? ""} ${entry.objectLabel ?? ""}`);
+  const category = normalizeNkText(entry.category);
+  const note = normalizeNkText(entry.note);
   if (!text) {
     return {
       nkRelevant: false,
@@ -142,6 +147,15 @@ export function classifyNkRelevance(entry: NkClassificationInput): NkClassificat
       nkRelevant: false,
       reason:
         "Diese Buchung wirkt nicht umlagefaehig fuer die Nebenkostenabrechnung (z. B. Verwaltung, Reparatur, Ruecklage oder Finanzierung).",
+    };
+  }
+
+  // Ältere Bankimporte bezeichnen Grundsteuer-Abschläge nur als "Steuer". Nur das
+  // eindeutige Quartals-/Jahresvorauszahlungs-Muster mit Steuernummer wird umgedeutet.
+  if (entry.entry_type === "expense" && category === "steuer" && /\b[1-4]\s*(jv|vj)\s*20\d{2}\s*steuer\s*\d/.test(note)) {
+    return {
+      nkRelevant: true,
+      reason: "Objektbezogener Grundsteuer-Abschlag (Quartal/Jahresvorauszahlung mit Steuernummer) erkannt; als umlagefähige Betriebskosten berücksichtigt.",
     };
   }
 

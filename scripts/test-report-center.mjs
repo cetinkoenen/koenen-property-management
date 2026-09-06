@@ -33,6 +33,36 @@ const other=buildReportCenter({...input,objectId:'core-2'});assert.equal(other.f
 const ownerOccupiedEntry={...entry('9','Miete',1960,'income'),object_id:'owner-core'};
 const ownerOccupied=buildReportCenter({...input,objects:[...objects,{id:'owner-core',label:'Hohenloher Str. 78',code:'H'}],entries:[...entries,ownerOccupiedEntry]});
 assert.equal(ownerOccupied.find(m=>m.id==='eur').tables[0].rows.find(r=>r[0]==='Summe Einnahmen')[3],'1.000,00 €','Eigennutzung darf nicht in die EÜR fließen');
+
+// Colmarer 2025: Mieterwechsel, Mietaufteilung, Kautionsrückgabe und NK-Abrechnung.
+const colmarerObjects=[{id:'colmarer-core',code:'COL',label:'Colmarer Str. 45',livingAreaM2:36,aliases:['colmarer-billing']}];
+const colmarerBillings=[
+  {meta:{billingYear:2025,propertyCode:'colmarer-billing',propertyLabel:'Colmarer Str. 45',periodFrom:'2025-01-01',periodTo:'2025-07-31'},apartments:[{label:'Wohnung 1',tenantName:'Cansu Kurt',area:36,occupancyMonths:7,advancePayments:770,active:true}],costs:[{label:'Abfall',amount:700,allocation:'directAmount',directAmount:700}]},
+  {meta:{billingYear:2025,propertyCode:'colmarer-billing',propertyLabel:'Colmarer Str. 45',periodFrom:'2025-08-01',periodTo:'2025-12-31'},apartments:[{label:'Wohnung 2',tenantName:'Nicholas Kraeft-Wendte',area:36,occupancyMonths:5,advancePayments:600,active:true}],costs:[{label:'Abfall',amount:650,allocation:'directAmount',directAmount:650}]},
+];
+const colmarerSources={portfolio_properties:[{id:'colmarer-billing',core_property_id:'colmarer-core'}],tenant_profiles:[{id:'nicholas',first_name:'Nicholas',last_name:'Kraeft-Wendte'}],tenant_contracts:[{id:'new-contract',tenant_id:'nicholas',property_id:'colmarer-core',unit_label:'Wohnung 2',start_date:'2025-08-01',end_date:null,status:'active',cold_rent:550,operating_costs:120,total_rent:670}],rent_adjustments:[{property_id:'colmarer-core',tenant_name:'Mieterdaten aus Vermietungszeitraum',effective_date:'2025-01-01',effective_end_date:'2025-07-31',old_cold_rent:475,new_cold_rent:485,old_operating_costs:110,new_operating_costs:110,new_total_rent:595}],billing_workspaces:[{object_id:'colmarer-billing',year:'2025',data:{billings:colmarerBillings.map((workspace,index)=>({id:`billing-${index}`,workspace}))}}]};
+const colmarerEntries=[
+  ...Array.from({length:7},(_,i)=>({id:`old-rent-${i}`,object_id:'colmarer-core',booking_date:`2025-${String(i+1).padStart(2,'0')}-03`,entry_type:'income',category:'Miete',amount:595,note:'Monatsmiete'})),
+  ...Array.from({length:5},(_,i)=>({id:`new-rent-${i}`,object_id:'colmarer-core',booking_date:`2025-${String(i+8).padStart(2,'0')}-03`,entry_type:'income',category:'Miete',amount:670,note:'Monatsmiete'})),
+  {id:'backpay',object_id:'colmarer-core',booking_date:'2025-06-12',entry_type:'income',category:'Miete',amount:192.09,note:'Colmarer Str. 45 Nachzahlung'},
+  {id:'deposit-in',object_id:'colmarer-core',booking_date:'2025-07-31',entry_type:'income',category:'Kaution',amount:1650,note:'Mietsicherheit Nicholas Kraeft-Wendte'},
+  {id:'deposit-out',object_id:'colmarer-core',booking_date:'2025-08-04',entry_type:'expense',category:'Kaution',amount:940,note:'Rückgabe Kaution Guthaben'},
+  {id:'tax',object_id:'colmarer-core',booking_date:'2025-02-15',entry_type:'expense',category:'Steuer',amount:321.60,note:'1 JV 2025 Steuer 057/123/45678',nk_relevant:false},
+  {id:'waste',object_id:'colmarer-core',booking_date:'2025-04-01',entry_type:'expense',category:'Abfallgebühr',amount:14.76,note:'Abfall 2025',nk_relevant:false},
+];
+const colmarerRent={year:2025,objectFilter:'colmarer-core',rows:[{key:'col',objectId:'colmarer-core',objectLabel:'Colmarer Str. 45',unitLabel:'Wohnung',tenantName:'Nicholas Kraeft-Wendte',months:Array.from({length:12},(_,i)=>({month:i+1,expected:i<7?595:670,paid:i<7?595:670,open:0,status:'paid'}))}],totals:{},propertyTotals:[],kpis:{}};
+const colmarer=buildReportCenter({objects:colmarerObjects,entries:colmarerEntries,loans:[],sources:colmarerSources,rent:colmarerRent,from:'2025-01-01',to:'2025-12-31',objectId:'colmarer-core',today:'2026-09-06'});
+const colModule=id=>colmarer.find(m=>m.id===id);
+const colEur=label=>colModule('eur').tables[0].rows.find(r=>r[0]===label)?.[3];
+assert.equal(colEur('Kaltmiete'),'6.145,00 €');
+assert.equal(colEur('Nebenkostenzahlungen'),'1.370,00 €');
+assert.equal(colEur('Mietnachzahlung – Aufteilung Kalt/NK nicht belegt'),'192,09 €');
+assert.equal(colModule('eur').tables[1].rows.find(r=>r[3]==='Kaution'&&r[5]==='940,00 €')?.[2],'Cansu Kurt');
+assert.equal(colModule('journal').tables[0].rows.find(r=>r[0]==='2025-01-03')?.[2],'Cansu Kurt');
+assert.equal(colModule('adjustments').tables[0].rows[0][1],'Cansu Kurt');
+assert.equal(colModule('utilities').tables[1].rows.reduce((sum,r)=>sum+Number(String(r[4]).replace(/[^0-9,]/g,'').replace(',','.')),0).toFixed(2),'336.36');
+assert.match(String(colModule('utilities').tables[2].rows[0][8]),/^Guthaben ·/);
+assert.match(String(colModule('utilities').tables[4].rows[0][8]),/^Nachzahlung ·/);
 const aliasReport=buildReportCenter({...input,sources:{...sources,portfolio_properties:[{id:'portfolio-shadow',core_property_id:'legacy-1',name:'Testobjekt Core Shadow'}],property_id_aliases:[{legacy_property_id:'legacy-1',object_id:'core-1'}],portfolio_units:[{id:'u-shadow',property_id:'portfolio-shadow',name:'Wohnung 1',unit_type:'apartment',is_active:true}]}});
 assert.equal(aliasReport.find(m=>m.id==='objects').tables[3].rows[0][0],'Testobjekt');
 assert.equal(aliasReport.find(m=>m.id==='objects').tables[3].rows[0][3],'50','Wohnfläche muss aus Immobilienvermögen übernommen werden');
