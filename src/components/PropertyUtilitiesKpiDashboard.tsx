@@ -68,15 +68,17 @@ export default function PropertyUtilitiesKpiDashboard({ propertyId, propertyLabe
       if (objectResult.error) throw objectResult.error;
 
       const labelKey = normalizeIdentity(propertyLabel);
-      const nextRecords = ((billingResult.data ?? []) as BillingRow[]).flatMap((row) => {
+      const matchingObject = ((objectResult.data ?? []) as ObjectOption[]).find((object) => {
+        return object.objekt_code === propertyId || (Boolean(labelKey) && normalizeIdentity(object.label) === labelKey);
+      });
+      const canonicalBillingObjectId = matchingObject?.objekt_code ?? propertyId;
+      const nextRecords = ((billingResult.data ?? []) as BillingRow[]).filter((row) => row.object_id === canonicalBillingObjectId).flatMap((row) => {
         const year = Number(row.year);
-        return extractBillingWorkspaceRecords(row.data, year).flatMap((record) => {
-          const meta = record.workspace.meta;
-          const matches = row.object_id === propertyId
-            || meta.propertyCode === propertyId
-            || (Boolean(labelKey) && normalizeIdentity(meta.propertyLabel) === labelKey);
-          return matches ? [{ ...record, sourceObjectId: row.object_id, year: Number(meta.billingYear || year) }] : [];
-        });
+        return extractBillingWorkspaceRecords(row.data, year).map((record) => ({
+          ...record,
+          sourceObjectId: row.object_id,
+          year: Number(record.workspace.meta.billingYear || year),
+        }));
       }).sort((a, b) => b.year - a.year || b.workspace.meta.periodFrom.localeCompare(a.workspace.meta.periodFrom));
 
       const nextDocuments = ((documentResult.data ?? []) as PropertyDocumentRow[]).filter((document) => {
@@ -85,12 +87,9 @@ export default function PropertyUtilitiesKpiDashboard({ propertyId, propertyLabe
           || document.objekt_code === propertyId
           || (Boolean(labelKey) && normalizeIdentity(document.property_name) === labelKey);
       });
-      const matchingObject = ((objectResult.data ?? []) as ObjectOption[]).find((object) => {
-        return object.objekt_code === propertyId || (Boolean(labelKey) && normalizeIdentity(object.label) === labelKey);
-      });
       setRecords(nextRecords);
       setDocuments(nextDocuments);
-      setBillingObjectId(nextRecords[0]?.sourceObjectId ?? matchingObject?.objekt_code ?? propertyId);
+      setBillingObjectId(canonicalBillingObjectId);
     } catch (loadError) {
       setRecords([]);
       setDocuments([]);
@@ -109,7 +108,7 @@ export default function PropertyUtilitiesKpiDashboard({ propertyId, propertyLabe
   const visibleRecords = useMemo(() => selectedYear === "all" ? records : records.filter((record) => record.year === Number(selectedYear)), [records, selectedYear]);
 
   function billingUrl(record?: KpiRecord, view?: "pdf") {
-    const params = new URLSearchParams({ object: record?.sourceObjectId || billingObjectId, year: String(record?.year ?? (selectedYear === "all" ? currentYear : selectedYear)) });
+    const params = new URLSearchParams({ object: billingObjectId, year: String(record?.year ?? (selectedYear === "all" ? currentYear : selectedYear)) });
     if (record) params.set("billing", record.id);
     if (view) params.set("view", view);
     return `/nebenkosten/wohnungen?${params.toString()}`;
