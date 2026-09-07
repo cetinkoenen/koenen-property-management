@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [app, investment, audit, resolver, rentOverview, cashflow, wealth, migration, vercelConfig] = await Promise.all([
+const [app, investment, audit, resolver, rentOverview, cashflow, loanOverview, wealth, migration, vercelConfig] = await Promise.all([
   read("src/App.tsx"),
   read("src/pages/InvestmentBericht.tsx"),
   read("src/services/auditLogService.ts"),
   read("src/services/property/resolvePropertyContext.ts"),
   read("src/pages/Mietuebersicht.tsx"),
   read("src/pages/WealthCashflowDashboard.tsx"),
+  read("src/pages/Darlehensuebersicht.tsx"),
   read("src/pages/ImmobilienVermoegen.tsx"),
   read("supabase/migrations/20260827163000_property_id_aliases.sql"),
   read("vercel.json"),
@@ -45,6 +46,9 @@ assert.doesNotMatch(wealth, /function isLilienthalerCard/, "Die Mieteingang-Ansi
 assert.match(wealth, /<CentralWealthCashflowDashboard[\s\S]{0,300}?lockedPropertyId=\{centralRentObjectId\(card, objects\)\}/, "Jede Immobilienakte muss das zentrale Vermögen-und-Cashflow-Dashboard wiederverwenden");
 assert.match(cashflow, /propertyLocked \? lockedObject\?\.id \?\? lockedPropertyId/, "Der Einzelobjekt-Cashflow muss dauerhaft auf das ausgewählte Objekt gesperrt sein");
 assert.match(cashflow, /object \? entryMatches\(e, object, getPropertyName\) : !propertyLocked/, "Eine noch nicht aufgelöste Objekt-ID darf niemals globale Buchungen im Einzelobjekt-Cashflow anzeigen");
+assert.match(wealth, /<CentralLoanOverview[\s\S]{0,300}?lockedPropertyId=\{centralRentObjectId\(card, objects\)\}/, "Jede Immobilienakte muss die zentrale Darlehensübersicht wiederverwenden");
+assert.match(loanOverview, /const propertyLocked = Boolean\(fixedPropertyId \|\| lockedPropertyLabel\)/, "Die zentrale Darlehensübersicht muss einen fest gebundenen Objektmodus unterstützen");
+assert.match(loanOverview, /if \(propertyLocked\) \{[\s\S]{0,500}?return rows\.filter/, "Eine Immobilienakte darf nur die Darlehensdaten ihres fest gewählten Objekts anzeigen");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
-console.log("31 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("34 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

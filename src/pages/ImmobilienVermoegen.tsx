@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useMemo, useState, type ChangeEvent } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useRef, useMemo, useState, type ChangeEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -48,6 +48,7 @@ import type { RentAnnualReportMonth, RentAnnualReportSnapshot } from "./Mietuebe
 
 const CentralRentOverview = lazy(() => import("./Mietuebersicht"));
 const CentralWealthCashflowDashboard = lazy(() => import("./WealthCashflowDashboard"));
+const CentralLoanOverview = lazy(() => import("./Darlehensuebersicht"));
 
 type WealthDraft = Record<string, string>;
 
@@ -1710,7 +1711,18 @@ function DetailPage({
             {DETAIL_TEMPLATE_SECTIONS.map((section) => {
               const Icon = section.icon;
               return (
-                <article key={section.id} id={section.id} className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
+                <Fragment key={section.id}>
+                {section.id === "darlehen" ? (
+                  <div id="darlehen" className="scroll-mt-6">
+                    <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Darlehensübersicht wird geladen…</div>}>
+                      <CentralLoanOverview
+                        lockedPropertyId={centralRentObjectId(card, objects)}
+                        lockedPropertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
+                      />
+                    </Suspense>
+                  </div>
+                ) : null}
+                <article id={section.id === "darlehen" ? "darlehen-eigenschaften" : section.id} className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
                   <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-start gap-3">
                       <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
@@ -1765,6 +1777,7 @@ function DetailPage({
                     ))}
                   </div>
                 </article>
+                </Fragment>
               );
             })}
           </div>

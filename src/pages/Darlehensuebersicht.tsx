@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useParams } from "react-router-dom";
 import EditableLoanLedgerTable from "@/components/EditableLoanLedgerTable";
 import { useIncome } from "@/features/property-detail/hooks/useIncome";
 import { calculateYearlyFinanceMetrics } from "@/services/financeService";
@@ -240,6 +241,17 @@ function cleanDisplayName(value: string | null | undefined, fallback = "Unbenann
     .replace(/\s{2,}/g, " ")
     .trim();
   return cleaned || fallback;
+}
+
+function normalizePropertyIdentity(value: string | null | undefined): string {
+  return cleanDisplayName(value, "")
+    .toLocaleLowerCase("de-DE")
+    .replaceAll("straße", "str")
+    .replaceAll("strasse", "str")
+    .replaceAll("ä", "a")
+    .replaceAll("ö", "o")
+    .replaceAll("ü", "u")
+    .replace(/[^a-z0-9äöü]+/g, "");
 }
 
 function formatCurrency(value: number) {
@@ -569,7 +581,15 @@ function PropertyLoanCard(props: {
   );
 }
 
-export default function Darlehensuebersicht() {
+type DarlehensuebersichtProps = {
+  lockedPropertyId?: string;
+  lockedPropertyLabel?: string;
+};
+
+export default function Darlehensuebersicht({ lockedPropertyId, lockedPropertyLabel }: DarlehensuebersichtProps = {}) {
+  const routeParams = useParams<{ propertyId?: string }>();
+  const fixedPropertyId = lockedPropertyId ?? routeParams.propertyId;
+  const propertyLocked = Boolean(fixedPropertyId || lockedPropertyLabel);
   const [rows, setRows] = useState<PropertyRowNormalized[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -642,10 +662,17 @@ export default function Darlehensuebersicht() {
   }
 
   const filteredRows = useMemo(() => {
+    if (propertyLocked) {
+      const normalizedLabel = normalizePropertyIdentity(lockedPropertyLabel);
+      return rows.filter((row) => {
+        if (fixedPropertyId && row.propertyId === fixedPropertyId) return true;
+        return Boolean(normalizedLabel) && normalizePropertyIdentity(row.propertyName) === normalizedLabel;
+      });
+    }
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return rows;
     return rows.filter((row) => row.propertyName.toLowerCase().includes(normalizedQuery));
-  }, [rows, query]);
+  }, [fixedPropertyId, lockedPropertyLabel, propertyLocked, query, rows]);
 
   const totals = useMemo(() => {
     return filteredRows.reduce(
@@ -662,7 +689,11 @@ export default function Darlehensuebersicht() {
   return (
     <div style={styles.page}>
       <section style={styles.hero}>
-        <h1 style={styles.title}>Darlehensübersicht für alle Immobilien</h1>
+        <h1 style={styles.title}>
+          {propertyLocked
+            ? `Darlehensübersicht · ${filteredRows[0]?.propertyName ?? lockedPropertyLabel ?? "Immobilie"}`
+            : "Darlehensübersicht für alle Immobilien"}
+        </h1>
         <p style={styles.text}>
           Diese Seite bündelt die jährliche Darlehensübersicht aus deinem Bestand. Jede Immobilie kann geöffnet werden, die Tabelle „Finance pro Jahr“ wird automatisch berechnet und darunter bleibt das Darlehens-Ledger direkt editierbar.
           Für die Steuer werden Zinsen berücksichtigt; Tilgung dient der Restschuld- und Cashflow-Dokumentation.
@@ -727,12 +758,21 @@ export default function Darlehensuebersicht() {
       </section>
 
       <div style={styles.controls}>
-        <input
-          style={styles.input}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Immobilie suchen…"
-        />
+        {propertyLocked ? (
+          <input
+            style={{ ...styles.input, background: "#f1f5f9", color: "#475569", fontWeight: 800 }}
+            value={filteredRows[0]?.propertyName ?? lockedPropertyLabel ?? "Ausgewählte Immobilie"}
+            aria-label="Fest ausgewählte Immobilie"
+            readOnly
+          />
+        ) : (
+          <input
+            style={styles.input}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Immobilie suchen…"
+          />
+        )}
         <button type="button" style={styles.primaryButton} onClick={() => void load()}>
           Übersicht neu laden
         </button>
@@ -741,7 +781,9 @@ export default function Darlehensuebersicht() {
       {loading ? <div style={styles.loadingBox}>Darlehensübersicht wird geladen…</div> : null}
       {!loading && error ? <div style={styles.errorBox}>{error}</div> : null}
       {!loading && !error && filteredRows.length === 0 ? (
-        <div style={styles.loadingBox}>Keine Immobilien für die aktuelle Suche gefunden.</div>
+        <div style={styles.loadingBox}>
+          {propertyLocked ? "Für diese Immobilie wurden keine Darlehensdaten gefunden." : "Keine Immobilien für die aktuelle Suche gefunden."}
+        </div>
       ) : null}
 
       {!loading && !error
