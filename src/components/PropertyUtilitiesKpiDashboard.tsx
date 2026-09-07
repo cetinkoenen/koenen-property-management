@@ -38,7 +38,7 @@ function formatDate(value: string) {
 function statusPresentation(value: string | undefined, locked: boolean | undefined) {
   const normalized = String(value || (locked ? "Freigegeben" : "Offen")).toLocaleLowerCase("de-DE");
   if (normalized.includes("korrigiert")) return { label: "Korrigiert", classes: "border-sky-200 bg-sky-50 text-sky-700", pdfEnabled: true };
-  if (normalized.includes("freigegeben")) return { label: "Freigegeben", classes: "border-emerald-200 bg-emerald-50 text-emerald-700", pdfEnabled: true };
+  if (locked || normalized.includes("freigegeben")) return { label: "Freigegeben", classes: "border-emerald-200 bg-emerald-50 text-emerald-700", pdfEnabled: true };
   if (normalized.includes("arbeit") || normalized.includes("prüfung") || normalized.includes("prufung")) return { label: value || "In Arbeit", classes: "border-amber-200 bg-amber-50 text-amber-700", pdfEnabled: false };
   return { label: "Offen", classes: "border-slate-200 bg-slate-100 text-slate-600", pdfEnabled: false };
 }
