@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useRef, useMemo, useState, type ChangeEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useMemo, useState, type ChangeEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Building2,
+  Check,
+  ChevronDown,
+  CircleAlert,
   Eye,
   Euro,
   FileText,
   Home,
+  Info,
   Landmark,
   MapPin,
   PlusCircle,
@@ -40,6 +44,9 @@ import {
 } from "@/services/vacancyService";
 import { listTenantProfilesWithContracts, type TenantContract, type TenantProfileWithContracts } from "@/services/tenantService";
 import type { MasterFinanceSnapshot } from "@/services/masterDataService";
+import type { RentAnnualReportMonth, RentAnnualReportSnapshot } from "./Mietuebersicht";
+
+const CentralRentOverview = lazy(() => import("./Mietuebersicht"));
 
 type WealthDraft = Record<string, string>;
 
@@ -593,6 +600,10 @@ function isRosensteinCard(card: WealthCard) {
   return normalize(`${card.draft.name} ${card.row?.property_name ?? ""}`).includes("rosenstein");
 }
 
+function isLilienthalerCard(card: WealthCard) {
+  return normalize(`${card.draft.name} ${card.row?.property_name ?? ""}`).includes("lilienthaler");
+}
+
 function vacancyMatchesWealthCard(vacancy: UnitVacancy, card: WealthCard): boolean {
   const row = card.row;
   const vacancyLabel = normalize([vacancy.property_id, vacancy.object_code, vacancy.object_label].filter(Boolean).join(" "));
@@ -647,6 +658,20 @@ function contractMatchesWealthCard(contract: TenantContract, card: WealthCard, o
   if ([contract.property_id, contract.object_code].some((value) => Boolean(value && identifiers.has(normalize(value))))) return true;
   const contractLabel = normalize(`${contract.object_code ?? ""} ${contract.unit_label ?? ""}`);
   return Boolean(contractLabel && cardLabel && contractLabel.includes("rosenstein") && cardLabel.includes("rosenstein"));
+}
+
+function centralRentObjectId(card: WealthCard, objects: AppObject[]): string {
+  const row = card.row;
+  const cardLabel = normalize(`${card.draft.name} ${row?.property_name ?? ""}`);
+  const match = objects.find((object) => {
+    const objectLabel = normalize(object.label);
+    return Boolean(
+      (row?.property_id && (object.id === row.property_id || object.aliases?.includes(row.property_id))) ||
+      (row?.portfolio_property_id && (object.id === row.portfolio_property_id || object.aliases?.includes(row.portfolio_property_id))) ||
+      (objectLabel && cardLabel && (objectLabel.includes(cardLabel) || cardLabel.includes(objectLabel))),
+    );
+  });
+  return match?.id ?? row?.property_id ?? card.id;
 }
 
 function contractMatchesParkingUnit(contract: TenantContract, unit: ParkingUnit): boolean {
@@ -1198,6 +1223,7 @@ function RentDataField({
 function StandardRentInfoPanel({
   extra,
   propertyId,
+  title = "Mieteingang",
   isAdmin,
   extraDirty,
   extraStatus,
@@ -1206,6 +1232,7 @@ function StandardRentInfoPanel({
 }: {
   extra: PropertyExtraInfo;
   propertyId: string;
+  title?: string;
   isAdmin: boolean;
   extraDirty?: boolean;
   extraStatus?: string;
@@ -1222,7 +1249,7 @@ function StandardRentInfoPanel({
     <article className="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 px-5 py-4">
         <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Mietdaten</p>
-        <h2 className="text-xl font-black text-slate-950">Mieteingang</h2>
+        <h2 className="text-xl font-black text-slate-950">{title}</h2>
         <p className="mt-1 text-sm font-bold leading-6 text-slate-500">Mieterinformationen und Mietkosten sind getrennt gepflegt.</p>
       </div>
 
@@ -1359,11 +1386,211 @@ function RosensteinRentInfoPanel({ entries, year, parkingUnits }: { entries: Fin
   );
 }
 
+type RentPilotTone = "green" | "yellow" | "red" | "vacant" | "neutral";
+
+function rentPilotTone(month: RentAnnualReportMonth): RentPilotTone {
+  if (month.kpi === "1.-5. Tag") return "green";
+  if (month.kpi === "6.-10. Tag" || month.kpi === "11.-20. Tag" || month.kpi === "Teilweise") return "yellow";
+  if (month.kpi === "ab 21. Tag" || month.kpi === "Fehlt") return "red";
+  if (month.kpi === "Leerstand") return "vacant";
+  return "neutral";
+}
+
+function rentPilotToneClasses(tone: RentPilotTone) {
+  return {
+    green: "border-emerald-300 bg-emerald-50 text-emerald-800",
+    yellow: "border-amber-300 bg-amber-50 text-amber-900",
+    red: "border-rose-400 bg-rose-600 text-white",
+    vacant: "border-slate-500 bg-white text-slate-950",
+    neutral: "border-slate-200 bg-slate-50 text-slate-500",
+  }[tone];
+}
+
+function RentPilotStatusIcon({ month }: { month: RentAnnualReportMonth }) {
+  const tone = rentPilotTone(month);
+  if (tone === "green") return <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-600 text-white"><Check size={22} strokeWidth={3} /></span>;
+  if (tone === "yellow") return <CircleAlert size={36} strokeWidth={2.4} className="text-slate-950" />;
+  if (tone === "red") return <CircleAlert size={36} strokeWidth={2.4} className="text-white" />;
+  if (tone === "vacant") return <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border-2 border-slate-900 bg-white text-slate-950"><Info size={21} strokeWidth={2.5} /></span>;
+  return <span className="text-2xl font-black text-slate-400">—</span>;
+}
+
+function formatRentPilotDate(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("de-DE");
+}
+
+function LilienthalerRentPilot({ rentObjectId }: { rentObjectId: string }) {
+  const thisYear = currentYear();
+  const years = useMemo(() => Array.from({ length: Math.max(1, thisYear - 2024 + 1) }, (_, index) => thisYear - index), [thisYear]);
+  const [selectedYear, setSelectedYear] = useState(thisYear);
+  const [amountMode, setAmountMode] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [snapshot, setSnapshot] = useState<RentAnnualReportSnapshot | null>(null);
+  const [sourceStatus, setSourceStatus] = useState({ loading: true, error: "" });
+
+  const receiveSnapshot = useCallback((value: RentAnnualReportSnapshot) => setSnapshot(value), []);
+  const receiveStatus = useCallback((value: { loading: boolean; error: string }) => setSourceStatus(value), []);
+
+  const changeYear = (nextYear: number) => {
+    setSnapshot(null);
+    setSourceStatus({ loading: true, error: "" });
+    setSelectedYear(nextYear);
+  };
+
+  const rows = snapshot?.rows ?? [];
+  const monthHeaders = rows[0]?.months ?? Array.from({ length: 12 }, (_, index) => ({
+    month: index + 1,
+    monthLabel: new Intl.DateTimeFormat("de-DE", { month: "short" }).format(new Date(2025, index, 1)).replace(".", ""),
+  } as RentAnnualReportMonth));
+
+  return (
+    <article aria-labelledby="lilienthaler-rent-title" className="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-sm">
+      <Suspense fallback={null}>
+        <div className="hidden" aria-hidden="true">
+          <CentralRentOverview
+            key={`${rentObjectId}-${selectedYear}`}
+            embeddedAnnualReport
+            reportYear={selectedYear}
+            reportObjectId={rentObjectId}
+            onAnnualReportChange={receiveSnapshot}
+            onAnnualReportStatusChange={receiveStatus}
+          />
+        </div>
+      </Suspense>
+
+      <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Mietdaten · Pilot</p>
+            <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-teal-800">Nur Lilienthaler Str. 54</span>
+          </div>
+          <h2 id="lilienthaler-rent-title" className="mt-2 text-xl font-black text-slate-950">Mieteingang</h2>
+          <p className="mt-1 max-w-3xl text-sm font-bold leading-6 text-slate-500">Synchronisierte Jahresansicht aus der zentralen Seite „Mieteingang“: Ist aus Buchungen, Soll aus Mietentwicklung und Status aus Zahlungstag bzw. Leerstand.</p>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="grid gap-1 text-xs font-black text-slate-600">
+            Jahr
+            <select value={selectedYear} onChange={(event) => changeYear(Number(event.target.value))} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-950 shadow-sm">
+              {years.map((yearOption) => <option key={yearOption} value={yearOption}>{yearOption}{yearOption === thisYear ? " · laufendes Jahr" : ""}</option>)}
+            </select>
+          </label>
+          <div className="grid gap-1">
+            <span className="text-xs font-black text-slate-600">Ansicht</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={amountMode}
+              aria-label={amountMode ? "Zahlenansicht ist eingeschaltet" : "Symbolansicht ist eingeschaltet"}
+              onClick={() => setAmountMode((value) => !value)}
+              className={`inline-flex min-h-11 min-w-[184px] items-center gap-3 rounded-full border px-2.5 pr-4 text-sm font-black shadow-sm transition ${amountMode ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-rose-300 bg-rose-50 text-rose-800"}`}
+            >
+              <span className={`relative h-7 w-12 rounded-full transition ${amountMode ? "bg-emerald-600" : "bg-rose-600"}`}>
+                <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${amountMode ? "left-6" : "left-1"}`} />
+              </span>
+              {amountMode ? "AN · Zahlen" : "AUS · Symbole"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {sourceStatus.loading ? <div role="status" className="m-5 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-bold text-sky-800">Mieteingänge {selectedYear} werden aus der zentralen Quelle geladen…</div> : null}
+      {sourceStatus.error ? <div role="alert" className="m-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-800">Mieteingang konnte nicht vollständig geladen werden: {sourceStatus.error}</div> : null}
+
+      {!sourceStatus.loading && !sourceStatus.error ? (
+        rows.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1320px] border-collapse text-left">
+              <thead>
+                <tr className="bg-slate-50 text-[11px] font-black uppercase tracking-[0.13em] text-slate-500">
+                  <th className="border-b border-slate-200 p-4">Einheit / Mieter</th>
+                  {monthHeaders.map((month) => <th key={month.month} className="border-b border-slate-200 p-3 text-center">{month.monthLabel}</th>)}
+                  <th className="border-b border-slate-200 p-4 text-right">Jahr Ist</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.key} className="align-top">
+                    <td className="border-b border-slate-100 p-4">
+                      <div className="text-sm font-black text-slate-950">{row.unitLabel}</div>
+                      <div className="mt-1 text-xs font-bold text-slate-500">{row.tenantName}</div>
+                    </td>
+                    {row.months.map((month) => {
+                      const tone = rentPilotTone(month);
+                      return (
+                        <td key={month.month} className="border-b border-slate-100 p-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setDetailsOpen(true)}
+                            title={`${month.monthLabel}: ${month.kpi}`}
+                            aria-label={`${month.monthLabel}: ${month.kpi}; Detailprüfung öffnen`}
+                            className={`mx-auto flex min-h-[86px] w-[86px] flex-col items-center justify-center gap-1 rounded-2xl border p-2 transition hover:-translate-y-0.5 hover:shadow-md ${rentPilotToneClasses(tone)}`}
+                          >
+                            {amountMode ? (
+                              <>
+                                <span className="text-[10px] font-black uppercase tracking-[0.08em]">{month.kpi}</span>
+                                <strong className="text-sm tabular-nums">{formatCurrencyExact(month.paid)}</strong>
+                              </>
+                            ) : (
+                              <>
+                                <RentPilotStatusIcon month={month} />
+                                <span className="text-[9px] font-black uppercase tracking-[0.08em]">{month.kpi}</span>
+                              </>
+                            )}
+                          </button>
+                        </td>
+                      );
+                    })}
+                    <td className="border-b border-slate-100 p-4 text-right text-sm font-black tabular-nums text-slate-950">{formatCurrencyExact(row.yearPaid)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <div className="m-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-600">Für Lilienthaler Str. 54 sind im Jahr {selectedYear} keine Mieteingang-Zeilen vorhanden.</div>
+      ) : null}
+
+      <div className="border-t border-slate-200 bg-slate-50 px-5 py-4">
+        <button type="button" aria-expanded={detailsOpen} onClick={() => setDetailsOpen((value) => !value)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 shadow-sm">
+          <ChevronDown size={18} className={`transition ${detailsOpen ? "rotate-180" : ""}`} />
+          Detailprüfung Soll / Ist {detailsOpen ? "schließen" : "öffnen"}
+        </button>
+        {detailsOpen ? (
+          <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+            <table className="w-full min-w-[760px] border-collapse text-sm">
+              <thead><tr className="bg-slate-100 text-[11px] font-black uppercase tracking-[0.12em] text-slate-600">
+                <th className="p-3 text-left">Einheit</th><th className="p-3 text-left">Monat</th><th className="p-3 text-right">Soll</th><th className="p-3 text-right">Ist</th><th className="p-3 text-right">Offen</th><th className="p-3 text-left">Status</th><th className="p-3 text-left">Zahlung</th><th className="p-3 text-left">Soll-Quelle</th>
+              </tr></thead>
+              <tbody>
+                {rows.flatMap((row) => row.months.map((month) => (
+                  <tr key={`${row.key}-${month.month}`} className="border-t border-slate-100">
+                    <td className="p-3 font-bold text-slate-800">{row.unitLabel}</td>
+                    <td className="p-3 font-black text-slate-900">{month.monthLabel}</td>
+                    <td className="p-3 text-right font-bold tabular-nums">{formatCurrencyExact(month.expected)}</td>
+                    <td className="p-3 text-right font-bold tabular-nums">{formatCurrencyExact(month.paid)}</td>
+                    <td className={`p-3 text-right font-black tabular-nums ${month.open > 0 ? "text-rose-700" : "text-slate-700"}`}>{formatCurrencyExact(month.open)}</td>
+                    <td className="p-3 font-bold">{month.kpi}</td>
+                    <td className="p-3 font-bold text-slate-600">{formatRentPilotDate(month.paymentDate)}</td>
+                    <td className="p-3 text-xs font-bold text-slate-500">{month.expectedSource}</td>
+                  </tr>
+                )))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
 function DetailPage({
   card,
   extra,
   finance,
   entries,
+  objects,
   year,
   image,
   parkingUnits,
@@ -1385,6 +1612,7 @@ function DetailPage({
   extra: PropertyExtraInfo;
   finance: WealthFinance;
   entries: FinanceEntry[];
+  objects: AppObject[];
   year: number;
   image?: PortfolioGalleryItem;
   parkingUnits: ParkingUnit[];
@@ -1453,7 +1681,7 @@ function DetailPage({
         <nav aria-label="Immobilienbereiche" className="mb-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {[
             ["#objektuebersicht", "Objektübersicht"],
-            ["#miete", "Miete"],
+            ["#miete", isLilienthalerCard(card) ? "Mieteingang" : "Miete"],
             ["#cashflow", "Cashflow"],
             ["#darlehen", "Darlehen"],
           ].map(([href, label], index) => (
@@ -1507,6 +1735,20 @@ function DetailPage({
             <div id="miete" className="scroll-mt-6">
             {isRosensteinCard(card) ? (
               <RosensteinRentInfoPanel entries={entries} year={year} parkingUnits={parkingUnits} />
+            ) : isLilienthalerCard(card) ? (
+              <div className="space-y-5">
+                <LilienthalerRentPilot key={propertyId} rentObjectId={centralRentObjectId(card, objects)} />
+                <StandardRentInfoPanel
+                  extra={extra}
+                  propertyId={propertyId}
+                  title="Mietstammdaten"
+                  isAdmin={isAdmin}
+                  extraDirty={extraDirty}
+                  extraStatus={extraStatus}
+                  onExtraChange={onExtraChange}
+                  onExtraSave={onExtraSave}
+                />
+              </div>
             ) : (
               <StandardRentInfoPanel
                 extra={extra}
@@ -2049,6 +2291,7 @@ export default function ImmobilienVermoegen() {
           extra={extra}
           finance={finance}
           entries={appData.entries}
+          objects={appData.objects}
           year={year}
           image={image}
           parkingUnits={parkingUnits}
