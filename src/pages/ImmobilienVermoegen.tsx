@@ -47,6 +47,7 @@ import type { MasterFinanceSnapshot } from "@/services/masterDataService";
 import type { RentAnnualReportMonth, RentAnnualReportSnapshot } from "./Mietuebersicht";
 
 const CentralRentOverview = lazy(() => import("./Mietuebersicht"));
+const CentralWealthCashflowDashboard = lazy(() => import("./WealthCashflowDashboard"));
 
 type WealthDraft = Record<string, string>;
 
@@ -1059,59 +1060,6 @@ function FinanceOverview({ totals, year, objectValue, objectCount }: { totals: W
   );
 }
 
-function PropertyEconomicOverview({ finance, year }: { finance: WealthFinance; year: number }) {
-  const progress = Math.max(0, Math.min(100, finance.repaidPercent));
-  const mainItems = [
-    { label: "Restschuld · Darlehen", value: formatCurrencyExact(finance.lastBalance), tone: "neutral" },
-    { label: `Cashflow ${year}`, value: formatCurrencyExact(finance.netCashflow), tone: finance.netCashflow >= 0 ? "green" : "red" },
-    { label: "Netto-Rendite", value: formatPercent(finance.netYield), tone: "neutral" },
-  ] as const;
-  const detailItems = [
-    { label: `Einnahmen ${year}`, value: formatCurrencyExact(finance.income), tone: "green" },
-    { label: `Ausgaben ${year}`, value: formatCurrencyExact(finance.expenses), tone: "neutral" },
-    { label: `Mieten ${year}`, value: formatCurrencyExact(finance.rentIncome), tone: "neutral" },
-    { label: "NK aus Buchungen", value: formatCurrencyExact(finance.nebenkosten), tone: "neutral" },
-    { label: "Brutto-Rendite", value: formatPercent(finance.grossYield), tone: "neutral" },
-  ] as const;
-
-  return (
-    <section className="rounded-[22px] border border-slate-200 bg-white shadow-sm">
-      <div className="grid gap-0 overflow-hidden rounded-[22px] md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.2fr]">
-        {mainItems.map((item) => (
-          <div key={item.label} className="border-b border-slate-200 p-5 md:border-r xl:border-b-0">
-            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{item.label}</p>
-            <b className={[
-              "mt-3 block text-xl font-black sm:text-2xl",
-              item.tone === "green" ? "text-emerald-700" : item.tone === "red" ? "text-rose-700" : "text-slate-950",
-            ].join(" ")}>
-              {item.value}
-            </b>
-          </div>
-        ))}
-        <div className="border-b border-slate-200 p-5 xl:border-b-0">
-          <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Rückzahlung</p>
-          <div className="mt-3 flex items-center gap-4">
-            <b className="min-w-[86px] text-xl font-black text-slate-950 sm:text-2xl">{formatPercent(finance.repaidPercent)}</b>
-            <div className="h-2 flex-1 rounded-full bg-slate-200">
-              <i className="block h-2 rounded-full bg-gradient-to-r from-[#315f6d] to-[#7c8cf6]" style={{ width: `${progress}%` }} />
-            </div>
-          </div>
-        </div>
-      </div>
-      <div className="grid gap-2 border-t border-slate-100 bg-slate-50/70 p-3 sm:grid-cols-2 xl:grid-cols-5">
-        {detailItems.map((item) => (
-          <div key={item.label} className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-            <p className="truncate text-[10px] font-black uppercase tracking-[0.14em] text-slate-500" title={item.label}>{item.label}</p>
-            <b className={["mt-1 block truncate text-base font-black", item.tone === "green" ? "text-emerald-700" : "text-slate-950"].join(" ")} title={item.value}>
-              {item.value}
-            </b>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function RosensteinUnitOverview({ entries, year, parkingUnits }: { entries: FinanceEntry[]; year: number; parkingUnits: ParkingUnit[] }) {
   const units = parkingUnits.map((unit) => ({
     ...unit,
@@ -1697,7 +1645,14 @@ function DetailPage({
                 </p>
               </div>
             </article>
-            <div id="cashflow" className="scroll-mt-6"><PropertyEconomicOverview finance={finance} year={year} /></div>
+            <div id="cashflow" className="scroll-mt-6">
+              <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Vermögen und Cashflow werden geladen…</div>}>
+                <CentralWealthCashflowDashboard
+                  lockedPropertyId={centralRentObjectId(card, objects)}
+                  lockedPropertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
+                />
+              </Suspense>
+            </div>
             {isRosensteinCard(card) ? <RosensteinUnitOverview entries={entries} year={year} parkingUnits={parkingUnits} /> : null}
 
             <article className="rounded-[18px] border border-slate-200 bg-white shadow-sm">

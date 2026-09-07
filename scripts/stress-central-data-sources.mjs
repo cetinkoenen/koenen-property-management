@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [app, investment, audit, resolver, rentOverview, wealth, migration, vercelConfig] = await Promise.all([
+const [app, investment, audit, resolver, rentOverview, cashflow, wealth, migration, vercelConfig] = await Promise.all([
   read("src/App.tsx"),
   read("src/pages/InvestmentBericht.tsx"),
   read("src/services/auditLogService.ts"),
   read("src/services/property/resolvePropertyContext.ts"),
   read("src/pages/Mietuebersicht.tsx"),
+  read("src/pages/WealthCashflowDashboard.tsx"),
   read("src/pages/ImmobilienVermoegen.tsx"),
   read("supabase/migrations/20260827163000_property_id_aliases.sql"),
   read("vercel.json"),
@@ -41,6 +42,9 @@ assert.match(wealth, /<CentralRentOverview[\s\S]{0,350}?embeddedAnnualReport[\s\
 assert.match(wealth, /const \[amountMode, setAmountMode\] = useState\(false\)/, "Die Symbolansicht muss in jeder Immobilienakte standardmäßig aktiv sein");
 assert.match(wealth, /<PropertyRentReceiptOverview[\s\S]{0,300}?rentObjectId=\{centralRentObjectId\(card, objects\)\}/, "Jede Immobilienakte muss die zentrale Mieteingang-Ansicht verwenden");
 assert.doesNotMatch(wealth, /function isLilienthalerCard/, "Die Mieteingang-Ansicht darf nicht mehr auf Lilienthaler beschränkt sein");
+assert.match(wealth, /<CentralWealthCashflowDashboard[\s\S]{0,300}?lockedPropertyId=\{centralRentObjectId\(card, objects\)\}/, "Jede Immobilienakte muss das zentrale Vermögen-und-Cashflow-Dashboard wiederverwenden");
+assert.match(cashflow, /propertyLocked \? lockedObject\?\.id \?\? lockedPropertyId/, "Der Einzelobjekt-Cashflow muss dauerhaft auf das ausgewählte Objekt gesperrt sein");
+assert.match(cashflow, /object \? entryMatches\(e, object, getPropertyName\) : !propertyLocked/, "Eine noch nicht aufgelöste Objekt-ID darf niemals globale Buchungen im Einzelobjekt-Cashflow anzeigen");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
-console.log("28 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("31 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
