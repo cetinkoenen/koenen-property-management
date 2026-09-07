@@ -4,6 +4,7 @@ import brandLogo from "../assets/koenen-brand-logo.webp";
 import { supabase } from "../lib/supabase";
 import { MIETBESTANDTEIL_NK_CATEGORY, isPureRentBackPayment } from "../lib/financeEntryLabels";
 import { shiftIsoDateByMonthsClamped } from "../lib/rentMonth";
+import { rentBalancePart } from "../lib/rentPaymentBalance";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
 import {
   isVacancyInRange,
@@ -319,7 +320,7 @@ function isInactiveForRentMonth(objectLabel: string, monthStart: string): boolea
 function resolveRentStatus(paidAmount: number, expectedAmount: number | null, inactive: boolean): RentStatus {
   if (inactive) return "inactive";
   if (expectedAmount !== null) {
-    if (Math.abs(paidAmount - expectedAmount) <= 0.01) return "paid";
+    if (rentBalancePart(expectedAmount, paidAmount, "open") === 0 && rentBalancePart(expectedAmount, paidAmount, "overpaid") === 0) return "paid";
     if (paidAmount > 0) return "partial";
     return "missing";
   }
@@ -1713,8 +1714,8 @@ export default function Mietuebersicht({
       current.months[row.month - 1] = row;
       current.yearExpected += expected;
       current.yearPaid += row.paidAmount;
-      current.yearOpen += Math.max(expected - row.paidAmount, 0);
-      current.yearOverpaid += Math.max(row.paidAmount - expected, 0);
+      current.yearOpen += rentBalancePart(expected, row.paidAmount, "open");
+      current.yearOverpaid += rentBalancePart(expected, row.paidAmount, "overpaid");
       map.set(key, current);
     }
 
@@ -1783,8 +1784,8 @@ export default function Mietuebersicht({
           status: monthRow?.status ?? "none",
           paid,
           expected,
-          open: Math.max(expected - paid, 0),
-          overpaid: Math.max(paid - expected, 0),
+          open: rentBalancePart(expected, paid, "open"),
+          overpaid: rentBalancePart(expected, paid, "overpaid"),
           paymentDate: monthRow?.lastBookingDate ?? null,
           expectedSource: monthRow?.expectedSource ?? "—",
         };
@@ -1824,15 +1825,15 @@ export default function Mietuebersicht({
     const vacant = filteredRows.filter((row) => row.status === "vacant").length;
     const amount = filteredRows.reduce((sum, row) => sum + row.paidAmount, 0);
     const expected = filteredRows.reduce((sum, row) => sum + expectedAmountForOpen(row), 0);
-    const open = filteredRows.reduce((sum, row) => sum + Math.max(expectedAmountForOpen(row) - row.paidAmount, 0), 0);
-    const overpaid = filteredRows.reduce((sum, row) => sum + Math.max(row.paidAmount - expectedAmountForOpen(row), 0), 0);
+    const open = filteredRows.reduce((sum, row) => sum + rentBalancePart(expectedAmountForOpen(row), row.paidAmount, "open"), 0);
+    const overpaid = filteredRows.reduce((sum, row) => sum + rentBalancePart(expectedAmountForOpen(row), row.paidAmount, "overpaid"), 0);
     return { paid, partial, missing, inactive, vacant, total: filteredRows.length, amount, expected, open, overpaid };
   }, [filteredRows]);
 
   function openFilteredPdf() {
     const rowsHtml = filteredRows.map((row) => {
       const expected = expectedAmountForOpen(row);
-      const open = Math.max(expected - row.paidAmount, 0);
+      const open = rentBalancePart(expected, row.paidAmount, "open");
       return `
       <tr>
         <td>${escapeHtml(row.periodLabel)}</td>
@@ -2112,7 +2113,7 @@ export default function Mietuebersicht({
                             </td>
                             {row.months.map((monthRow, index) => {
                               const expected = monthRow ? expectedAmountForOpen(monthRow) : 0;
-                              const openAmount = monthRow ? Math.max(expected - monthRow.paidAmount, 0) : 0;
+                              const openAmount = monthRow ? rentBalancePart(expected, monthRow.paidAmount, "open") : 0;
                               const title = monthRow
                                 ? `${statusLabel(monthRow.status)} · Eingang ${formatCurrency(monthRow.paidAmount)} · Soll ${monthRow.expectedAmount === null ? "—" : formatCurrency(monthRow.expectedAmount)} · Offen ${formatCurrency(openAmount)} · Quelle ${monthRow.expectedSource} · Datum ${formatDate(monthRow.lastBookingDate)}`
                                 : "Kein Zeitraum";
@@ -2188,7 +2189,7 @@ export default function Mietuebersicht({
                 const tenant = tenantHasAnyValue(row.tenantInfo) ? row.tenantInfo : tenantInfo[row.tenantLookupKey] ?? tenantInfo[row.objectId] ?? emptyTenant;
                 const vacant = row.status === "vacant";
                 const expectedForRow = expectedAmountForOpen(row);
-                const openAmount = Math.max(expectedForRow - row.paidAmount, 0);
+                const openAmount = rentBalancePart(expectedForRow, row.paidAmount, "open");
                 return (
                   <article key={row.tenantKey} className={`tenant-row ${statusClass(row.status)}`}>
                     <div className="tenant-row-top">

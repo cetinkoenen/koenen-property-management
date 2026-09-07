@@ -4,6 +4,7 @@ import type { PdfReportSection, PdfReportTable } from '../lib/professionalPdfRep
 import { parseLocaleNumber } from '../utils/numberParser';
 import { masterNamesMatch } from './masterDataService';
 import { classifyNkRelevance } from '../lib/nkClassification';
+import { rentBalancePart } from '../lib/rentPaymentBalance';
 
 export type ReportRecord = Record<string, unknown>;
 export type ReportSources = Record<string, ReportRecord[]>;
@@ -129,7 +130,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const table = (title: string, headers: string[], rows: PdfReportTable['rows'], subtitle?: string): PdfReportTable => ({ title, headers, rows, subtitle });
   const module = (id: string, tables: PdfReportTable[], paragraphs: string[] = []): ReportModule => ({ id, title: reportNames.find(r => r[0] === id)![1], tables, paragraphs });
   const rentNote = 'Soll/Ist folgt dem zentralen Mietkonto nach Mietmonat. Bei Teilmonaten wird der vollständige betroffene Mietmonat gezeigt. Künftige Monate sind neutral; Rückstände berücksichtigen nur fällige Monate.';
-  const arrears = rentRows.map(r => [r.objectLabel, r.unitLabel, r.tenantName, euro(r.months.filter(m => m.month >= firstMonth && m.month <= lastMonth && `${from.slice(0,4)}-${String(m.month).padStart(2,'0')}-01` <= today).reduce((v,m) => v + m.open,0))]);
+  const arrears = rentRows.map(r => [r.objectLabel, r.unitLabel, r.tenantName, euro(r.months.filter(m => m.month >= firstMonth && m.month <= lastMonth && `${from.slice(0,4)}-${String(m.month).padStart(2,'0')}-01` <= today).reduce((v,m) => v + rentBalancePart(m.expected,m.paid,'open'),0))]);
   const incomeGroups = new Map<string, number>(['Kaltmiete','Nebenkostenzahlungen','Nebenkostennachzahlungen','Mahngebühren'].map(k => [k,0]));
   const addIncome = (key: string, amount: number) => incomeGroups.set(key, roundMoney((incomeGroups.get(key) ?? 0) + amount));
   const splitGenericRent = (e: FinanceEntry): { cold: number; nk: number } | null => {
