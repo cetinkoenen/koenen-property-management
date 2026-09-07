@@ -600,10 +600,6 @@ function isRosensteinCard(card: WealthCard) {
   return normalize(`${card.draft.name} ${card.row?.property_name ?? ""}`).includes("rosenstein");
 }
 
-function isLilienthalerCard(card: WealthCard) {
-  return normalize(`${card.draft.name} ${card.row?.property_name ?? ""}`).includes("lilienthaler");
-}
-
 function vacancyMatchesWealthCard(vacancy: UnitVacancy, card: WealthCard): boolean {
   const row = card.row;
   const vacancyLabel = normalize([vacancy.property_id, vacancy.object_code, vacancy.object_label].filter(Boolean).join(" "));
@@ -1329,7 +1325,7 @@ function RosensteinRentInfoPanel({ entries, year, parkingUnits }: { entries: Fin
     <article className="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 px-5 py-4">
         <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Mietdaten je Einheit</p>
-        <h2 className="text-xl font-black text-slate-950">Mieteingang TG-Stellplätze</h2>
+        <h2 className="text-xl font-black text-slate-950">Mietstammdaten TG-Stellplätze</h2>
         <p className="mt-1 text-sm font-bold leading-6 text-slate-500">Jeder Stellplatz wird separat als eigene Mietakte dargestellt.</p>
       </div>
       <div className="grid gap-4 bg-slate-50/70 p-5 xl:grid-cols-3">
@@ -1408,11 +1404,11 @@ function rentPilotToneClasses(tone: RentPilotTone) {
 
 function RentPilotStatusIcon({ month }: { month: RentAnnualReportMonth }) {
   const tone = rentPilotTone(month);
-  if (tone === "green") return <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-600 text-white"><Check size={22} strokeWidth={3} /></span>;
-  if (tone === "yellow") return <CircleAlert size={36} strokeWidth={2.4} className="text-slate-950" />;
-  if (tone === "red") return <CircleAlert size={36} strokeWidth={2.4} className="text-white" />;
-  if (tone === "vacant") return <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border-2 border-slate-900 bg-white text-slate-950"><Info size={21} strokeWidth={2.5} /></span>;
-  return <span className="text-2xl font-black text-slate-400">—</span>;
+  if (tone === "green") return <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600 text-white"><Check size={17} strokeWidth={3} /></span>;
+  if (tone === "yellow") return <CircleAlert size={28} strokeWidth={2.4} className="text-slate-950" />;
+  if (tone === "red") return <CircleAlert size={28} strokeWidth={2.4} className="text-white" />;
+  if (tone === "vacant") return <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-slate-900 bg-white text-slate-950"><Info size={16} strokeWidth={2.5} /></span>;
+  return <span className="text-xl font-black text-slate-400">—</span>;
 }
 
 function formatRentPilotDate(value: string | null) {
@@ -1421,7 +1417,7 @@ function formatRentPilotDate(value: string | null) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("de-DE");
 }
 
-function LilienthalerRentPilot({ rentObjectId }: { rentObjectId: string }) {
+function PropertyRentReceiptOverview({ rentObjectId, propertyLabel }: { rentObjectId: string; propertyLabel: string }) {
   const thisYear = currentYear();
   const years = useMemo(() => Array.from({ length: Math.max(1, thisYear - 2024 + 1) }, (_, index) => thisYear - index), [thisYear]);
   const [selectedYear, setSelectedYear] = useState(thisYear);
@@ -1446,7 +1442,7 @@ function LilienthalerRentPilot({ rentObjectId }: { rentObjectId: string }) {
   } as RentAnnualReportMonth));
 
   return (
-    <article aria-labelledby="lilienthaler-rent-title" className="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-sm">
+    <article aria-labelledby="property-rent-title" className="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-sm">
       <Suspense fallback={null}>
         <div className="hidden" aria-hidden="true">
           <CentralRentOverview
@@ -1463,10 +1459,10 @@ function LilienthalerRentPilot({ rentObjectId }: { rentObjectId: string }) {
       <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Mietdaten · Pilot</p>
-            <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-teal-800">Nur Lilienthaler Str. 54</span>
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Mietdaten · Jahresübersicht</p>
+            <span className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-teal-800">Zentrale Mieteingang-Quelle</span>
           </div>
-          <h2 id="lilienthaler-rent-title" className="mt-2 text-xl font-black text-slate-950">Mieteingang</h2>
+          <h2 id="property-rent-title" className="mt-2 text-xl font-black text-slate-950">Mieteingang</h2>
           <p className="mt-1 max-w-3xl text-sm font-bold leading-6 text-slate-500">Synchronisierte Jahresansicht aus der zentralen Seite „Mieteingang“: Ist aus Buchungen, Soll aus Mietentwicklung und Status aus Zahlungstag bzw. Leerstand.</p>
         </div>
 
@@ -1549,7 +1545,7 @@ function LilienthalerRentPilot({ rentObjectId }: { rentObjectId: string }) {
               </tbody>
             </table>
           </div>
-        ) : <div className="m-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-600">Für Lilienthaler Str. 54 sind im Jahr {selectedYear} keine Mieteingang-Zeilen vorhanden.</div>
+        ) : <div className="m-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-600">Für {propertyLabel} sind im Jahr {selectedYear} keine Mieteingang-Zeilen vorhanden.</div>
       ) : null}
 
       <div className="border-t border-slate-200 bg-slate-50 px-5 py-4">
@@ -1681,7 +1677,7 @@ function DetailPage({
         <nav aria-label="Immobilienbereiche" className="mb-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {[
             ["#objektuebersicht", "Objektübersicht"],
-            ["#miete", isLilienthalerCard(card) ? "Mieteingang" : "Miete"],
+            ["#miete", "Mieteingang"],
             ["#cashflow", "Cashflow"],
             ["#darlehen", "Darlehen"],
           ].map(([href, label], index) => (
@@ -1733,11 +1729,15 @@ function DetailPage({
             </article>
 
             <div id="miete" className="scroll-mt-6">
-            {isRosensteinCard(card) ? (
-              <RosensteinRentInfoPanel entries={entries} year={year} parkingUnits={parkingUnits} />
-            ) : isLilienthalerCard(card) ? (
               <div className="space-y-5">
-                <LilienthalerRentPilot key={propertyId} rentObjectId={centralRentObjectId(card, objects)} />
+                <PropertyRentReceiptOverview
+                  key={propertyId}
+                  rentObjectId={centralRentObjectId(card, objects)}
+                  propertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
+                />
+                {isRosensteinCard(card) ? (
+                  <RosensteinRentInfoPanel entries={entries} year={year} parkingUnits={parkingUnits} />
+                ) : (
                 <StandardRentInfoPanel
                   extra={extra}
                   propertyId={propertyId}
@@ -1748,18 +1748,8 @@ function DetailPage({
                   onExtraChange={onExtraChange}
                   onExtraSave={onExtraSave}
                 />
+                )}
               </div>
-            ) : (
-              <StandardRentInfoPanel
-                extra={extra}
-                propertyId={propertyId}
-                isAdmin={isAdmin}
-                extraDirty={extraDirty}
-                extraStatus={extraStatus}
-                onExtraChange={onExtraChange}
-                onExtraSave={onExtraSave}
-              />
-            )}
             </div>
 
             {DETAIL_TEMPLATE_SECTIONS.map((section) => {

@@ -38,8 +38,9 @@ assert.match(rentOverview, /if \(adjustmentLabel\) \{[\s\S]{0,500}?enoughAddress
 assert.match(rentOverview, /if \(propertyId\) return propertyId === object\.id \|\| candidateIds\.includes\(propertyId\);/, "Eine abweichende Objekt-ID darf nicht über eine unscharfe Notizsuche auf ein anderes Objekt fallen");
 assert.match(wealth, /const CentralRentOverview = lazy\(\(\) => import\("\.\/Mietuebersicht"\)\)/, "Der Lilienthaler-Pilot muss die zentrale Mieteingang-Auswertung wiederverwenden");
 assert.match(wealth, /<CentralRentOverview[\s\S]{0,350}?embeddedAnnualReport[\s\S]{0,350}?reportObjectId=\{rentObjectId\}/, "Der Pilot muss nach der zentral aufgelösten Objekt-ID filtern");
-assert.match(wealth, /const \[amountMode, setAmountMode\] = useState\(false\)/, "Die Symbolansicht muss im Pilot standardmäßig aktiv sein");
-assert.match(wealth, /isLilienthalerCard\(card\) \? \([\s\S]{0,250}?<LilienthalerRentPilot/, "Die neue Ansicht darf ausschließlich für Lilienthaler Str. 54 eingeblendet werden");
+assert.match(wealth, /const \[amountMode, setAmountMode\] = useState\(false\)/, "Die Symbolansicht muss in jeder Immobilienakte standardmäßig aktiv sein");
+assert.match(wealth, /<PropertyRentReceiptOverview[\s\S]{0,300}?rentObjectId=\{centralRentObjectId\(card, objects\)\}/, "Jede Immobilienakte muss die zentrale Mieteingang-Ansicht verwenden");
+assert.doesNotMatch(wealth, /function isLilienthalerCard/, "Die Mieteingang-Ansicht darf nicht mehr auf Lilienthaler beschränkt sein");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
-console.log("27 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("28 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
