@@ -3,6 +3,7 @@ import { Calculator, CheckCircle2, FileText, Home, Lock, Pencil, Plus, Printer, 
 import brandLogo from "../assets/koenen-brand-logo.webp";
 import { supabase } from "../lib/supabase";
 import { listNkRelevantEntries, type NkRelevantEntry } from "../services/nkRelevantService";
+import { summarizeBillingWorkspace } from "../services/billingWorkspaceService";
 
 type AllocationType = "allocationKey" | "persons" | "directAmount" | "heatingDirect";
 
@@ -422,16 +423,30 @@ function Stat({ title, value, accent = "default" }: { title: string; value: stri
 
 export default function NebenkostenWohnungen() {
   const currentYear = new Date().getFullYear();
-  const [objects, setObjects] = useState<ObjectOption[]>([]); const [selectedObjectCode, setSelectedObjectCode] = useState(""); const [selectedYear, setSelectedYear] = useState(currentYear);
+  const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const requestedObjectCode = queryParams.get("object") ?? "";
+  const requestedBillingId = queryParams.get("billing") ?? "";
+  const requestedView = queryParams.get("view") ?? "";
+  const requestedYear = Number(queryParams.get("year"));
+  const [objects, setObjects] = useState<ObjectOption[]>([]); const [selectedObjectCode, setSelectedObjectCode] = useState(""); const [selectedYear, setSelectedYear] = useState(Number.isInteger(requestedYear) && requestedYear >= 1900 && requestedYear <= 2100 ? requestedYear : currentYear);
   const [workspace, setWorkspace] = useState<BillingWorkspace>(() => createDefaultWorkspace(currentYear)); const [billingRecords, setBillingRecords] = useState<BillingRecord[]>([]); const [selectedBillingId, setSelectedBillingId] = useState<string | null>(null); const [status, setStatus] = useState(""); const [error, setError] = useState(""); const [loading, setLoading] = useState(false); const [saving, setSaving] = useState(false); const loaded = useRef(false);
+  const autoPrintTriggered = useRef(false);
   const [nkEntries, setNkEntries] = useState<NkRelevantEntry[]>([]);
   const [nkLoading, setNkLoading] = useState(false);
-  useEffect(() => { let alive = true; (async () => { const { data, error } = await supabase.from("v_object_dropdown").select("objekt_code,label").order("label", { ascending: true }); if (!alive) return; if (error) { setError(`Objekte konnten nicht geladen werden: ${error.message}`); return; } const list = ((data ?? []) as ObjectOption[]).filter(o => o.objekt_code && o.label && !isGarage(o)); setObjects(list); if (!selectedObjectCode && list[0]) setSelectedObjectCode(list[0].objekt_code); })(); return () => { alive = false; }; }, [selectedObjectCode]);
+  useEffect(() => { let alive = true; (async () => { const { data, error } = await supabase.from("v_object_dropdown").select("objekt_code,label").order("label", { ascending: true }); if (!alive) return; if (error) { setError(`Objekte konnten nicht geladen werden: ${error.message}`); return; } const list = ((data ?? []) as ObjectOption[]).filter(o => o.objekt_code && o.label && !isGarage(o)); setObjects(list); if (!selectedObjectCode && list[0]) { const requested = list.find((object) => object.objekt_code === requestedObjectCode); setSelectedObjectCode(requested?.objekt_code ?? list[0].objekt_code); } })(); return () => { alive = false; }; }, [requestedObjectCode, selectedObjectCode]);
   const selectedObject = useMemo(() => objects.find(o => o.objekt_code === selectedObjectCode) ?? null, [objects, selectedObjectCode]);
   const selectedConfig = useMemo(() => getPropertyBillingConfig(selectedObject), [selectedObject]);
   const co2EnabledForSelectedObject = selectedConfig.co2Enabled;
   useEffect(() => { let alive = true; async function loadNk() { if (!selectedObjectCode) return; setNkLoading(true); try { const rows = await listNkRelevantEntries(selectedYear, selectedObjectCode); if (alive) setNkEntries(rows); } catch (err) { if (alive) setError(err instanceof Error ? err.message : String(err)); } finally { if (alive) setNkLoading(false); } } void loadNk(); return () => { alive = false; }; }, [selectedObjectCode, selectedYear]);
-  useEffect(() => { let alive = true; async function load() { if (!selectedObjectCode) return; loaded.current = false; setLoading(true); setError(""); const { data, error } = await supabase.from("apartment_billing_workspaces").select("data").eq("object_id", selectedObjectCode).eq("year", String(selectedYear)).maybeSingle(); if (!alive) return; if (error) { const ws = createDefaultWorkspace(selectedYear, selectedObject ?? undefined); const rec = makeBillingRecord(ws); setBillingRecords([rec]); setSelectedBillingId(rec.id); setWorkspace(ws); setError(`Supabase-Fehler: ${error.message}`); } else { const collection = asBillingCollection(data?.data ?? null, selectedYear, selectedObject ?? undefined); const selected = collection.billings.find(b => b.id === collection.selectedBillingId) ?? collection.billings[0]; setBillingRecords(collection.billings); setSelectedBillingId(selected.id); setWorkspace(selected.workspace); setStatus(data?.data ? `Gespeicherte Abrechnungen für ${selectedYear} geladen.` : `Neue Abrechnung für ${selectedYear} erstellt.`); } setLoading(false); loaded.current = true; } void load(); return () => { alive = false; }; }, [selectedObjectCode, selectedYear, selectedObject]);
+  useEffect(() => { let alive = true; async function load() { if (!selectedObjectCode) return; loaded.current = false; setLoading(true); setError(""); const { data, error } = await supabase.from("apartment_billing_workspaces").select("data").eq("object_id", selectedObjectCode).eq("year", String(selectedYear)).maybeSingle(); if (!alive) return; if (error) { const ws = createDefaultWorkspace(selectedYear, selectedObject ?? undefined); const rec = makeBillingRecord(ws); setBillingRecords([rec]); setSelectedBillingId(rec.id); setWorkspace(ws); setError(`Supabase-Fehler: ${error.message}`); } else { const collection = asBillingCollection(data?.data ?? null, selectedYear, selectedObject ?? undefined); const selected = collection.billings.find(b => b.id === requestedBillingId) ?? collection.billings.find(b => b.id === collection.selectedBillingId) ?? collection.billings[0]; setBillingRecords(collection.billings); setSelectedBillingId(selected.id); setWorkspace(selected.workspace); setStatus(data?.data ? `Gespeicherte Abrechnungen für ${selectedYear} geladen.` : `Neue Abrechnung für ${selectedYear} erstellt.`); } setLoading(false); loaded.current = true; } void load(); return () => { alive = false; }; }, [requestedBillingId, selectedObjectCode, selectedYear, selectedObject]);
+  useEffect(() => {
+    if (requestedView !== "pdf" || loading || !selectedBillingId || autoPrintTriggered.current) return;
+    const printable = workspace.meta.locked || /freigegeben|korrigiert/i.test(workspace.meta.workflowStatus ?? "");
+    if (!printable) return;
+    autoPrintTriggered.current = true;
+    const timer = window.setTimeout(() => window.print(), 500);
+    return () => window.clearTimeout(timer);
+  }, [loading, requestedView, selectedBillingId, workspace.meta.locked, workspace.meta.workflowStatus]);
   useEffect(() => { if (!selectedObjectCode || !loaded.current) return; const normalizedWorkspace = { ...workspace, meta: { ...workspace.meta, propertyCode: selectedObjectCode, propertyLabel: selectedObject?.label ?? workspace.meta.propertyLabel, billingYear: selectedYear } }; const billingsRaw = replaceBillingRecord(billingRecords, selectedBillingId, normalizedWorkspace); const cleaned = cleanupBillingRecords(billingsRaw, selectedBillingId, selectedYear, selectedObject ?? undefined); const payload: BillingCollection = cleaned; const id = window.setTimeout(async () => { setSaving(true); const { error } = await supabase.from("apartment_billing_workspaces").upsert({ object_id: selectedObjectCode, year: String(selectedYear), data: payload }, { onConflict: "object_id,year" }); setSaving(false); if (error) setError(`Supabase-Fehler: ${error.message}`); else { setStatus(`Gespeichert: ${selectedObject?.label ?? selectedObjectCode} / ${selectedYear} / ${makePeriodName(normalizedWorkspace)}`); } }, 650); return () => window.clearTimeout(id); }, [workspace, billingRecords, selectedObjectCode, selectedYear, selectedObject, selectedBillingId]);
   const locked = workspace.meta.locked; const activeApartment = useMemo(() => workspace.apartments.find(a => a.id === workspace.selectedApartmentId) ?? workspace.apartments[0] ?? null, [workspace]);
   function update(updater: (p: BillingWorkspace) => BillingWorkspace) { setWorkspace(prev => { const next = updater(prev); setBillingRecords(current => cleanupBillingRecords(replaceBillingRecord(current, selectedBillingId, next), selectedBillingId, selectedYear, selectedObject ?? undefined).billings); return next; }); } function selectBilling(id: string) { if (id === selectedBillingId) return; const cleaned = cleanupBillingRecords(replaceBillingRecord(billingRecords, selectedBillingId, workspace), selectedBillingId, selectedYear, selectedObject ?? undefined); const target = cleaned.billings.find(b => b.id === id); if (!target) return; setBillingRecords(cleaned.billings); setSelectedBillingId(id); setWorkspace(target.workspace); } function createNewPartialBilling() { const cleaned = cleanupBillingRecords(replaceBillingRecord(billingRecords, selectedBillingId, workspace), selectedBillingId, selectedYear, selectedObject ?? undefined); if (isColmarer2025(selectedYear, selectedObject ?? undefined) && cleaned.billings.length >= 2) { const second = cleaned.billings[1]; setBillingRecords(cleaned.billings); setSelectedBillingId(second.id); setWorkspace(second.workspace); setStatus("Für Colmarer Str. 2025 sind die zwei Teilabrechnungen bereits angelegt."); return; } const newWorkspace = nextPeriodWorkspace(workspace, selectedYear, selectedObject ?? undefined); const rec = makeBillingRecord(newWorkspace); const next = cleanupBillingRecords([...cleaned.billings, rec], rec.id, selectedYear, selectedObject ?? undefined); const selected = next.billings.find(b => b.id === next.selectedBillingId) ?? next.billings[0]; setBillingRecords(next.billings); setSelectedBillingId(selected.id); setWorkspace(selected.workspace); setStatus("Neue Teilabrechnung erstellt. Zeitraum, Mieter und Vorauszahlungen bitte anpassen."); } function updateMeta<K extends keyof BuildingMeta>(key: K, value: BuildingMeta[K]) { if (isColmarer2025(selectedYear, selectedObject ?? undefined) && key === "locked" && value === false) { setStatus("Colmarer Str. 45 / 2025 ist freigegeben und bleibt eingefroren. Bitte nicht bearbeiten."); return; } update(p => ({ ...p, meta: { ...p.meta, [key]: value } })); } function updateHeating<K extends keyof HeatingSettings>(key: K, value: HeatingSettings[K]) { update(p => ({ ...p, heating: { ...p.heating, [key]: value } })); } function updateApartment(id: string, patch: Partial<ApartmentRow>) { update(p => ({ ...p, apartments: p.apartments.map(a => a.id === id ? { ...a, ...patch } : a) })); } function updateCost(id: string, patch: Partial<CostRow>) { update(p => ({ ...p, costs: p.costs.map(c => c.id === id ? { ...c, ...patch } : c) })); }
@@ -766,27 +781,7 @@ export default function NebenkostenWohnungen() {
   );
 
   function summarizeBilling(target: BillingWorkspace) {
-    const apartment = target.apartments.find(a => a.id === target.selectedApartmentId) ?? target.apartments[0];
-    if (!apartment) {
-      return { apartment: null as ApartmentRow | null, cold: 0, heatingBeforeCo2: 0, co2Deduction: 0, tenantTotal: 0, advance: 0, balance: 0, label: "Guthaben" };
-    }
-    let cold = 0;
-    let heatingBeforeCo2 = 0;
-    for (const row of target.costs) {
-      const isHeating = row.allocation === "heatingDirect" || /heiz|wärme|waerme|warmwasser|kalo/i.test(row.label);
-      let amount = 0;
-      if (row.allocation === "directAmount" || row.allocation === "heatingDirect") amount = row.directAmount;
-      else {
-        const base = row.totalKey > 0 ? row.amount * (row.apartmentKey / row.totalKey) : 0;
-        amount = row.prorateByOccupancy ? base * (clamp(apartment.occupancyMonths, 0, 12) / 12) : base;
-      }
-      if (isHeating) heatingBeforeCo2 += amount;
-      else cold += amount;
-    }
-    const co2Deduction = Math.min(Math.max(apartment.co2LandlordDeductionKalo || 0, 0), Math.max(heatingBeforeCo2, 0));
-    const tenantTotal = roundMoney(cold + Math.max(heatingBeforeCo2 - co2Deduction, 0));
-    const balance = roundMoney(apartment.advancePayments - tenantTotal);
-    return { apartment, cold: roundMoney(cold), heatingBeforeCo2: roundMoney(heatingBeforeCo2), co2Deduction: roundMoney(co2Deduction), tenantTotal, advance: apartment.advancePayments, balance, label: balance >= 0 ? "Guthaben" : "Nachzahlung" };
+    return summarizeBillingWorkspace(target);
   }
 
   function archivedBillingHtml(target: BillingWorkspace) {

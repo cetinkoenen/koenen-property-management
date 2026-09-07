@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [app, investment, audit, resolver, rentOverview, cashflow, loanOverview, wealth, migration, vercelConfig] = await Promise.all([
+const [app, investment, audit, resolver, rentOverview, cashflow, loanOverview, utilitiesKpi, utilitiesPage, billingService, wealth, migration, vercelConfig] = await Promise.all([
   read("src/App.tsx"),
   read("src/pages/InvestmentBericht.tsx"),
   read("src/services/auditLogService.ts"),
@@ -10,6 +10,9 @@ const [app, investment, audit, resolver, rentOverview, cashflow, loanOverview, w
   read("src/pages/Mietuebersicht.tsx"),
   read("src/pages/WealthCashflowDashboard.tsx"),
   read("src/pages/Darlehensuebersicht.tsx"),
+  read("src/components/PropertyUtilitiesKpiDashboard.tsx"),
+  read("src/pages/NebenkostenWohnungen.tsx"),
+  read("src/services/billingWorkspaceService.ts"),
   read("src/pages/ImmobilienVermoegen.tsx"),
   read("supabase/migrations/20260827163000_property_id_aliases.sql"),
   read("vercel.json"),
@@ -49,6 +52,15 @@ assert.match(cashflow, /object \? entryMatches\(e, object, getPropertyName\) : !
 assert.match(wealth, /<CentralLoanOverview[\s\S]{0,300}?lockedPropertyId=\{centralRentObjectId\(card, objects\)\}/, "Jede Immobilienakte muss die zentrale Darlehensübersicht wiederverwenden");
 assert.match(loanOverview, /const propertyLocked = Boolean\(fixedPropertyId \|\| lockedPropertyLabel\)/, "Die zentrale Darlehensübersicht muss einen fest gebundenen Objektmodus unterstützen");
 assert.match(loanOverview, /if \(propertyLocked\) \{[\s\S]{0,500}?return rows\.filter/, "Eine Immobilienakte darf nur die Darlehensdaten ihres fest gewählten Objekts anzeigen");
+assert.match(wealth, /<PropertyUtilitiesKpiDashboard[\s\S]{0,300}?propertyId=\{centralRentObjectId\(card, objects\)\}/, "Jede Immobilienakte muss das zentrale Nebenkosten-KPI-Dashboard verwenden");
+assert.match(utilitiesKpi, /from\("apartment_billing_workspaces"\)/, "Nebenkosten-KPIs müssen die zentrale Abrechnungsquelle laden");
+assert.match(utilitiesKpi, /row\.object_id === propertyId[\s\S]{0,250}?normalizeIdentity\(meta\.propertyLabel\) === labelKey/, "Nebenkosten-KPIs müssen strikt auf die gewählte Immobilie begrenzt sein");
+assert.match(utilitiesKpi, /selectedYear === "all" \? records : records\.filter/, "Der Jahresfilter muss einzelne Jahre und die Gesamthistorie unterstützen");
+assert.match(utilitiesKpi, /status\.pdfEnabled \? billingUrl\(record, "pdf"\)/, "PDF-Aufruf darf nur für freigegebene oder korrigierte Abrechnungen aktiv sein");
+assert.match(utilitiesKpi, /getPropertyDocumentSignedUrl/, "Archivdateien müssen über zeitlich begrenzte URLs aus dem privaten Dokumentenspeicher geöffnet werden");
+assert.match(utilitiesPage, /requestedObjectCode[\s\S]{0,1500}?requestedBillingId/, "Die Nebenkosten-Hauptseite muss Objekt, Jahr und Abrechnung aus dem KPI-Link übernehmen");
+assert.match(utilitiesPage, /return summarizeBillingWorkspace\(target\)/, "Hauptseite und KPI-Dashboard müssen dieselbe Kosten-/Saldoformel verwenden");
+assert.match(billingService, /const balance = roundMoney\(advance - tenantTotal\)/, "Die zentrale Nebenkostenformel muss Guthaben und Nachzahlung centgenau aus Vorauszahlung minus Kosten berechnen");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
-console.log("34 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("43 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

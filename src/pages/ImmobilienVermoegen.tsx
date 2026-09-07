@@ -49,6 +49,7 @@ import type { RentAnnualReportMonth, RentAnnualReportSnapshot } from "./Mietuebe
 const CentralRentOverview = lazy(() => import("./Mietuebersicht"));
 const CentralWealthCashflowDashboard = lazy(() => import("./WealthCashflowDashboard"));
 const CentralLoanOverview = lazy(() => import("./Darlehensuebersicht"));
+const PropertyUtilitiesKpiDashboard = lazy(() => import("@/components/PropertyUtilitiesKpiDashboard"));
 
 type WealthDraft = Record<string, string>;
 
@@ -1632,7 +1633,7 @@ function DetailPage({
           ].map(([href, label], index) => (
             <a key={href} href={href} className={["inline-flex min-h-11 items-center justify-center rounded-xl px-3 text-center text-sm font-black no-underline transition", index === 0 ? "bg-[#255f6f] text-white" : "border border-slate-200 bg-white text-slate-700 hover:border-teal-200 hover:bg-teal-50"].join(" ")}>{label}</a>
           ))}
-          <Link to={`/nebenkosten/wohnungen?object=${encodeURIComponent(propertyId)}`} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-center text-sm font-black text-slate-700 no-underline transition hover:border-teal-200 hover:bg-teal-50">Nebenkosten</Link>
+          <a href="#nebenkosten" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-center text-sm font-black text-slate-700 no-underline transition hover:border-teal-200 hover:bg-teal-50">Nebenkosten</a>
         </nav>
 
         <div className="space-y-5">
@@ -1706,6 +1707,15 @@ function DetailPage({
                 />
                 )}
               </div>
+            </div>
+
+            <div id="nebenkosten" className="scroll-mt-6">
+              <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Nebenkosten-KPIs werden geladen…</div>}>
+                <PropertyUtilitiesKpiDashboard
+                  propertyId={centralRentObjectId(card, objects)}
+                  propertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
+                />
+              </Suspense>
             </div>
 
             {DETAIL_TEMPLATE_SECTIONS.map((section) => {
