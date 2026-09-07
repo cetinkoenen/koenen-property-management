@@ -58,9 +58,10 @@ assert.match(utilitiesKpi, /row\.object_id === propertyId[\s\S]{0,250}?normalize
 assert.match(utilitiesKpi, /selectedYear === "all" \? records : records\.filter/, "Der Jahresfilter muss einzelne Jahre und die Gesamthistorie unterstützen");
 assert.match(utilitiesKpi, /status\.pdfEnabled \? billingUrl\(record, "pdf"\)/, "PDF-Aufruf darf nur für freigegebene oder korrigierte Abrechnungen aktiv sein");
 assert.match(utilitiesKpi, /getPropertyDocumentSignedUrl/, "Archivdateien müssen über zeitlich begrenzte URLs aus dem privaten Dokumentenspeicher geöffnet werden");
+assert.match(utilitiesKpi, /setBillingObjectId\(nextRecords\[0\]\?\.sourceObjectId \?\? matchingObject\?\.objekt_code \?\? propertyId\)/, "Der Hauptseiten-Link muss den tatsächlich gespeicherten Nebenkosten-Objektcode statt einer unverbundenen Portfolio-ID verwenden");
 assert.match(utilitiesPage, /requestedObjectCode[\s\S]{0,1500}?requestedBillingId/, "Die Nebenkosten-Hauptseite muss Objekt, Jahr und Abrechnung aus dem KPI-Link übernehmen");
 assert.match(utilitiesPage, /return summarizeBillingWorkspace\(target\)/, "Hauptseite und KPI-Dashboard müssen dieselbe Kosten-/Saldoformel verwenden");
 assert.match(billingService, /const balance = roundMoney\(advance - tenantTotal\)/, "Die zentrale Nebenkostenformel muss Guthaben und Nachzahlung centgenau aus Vorauszahlung minus Kosten berechnen");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
-console.log("43 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("44 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
