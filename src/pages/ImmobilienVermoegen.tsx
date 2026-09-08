@@ -1385,7 +1385,7 @@ function PropertySpecialistAreaNotice({ mainPagePath, mainPageLabel }: PropertyS
       </p>
       <Link
         to={mainPagePath}
-        className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#255f6f] px-4 text-center text-sm font-black text-white no-underline shadow-sm transition hover:bg-[#1d4d5a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#255f6f]"
+        className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#255f6f] px-4 text-center text-sm font-black !text-white no-underline shadow-sm transition hover:bg-[#1d4d5a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#255f6f]"
       >
         {mainPageLabel} öffnen <ExternalLink aria-hidden="true" size={17} />
       </Link>
@@ -1557,6 +1557,20 @@ function PropertyRentReceiptOverview({ rentObjectId, propertyLabel }: { rentObje
   );
 }
 
+type PropertyDetailTab = "overview" | "rent" | "cashflow" | "loan" | "utilities";
+
+const PROPERTY_DETAIL_TABS: Array<{ key: PropertyDetailTab; label: string; hash: string }> = [
+  { key: "overview", label: "Objektübersicht", hash: "objektuebersicht" },
+  { key: "rent", label: "Mieteingang", hash: "miete" },
+  { key: "cashflow", label: "Cashflow", hash: "cashflow" },
+  { key: "loan", label: "Darlehen", hash: "darlehen" },
+  { key: "utilities", label: "Nebenkosten", hash: "nebenkosten" },
+];
+
+function propertyDetailTabFromHash(hash: string): PropertyDetailTab {
+  return PROPERTY_DETAIL_TABS.find((tab) => `#${tab.hash}` === hash)?.key ?? "overview";
+}
+
 function DetailPage({
   card,
   extra,
@@ -1604,6 +1618,20 @@ function DetailPage({
 }) {
   const navigate = useNavigate();
   const propertyId = card.row?.property_id ?? card.id;
+  const [activeTab, setActiveTab] = useState<PropertyDetailTab>(() => propertyDetailTabFromHash(window.location.hash));
+
+  useEffect(() => {
+    const syncTabWithHash = () => setActiveTab(propertyDetailTabFromHash(window.location.hash));
+    window.addEventListener("hashchange", syncTabWithHash);
+    syncTabWithHash();
+    return () => window.removeEventListener("hashchange", syncTabWithHash);
+  }, [card.id]);
+
+  const selectTab = (tab: (typeof PROPERTY_DETAIL_TABS)[number]) => {
+    setActiveTab(tab.key);
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${tab.hash}`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const appendValue = (key: string, value: string) => {
     const current = key === "modernizations" ? removeModernizationAutoBlock(card.draft[key] ?? "") : card.draft[key]?.trim();
     onUpdate(card.id, key, current ? `${current}\n${value}` : value);
@@ -1631,7 +1659,7 @@ function DetailPage({
   return (
     <div className="space-y-5">
       <section className="rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-[0_18px_44px_rgba(51,65,85,0.08)] backdrop-blur">
-        <div className="mb-5 flex flex-col gap-3 border-b border-slate-200 pb-5 lg:flex-row lg:items-center lg:justify-between">
+        {activeTab === "overview" ? <div className="mb-5 flex flex-col gap-3 border-b border-slate-200 pb-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Immobilienvermögen</p>
             <h1 className="mt-2 text-xl font-black text-slate-950 sm:text-2xl">{card.draft.name || "Immobilie"}</h1>
@@ -1648,22 +1676,27 @@ function DetailPage({
           >
             <ArrowLeft size={17} /> Zur Übersicht
           </button>
-        </div>
+        </div> : null}
 
-        <nav aria-label="Immobilienbereiche" className="mb-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-          {[
-            ["#objektuebersicht", "Objektübersicht"],
-            ["#miete", "Mieteingang"],
-            ["#cashflow", "Cashflow"],
-            ["#darlehen", "Darlehen"],
-          ].map(([href, label], index) => (
-            <a key={href} href={href} className={["inline-flex min-h-11 items-center justify-center rounded-xl px-3 text-center text-sm font-black no-underline transition", index === 0 ? "bg-[#255f6f] text-white" : "border border-slate-200 bg-white text-slate-700 hover:border-teal-200 hover:bg-teal-50"].join(" ")}>{label}</a>
+        <nav aria-label="Immobilienbereiche" role="tablist" className="mb-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          {PROPERTY_DETAIL_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.key}
+              aria-controls={`property-tab-${tab.key}`}
+              onClick={() => selectTab(tab)}
+              className={["inline-flex min-h-11 items-center justify-center rounded-xl px-3 text-center text-sm font-black transition", activeTab === tab.key ? "bg-[#255f6f] text-white" : "border border-slate-200 bg-white text-slate-700 hover:border-teal-200 hover:bg-teal-50"].join(" ")}
+            >
+              {tab.label}
+            </button>
           ))}
-          <a href="#nebenkosten" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-center text-sm font-black text-slate-700 no-underline transition hover:border-teal-200 hover:bg-teal-50">Nebenkosten</a>
         </nav>
 
         <div className="space-y-5">
-            <article id="objektuebersicht" className="scroll-mt-6 grid gap-4 rounded-[18px] border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[280px_1fr]">
+          {activeTab === "overview" ? <div id="property-tab-overview" role="tabpanel" aria-label="Objektübersicht" className="space-y-5">
+            <article className="grid gap-4 rounded-[18px] border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[280px_1fr]">
               <PropertyImageButton image={image} label={card.draft.name || "Immobilie"} className="min-h-[190px]" onOpen={onImageOpen} />
               <div className="flex flex-col justify-center">
                 <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Objektfoto</p>
@@ -1673,17 +1706,6 @@ function DetailPage({
                 </p>
               </div>
             </article>
-            <div id="cashflow" className="scroll-mt-6">
-              <div className="space-y-5">
-                <PropertySpecialistAreaNotice mainPagePath="/dashboard/vermoegen-cashflow" mainPageLabel="Hauptseite Vermögen & Cashflow" />
-                <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Vermögen und Cashflow werden geladen…</div>}>
-                  <CentralWealthCashflowDashboard
-                    lockedPropertyId={centralRentObjectId(card, objects)}
-                    lockedPropertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
-                  />
-                </Suspense>
-              </div>
-            </div>
             {isRosensteinCard(card) ? <RosensteinUnitOverview entries={entries} year={year} parkingUnits={parkingUnits} /> : null}
 
             <article className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
@@ -1714,15 +1736,7 @@ function DetailPage({
               </p>
             </article>
 
-            <div id="miete" className="scroll-mt-6">
-              <div className="space-y-5">
-                <PropertySpecialistAreaNotice mainPagePath="/mieter/mieteingang" mainPageLabel="Hauptseite Mieteingang" />
-                <PropertyRentReceiptOverview
-                  key={propertyId}
-                  rentObjectId={centralRentObjectId(card, objects)}
-                  propertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
-                />
-                {isRosensteinCard(card) ? (
+            {isRosensteinCard(card) ? (
                   <RosensteinRentInfoPanel entries={entries} year={year} parkingUnits={parkingUnits} />
                 ) : (
                 <StandardRentInfoPanel
@@ -1736,39 +1750,12 @@ function DetailPage({
                   onExtraSave={onExtraSave}
                 />
                 )}
-              </div>
-            </div>
-
-            <div id="nebenkosten" className="scroll-mt-6">
-              <div className="space-y-5">
-                <PropertySpecialistAreaNotice mainPagePath="/nebenkosten/wohnungen" mainPageLabel="Hauptseite Nebenkosten" />
-                <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Nebenkosten-KPIs werden geladen…</div>}>
-                  <PropertyUtilitiesKpiDashboard
-                    propertyId={centralRentObjectId(card, objects)}
-                    propertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
-                  />
-                </Suspense>
-              </div>
-            </div>
 
             {DETAIL_TEMPLATE_SECTIONS.map((section) => {
               const Icon = section.icon;
               return (
                 <Fragment key={section.id}>
-                {section.id === "darlehen" ? (
-                  <div id="darlehen" className="scroll-mt-6">
-                    <div className="space-y-5">
-                      <PropertySpecialistAreaNotice mainPagePath="/darlehen" mainPageLabel="Hauptseite Darlehen" />
-                      <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Darlehensübersicht wird geladen…</div>}>
-                        <CentralLoanOverview
-                          lockedPropertyId={centralRentObjectId(card, objects)}
-                          lockedPropertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
-                        />
-                      </Suspense>
-                    </div>
-                  </div>
-                ) : null}
-                <article id={section.id === "darlehen" ? "darlehen-eigenschaften" : section.id} className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
+                <article className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
                   <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-start gap-3">
                       <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
@@ -1826,29 +1813,76 @@ function DetailPage({
                 </Fragment>
               );
             })}
-          </div>
+            <SectionPanel title="Notizen" description="Freier Bereich für manuelle Ergänzungen, Bankhinweise oder spätere Prüfnotizen.">
+              <textarea
+                className="min-h-32 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-950 shadow-sm outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
+                value={card.draft.notes ?? ""}
+                disabled={!isAdmin}
+                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onUpdate(card.id, "notes", event.target.value)}
+              />
+            </SectionPanel>
+
+            <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-[24px] border border-white/70 bg-white/90 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-bold text-slate-600">{!isAdmin ? "Nur-Lesen-Zugang: Die Detailmaske ist geschützt." : saveStatus ?? "Jede Eigenschaftsgruppe kann direkt oder gemeinsam gespeichert und danach erneut bearbeitet werden. Nur die Restschuld wird ausschließlich auf der Seite Darlehen gepflegt."}</p>
+              <button
+                type="button"
+                onClick={() => onSave(card.id)}
+                disabled={!isAdmin}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#255f6f] px-5 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+              >
+                <Save size={18} /> Detailmaske speichern
+              </button>
+            </div>
+          </div> : null}
+
+          {activeTab === "rent" ? (
+            <div id="property-tab-rent" role="tabpanel" aria-label="Mieteingang" className="space-y-5">
+              <PropertySpecialistAreaNotice mainPagePath="/mieter/mieteingang" mainPageLabel="Hauptseite Mieteingang" />
+              <PropertyRentReceiptOverview
+                key={propertyId}
+                rentObjectId={centralRentObjectId(card, objects)}
+                propertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
+              />
+            </div>
+          ) : null}
+
+          {activeTab === "cashflow" ? (
+            <div id="property-tab-cashflow" role="tabpanel" aria-label="Cashflow" className="space-y-5">
+              <PropertySpecialistAreaNotice mainPagePath="/dashboard/vermoegen-cashflow" mainPageLabel="Hauptseite Vermögen & Cashflow" />
+              <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Vermögen und Cashflow werden geladen…</div>}>
+                <CentralWealthCashflowDashboard
+                  lockedPropertyId={centralRentObjectId(card, objects)}
+                  lockedPropertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
+                />
+              </Suspense>
+            </div>
+          ) : null}
+
+          {activeTab === "loan" ? (
+            <div id="property-tab-loan" role="tabpanel" aria-label="Darlehen" className="space-y-5">
+              <PropertySpecialistAreaNotice mainPagePath="/darlehen" mainPageLabel="Hauptseite Darlehen" />
+              <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Darlehensübersicht wird geladen…</div>}>
+                <CentralLoanOverview
+                  lockedPropertyId={centralRentObjectId(card, objects)}
+                  lockedPropertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
+                />
+              </Suspense>
+            </div>
+          ) : null}
+
+          {activeTab === "utilities" ? (
+            <div id="property-tab-utilities" role="tabpanel" aria-label="Nebenkosten" className="space-y-5">
+              <PropertySpecialistAreaNotice mainPagePath="/nebenkosten/wohnungen" mainPageLabel="Hauptseite Nebenkosten" />
+              <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Nebenkosten-KPIs werden geladen…</div>}>
+                <PropertyUtilitiesKpiDashboard
+                  propertyId={centralRentObjectId(card, objects)}
+                  propertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
+                />
+              </Suspense>
+            </div>
+          ) : null}
+        </div>
       </section>
-
-      <SectionPanel title="Notizen" description="Freier Bereich für manuelle Ergänzungen, Bankhinweise oder spätere Prüfnotizen.">
-        <textarea
-          className="min-h-32 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-950 shadow-sm outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
-          value={card.draft.notes ?? ""}
-          disabled={!isAdmin}
-          onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onUpdate(card.id, "notes", event.target.value)}
-        />
-      </SectionPanel>
-
-      <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-[24px] border border-white/70 bg-white/90 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm font-bold text-slate-600">{!isAdmin ? "Nur-Lesen-Zugang: Die Detailmaske ist geschützt." : saveStatus ?? "Jede Eigenschaftsgruppe kann direkt oder gemeinsam gespeichert und danach erneut bearbeitet werden. Nur die Restschuld wird ausschließlich auf der Seite Darlehen gepflegt."}</p>
-        <button
-          type="button"
-          onClick={() => onSave(card.id)}
-          disabled={!isAdmin}
-          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#255f6f] px-5 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
-        >
-          <Save size={18} /> Detailmaske speichern
-        </button>
-      </div>
     </div>
   );
 }

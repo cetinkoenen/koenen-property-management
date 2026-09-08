@@ -60,6 +60,15 @@ assert.match(wealth, /mainPagePath="\/dashboard\/vermoegen-cashflow" mainPageLab
 assert.match(wealth, /mainPagePath="\/darlehen" mainPageLabel="Hauptseite Darlehen"/, "Der Darlehensbereich muss auf die zentrale Darlehen-Hauptseite verweisen");
 assert.match(wealth, /mainPagePath="\/nebenkosten\/wohnungen" mainPageLabel="Hauptseite Nebenkosten"/, "Der Nebenkostenbereich muss auf die zentrale Nebenkosten-Hauptseite verweisen");
 assert.equal((wealth.match(/<PropertySpecialistAreaNotice /g) ?? []).length, 4, "Der Fachbereichshinweis muss genau einmal in jedem der vier Fachbereiche erscheinen");
+assert.match(wealth, /type PropertyDetailTab = "overview" \| "rent" \| "cashflow" \| "loan" \| "utilities"/, "Die Immobilienakte muss fünf fachlich getrennte Tabs führen");
+assert.match(wealth, /role="tablist"/, "Die Bereichsnavigation muss als barrierefreie Tab-Liste umgesetzt sein");
+assert.equal((wealth.match(/role="tabpanel"/g) ?? []).length, 5, "Jeder Immobilienbereich muss ein eigenes Tab-Panel besitzen");
+assert.match(wealth, /activeTab === "overview"[\s\S]{0,9000}?<StandardRentInfoPanel[\s\S]{0,9000}?DETAIL_TEMPLATE_SECTIONS\.map/, "Mietstammdaten und Vorlagen S. 2–6 müssen ausschließlich in der Objektübersicht bleiben");
+assert.match(wealth, /activeTab === "rent"[\s\S]{0,1000}?<PropertyRentReceiptOverview/, "Der Mieteingang-Tab muss ausschließlich die zentrale Mieteingang-Ansicht laden");
+assert.match(wealth, /activeTab === "cashflow"[\s\S]{0,1000}?<CentralWealthCashflowDashboard/, "Der Cashflow-Tab muss ausschließlich das zentrale Cashflow-Dashboard laden");
+assert.match(wealth, /activeTab === "loan"[\s\S]{0,1000}?<CentralLoanOverview/, "Der Darlehen-Tab muss ausschließlich die zentrale Darlehensübersicht laden");
+assert.match(wealth, /activeTab === "utilities"[\s\S]{0,1000}?<PropertyUtilitiesKpiDashboard/, "Der Nebenkosten-Tab muss ausschließlich das zentrale Nebenkosten-KPI-Dashboard laden");
+assert.doesNotMatch(wealth, /href="#(?:objektuebersicht|miete|cashflow|darlehen|nebenkosten)"/, "Die Fachnavigation darf nicht mehr nur als Sprungmarke auf eine lange Mischseite arbeiten");
 assert.match(utilitiesKpi, /from\("apartment_billing_workspaces"\)/, "Nebenkosten-KPIs müssen die zentrale Abrechnungsquelle laden");
 assert.match(utilitiesKpi, /filter\(\(row\) => row\.object_id === canonicalBillingObjectId\)/, "Nebenkosten-KPIs müssen strikt auf den Objektcode der zentralen Hauptseite begrenzt sein");
 assert.match(utilitiesKpi, /selectedYear === "all" \? records : records\.filter/, "Der Jahresfilter muss einzelne Jahre und die Gesamthistorie unterstützen");
@@ -71,4 +80,4 @@ assert.match(utilitiesPage, /return summarizeBillingWorkspace\(target\)/, "Haupt
 assert.match(billingService, /const balance = roundMoney\(advance - tenantTotal\)/, "Die zentrale Nebenkostenformel muss Guthaben und Nachzahlung centgenau aus Vorauszahlung minus Kosten berechnen");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
-console.log("51 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("60 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
