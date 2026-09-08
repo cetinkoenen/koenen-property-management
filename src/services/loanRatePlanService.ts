@@ -253,9 +253,8 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
   const end = last.toISOString().slice(0, 10);
   const result = await supabase
     .from("finance_entry")
-    .select("id,booking_date,amount,category,entry_type")
+    .select("id,object_id,objekt_code,booking_date,amount,category,entry_type")
     .eq("is_deleted", false)
-    .in("object_id", propertyIds)
     .gte("booking_date", start)
     .lt("booking_date", end);
   if (result.error) throw result.error;
@@ -269,6 +268,8 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
     const previousMonth = previousMonthDate.toISOString().slice(0, 7);
     const candidates = (result.data ?? [])
       .filter((entry) => !usedEntryIds.has(String(entry.id)))
+      .filter((entry) => propertyIds.includes(String(entry.object_id ?? ""))
+        || resolveLoanProperty(String(entry.objekt_code ?? ""))?.key === plan.propertyKey)
       .filter((entry) => {
         const bookingDate = String(entry.booking_date ?? "");
         return bookingDate.startsWith(month) || bookingDate.startsWith(previousMonth);
