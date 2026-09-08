@@ -507,6 +507,50 @@ export function buildFinanceConsistencySummary(input: ConsistencyInput): Consist
       });
     }
 
+    if (canonicalCategory === "Kreditrate") {
+      const hasInterest = entry.loan_interest_amount != null;
+      const hasPrincipal = entry.loan_principal_amount != null;
+      if (hasInterest !== hasPrincipal) {
+        addCheck(checks, {
+          id: `loan-split-incomplete-${entry.id ?? key}`,
+          severity: "critical",
+          area: "Darlehen",
+          propertyId: entry.object_id ? String(entry.object_id) : null,
+          propertyName,
+          detail: `Kreditrate vom ${entry.booking_date ?? "ohne Datum"} ist nur teilweise in Zins und Tilgung aufgeteilt.`,
+          repairHint: "Zins und Tilgung anhand des Tilgungsplans oder Darlehenskontoauszugs vollstaendig nachtragen. Nicht schaetzen.",
+        });
+      } else if (hasInterest && hasPrincipal) {
+        const splitTotal = round2(money(entry.loan_interest_amount) + money(entry.loan_principal_amount));
+        const paymentTotal = round2(Math.abs(amount));
+        const delta = round2(splitTotal - paymentTotal);
+        if (Math.abs(delta) > 0.02) {
+          addCheck(checks, {
+            id: `loan-split-delta-${entry.id ?? key}`,
+            severity: "critical",
+            area: "Darlehen",
+            propertyId: entry.object_id ? String(entry.object_id) : null,
+            propertyName,
+            detail: `Kreditrate vom ${entry.booking_date ?? "ohne Datum"}: Zins + Tilgung stimmt nicht mit dem gebuchten Gesamtbetrag ueberein.`,
+            repairHint: "Aufteilung mit der Darlehensquelle abgleichen. Die Gesamtbuchung nicht veraendern, solange kein Bankbeleg vorliegt.",
+            expectedValue: paymentTotal,
+            actualValue: splitTotal,
+            delta,
+          });
+        }
+      } else if (entryYearFromDate(entry) === input.year) {
+        addCheck(checks, {
+          id: `loan-split-missing-${entry.id ?? key}`,
+          severity: "warning",
+          area: "Darlehen",
+          propertyId: entry.object_id ? String(entry.object_id) : null,
+          propertyName,
+          detail: `Kreditrate vom ${entry.booking_date ?? "ohne Datum"} hat noch keine Zins-/Tilgungsaufteilung.`,
+          repairHint: "Monatswert aus dem Tilgungsplan verknuepfen oder Zins und Tilgung anhand des Darlehenskontoauszugs manuell erfassen. Nicht schaetzen.",
+        });
+      }
+    }
+
     const taxDecision = classifyTaxRelevance(entry, propertyName);
     const explicitTax = isTaxRelevant(entry);
     if (taxDecision.locked && explicitTax === true) {

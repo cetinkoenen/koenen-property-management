@@ -256,6 +256,11 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
       .sort((a, b) => Math.abs(Math.abs(Number(a.amount ?? 0)) - schedule.payment_amount) - Math.abs(Math.abs(Number(b.amount ?? 0)) - schedule.payment_amount));
     const selected = candidates[0];
     if (!selected) continue;
+    // Ein Tilgungsplan darf nur automatisch mit einer Buchung verbunden werden,
+    // wenn auch der Gesamtbetrag centgenau passt. Bei Sondertilgungen,
+    // Gebuehren oder Ratenaenderungen bleibt die Buchung bewusst ungeaendert und
+    // muss anhand eines Bank-/Darlehensbelegs geprueft werden.
+    if (Math.abs(Math.abs(Number(selected.amount ?? 0)) - schedule.payment_amount) > 0.02) continue;
     const update = await supabase.from("finance_entry").update({
       loan_interest_amount: schedule.interest_amount,
       loan_principal_amount: schedule.principal_amount,

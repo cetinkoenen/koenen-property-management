@@ -17,6 +17,7 @@ import {
   type TaxAdvisorDashboard,
 } from "../services/taxReportEngine";
 import { listMileageTrips, openMileageReceipt, type MileageTripRow } from "../services/mileageTripService";
+import { listLoanRatePlanRowsForYear } from "../services/loanRatePlanService";
 import { isVacancyInRange, listVacancies, type UnitVacancy } from "../services/vacancyService";
 import { parseLocaleNumber } from "../utils/numberParser";
 import { useAppData } from "../state/AppDataContext";
@@ -1134,6 +1135,48 @@ export default function SteuerCenter() {
       const loanResult = await loanQuery;
       if (loanResult.error) throw loanResult.error;
 
+      // Der importierte Monatsplan ist die fachliche Quelle der Darlehensseite.
+      // Aeltere Ledger-Zeilen koennen noch technische property_ids besitzen, die
+      // nicht mit dem aktuellen Objekt-Dropdown identisch sind. Deshalb wird der
+      // Monatsplan zusaetzlich objektbezogen aggregiert und als belastbarer
+      // Fallback verwendet. Bereits vollstaendig aufgeteilte Buchungen haben
+      // weiterhin Vorrang, da sie den tatsaechlichen Zahlungsfluss abbilden.
+      const planRows = await listLoanRatePlanRowsForYear(year);
+      const planTotalsByProperty = new Map<string, LoanTaxRow & { months: Set<number>; sources: Set<string> }>();
+      for (const row of planRows) {
+        const propertyKey = normalize(row.property_name || row.property_key);
+        if (!propertyKey) continue;
+        const current = planTotalsByProperty.get(propertyKey) ?? {
+          property_id: String(row.property_id ?? row.property_key),
+          property_label: row.property_name,
+          year,
+          interest: 0,
+          principal: 0,
+          balance: 0,
+          source: null,
+          has_year_value: true,
+          months: new Set<number>(),
+          sources: new Set<string>(),
+        };
+        current.interest = roundCurrency(current.interest + Number(row.interest_amount ?? 0));
+        current.principal = roundCurrency(current.principal + Number(row.principal_amount ?? 0));
+        if (row.closing_balance != null) current.balance = Number(row.closing_balance);
+        if (row.plan_month) current.months.add(Number(row.plan_month));
+        if (row.source_file) current.sources.add(row.source_file);
+        planTotalsByProperty.set(propertyKey, current);
+      }
+
+      const planLoanRows: LoanTaxRow[] = Array.from(planTotalsByProperty.values()).map((row) => ({
+        property_id: row.property_id,
+        property_label: row.property_label,
+        year: row.year,
+        interest: row.interest,
+        principal: row.principal,
+        balance: row.balance,
+        source: `Tilgungsplan (${row.months.size} Monatswerte) · ${Array.from(row.sources).join(", ")}`,
+        has_year_value: true,
+      }));
+
       const loanRows = ((loanResult.data ?? []) as Array<{
         property_id: string | null;
         year: number | string | null;
@@ -1162,7 +1205,7 @@ export default function SteuerCenter() {
       const matchLoanToObject = (object: ObjectOption) => {
         const objectLabel = normalize(object.label);
         const objectCodeNormalized = normalize(object.objekt_code);
-        return loanRows.find((row) => {
+        return [...loanRows, ...planLoanRows].find((row) => {
           const loanLabel = normalize(row.property_label);
           const loanId = normalize(row.property_id);
           return (
@@ -1174,9 +1217,11 @@ export default function SteuerCenter() {
         });
       };
 
+      const creditRateCountByCode = new Map<string, number>();
       const bookedSplitsByCode = new Map<string, { interest: number; principal: number; count: number; sources: Set<string> }>();
       for (const entry of rows) {
         if (!entry.objekt_code || canonicalCategoryForTax(entry, objectLabelByCode.get(entry.objekt_code)) !== "Kreditrate") continue;
+        creditRateCountByCode.set(entry.objekt_code, (creditRateCountByCode.get(entry.objekt_code) ?? 0) + 1);
         if (entry.loan_interest_amount === null || entry.loan_principal_amount === null) continue;
         const current = bookedSplitsByCode.get(entry.objekt_code) ?? { interest: 0, principal: 0, count: 0, sources: new Set<string>() };
         current.interest = Math.round((current.interest + entry.loan_interest_amount) * 100) / 100;
@@ -1189,7 +1234,11 @@ export default function SteuerCenter() {
       const loanRowsByObject = objectOptions.map<LoanTaxRow>((object) => {
         const matchedLoan = matchLoanToObject(object);
         const bookedSplit = bookedSplitsByCode.get(object.objekt_code);
-        if (bookedSplit) {
+        const creditRateCount = creditRateCountByCode.get(object.objekt_code) ?? 0;
+        // Keine Teiljahressumme aus nur einem Teil der Buchungen ausgeben.
+        // Buchungswerte duerfen den Jahresplan nur ersetzen, wenn jede im Jahr
+        // vorhandene Kreditrate eine vollstaendige Zins-/Tilgungsaufteilung hat.
+        if (bookedSplit && bookedSplit.count === creditRateCount) {
           return {
             property_id: matchedLoan?.property_id ?? object.objekt_code,
             property_label: object.label,
