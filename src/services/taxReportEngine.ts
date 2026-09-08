@@ -555,6 +555,18 @@ function loanInterestForProfile(loans: TaxReportLoanRow[], profile: TaxObjectPro
   );
 }
 
+function unallocatedRosensteinLoanInterest(loans: TaxReportLoanRow[], year: number) {
+  return sumCurrency(
+    loans
+      .filter((loan) => !loan.year || Number(loan.year) === year)
+      .filter((loan) => {
+        const identity = `${loan.property_name ?? ""} ${loan.property_label ?? ""} ${loan.property_id ?? ""}`;
+        return normalize(identity).includes("rosenstein") && !getTaxObjectProfileForLabel(identity);
+      }),
+    (loan) => amount(loan.interest ?? loan.interest_total),
+  );
+}
+
 function laborAmount(entry: TaxReportEntry) {
   const explicit = amount(entry.labor_amount);
   if (explicit > 0) return explicit + amount(entry.travel_amount);
@@ -617,6 +629,9 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
     },
   );
   const ledgerLoanInterest = loanInterestForProfile(loans, profile, year);
+  const unallocatedRosensteinInterest = profile.key.startsWith("rosenstein-")
+    ? unallocatedRosensteinLoanInterest(loans, year)
+    : 0;
   const loanInterest = roundCurrency(ledgerLoanInterest + sumCurrency(bookingRows.filter((row) => row.categoryName === "Schuldzinsen"), (row) => row.expenseAmount));
   const moneyProcurementCosts = sumCurrency(bookingRows.filter((row) => row.categoryName === "Geldbeschaffungskosten"), (row) => row.expenseAmount);
   const maintenanceRows = profileEntries.filter((_, index) => bookingRows[index]?.categoryName === "Erhaltungsaufwand");
@@ -638,6 +653,9 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
     blockedEntries.some((entry) => isReserveContribution(entry, profile)) ? "Zuführung zur Instandhaltungsrücklage wurde blockiert. Abzug erst bei tatsächlicher Verwendung für Erhaltungsmaßnahmen." : "",
     blockedEntries.some((entry) => isUnsplitHausgeld(entry, profile)) ? "Mindestens eine Hausgeldzahlung ist nicht in umlagefähige Kosten, nicht umlagefähige Kosten und Rücklage aufgeteilt und wurde blockiert." : "",
     ledgerLoanInterest > 0 ? "Schuldzinsen stammen als Jahressumme aus dem Darlehens-Ledger. Einzelne Zahlungstage bitte anhand des Darlehenskontos belegen." : "",
+    unallocatedRosensteinInterest > 0
+      ? `Rosenstein-Schuldzinsen von ${formatTaxCurrency(unallocatedRosensteinInterest)} liegen nur als Gesamtwert vor und wurden nicht ohne Beleg auf P250, P253 und P254 verteilt. Aufteilungsschluessel mit dem Steuerberater/Darlehensnachweis festlegen.`
+      : "",
     maintenanceRows.some((entry) => getDistributionYears(entry) > 1) ? "Erhaltungsaufwand wird teilweise ueber mehrere Jahre verteilt." : "",
     businessMealRows.some((entry) => {
       const details = parseBusinessMealDetails({ ...entry, objectLabel: profile.label });
