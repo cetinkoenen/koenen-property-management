@@ -109,6 +109,12 @@ function isoDate(year: number, month: number, day = 1): string {
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+function shiftMonthKey(monthKey: string, offset: number): string {
+  const year = Number(monthKey.slice(0, 4));
+  const month = Number(monthKey.slice(5, 7));
+  return new Date(Date.UTC(year, month - 1 + offset, 1)).toISOString().slice(0, 7);
+}
+
 function parsePlanDate(first: string, second: string): string | null {
   if (/^\d{4}$/.test(first.trim())) {
     const month = MONTHS[normalizeText(second)];
@@ -253,12 +259,8 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
     .map((row) => String(row.objekt_code ?? "").trim())
     .filter(Boolean)));
   const dates = plan.rows.map((row) => row.plan_date).sort();
-  const first = new Date(`${dates[0].slice(0, 7)}-01T00:00:00`);
-  first.setMonth(first.getMonth() - 1);
-  const start = first.toISOString().slice(0, 10);
-  const last = new Date(`${dates.at(-1)?.slice(0, 7)}-01T00:00:00`);
-  last.setMonth(last.getMonth() + 1);
-  const end = last.toISOString().slice(0, 10);
+  const start = `${shiftMonthKey(dates[0].slice(0, 7), -1)}-01`;
+  const end = `${shiftMonthKey(String(dates.at(-1)).slice(0, 7), 1)}-01`;
   const result = await supabase
     .from("finance_entry")
     .select("id,object_id,objekt_code,booking_date,amount,category,entry_type,note")
@@ -276,9 +278,7 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
   const usedEntryIds = new Set<string>();
   for (const schedule of plan.rows) {
     const month = schedule.plan_date.slice(0, 7);
-    const previousMonthDate = new Date(`${month}-01T00:00:00`);
-    previousMonthDate.setMonth(previousMonthDate.getMonth() - 1);
-    const previousMonth = previousMonthDate.toISOString().slice(0, 7);
+    const previousMonth = shiftMonthKey(month, -1);
     const candidates = (result.data ?? [])
       .filter((entry) => !usedEntryIds.has(String(entry.id)))
       .filter((entry) => propertyIds.includes(String(entry.object_id ?? ""))

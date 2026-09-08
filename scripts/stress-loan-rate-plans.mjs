@@ -29,7 +29,8 @@ assert.match(service, /payment, interest \+ principal \+ fee/, "CSV-Import muss 
 assert.match(service, /quality_status: rowWarnings\.length \? "warning" : "ok"/, "Quellabweichungen müssen sichtbar gespeichert werden");
 assert.match(service, /onConflict: "user_id,property_key,plan_year,plan_month"/, "Wiederholte Importe müssen aktualisieren statt duplizieren");
 assert.match(service, /backfillBookedLoanSplits/, "Bestehende Kreditraten müssen nachträglich verknüpft werden");
-assert.match(service, /first\.setMonth\(first\.getMonth\(\) - 1\)/, "Vorausgezahlte Raten am Monatsende müssen in den Abgleich einbezogen werden");
+assert.match(service, /Date\.UTC\(year, month - 1 \+ offset, 1\)/, "Monatsverschiebungen müssen unabhängig von der lokalen Zeitzone sein");
+assert.match(service, /shiftMonthKey\(month, -1\)/, "Vorausgezahlte Raten am Monatsende müssen in den Abgleich einbezogen werden");
 assert.match(service, /usedEntryIds/, "Eine Buchung darf nicht mehreren Planmonaten zugeordnet werden");
 assert.match(service, /expandPropertyIdAliases/, "Historische Objekt-IDs müssen über die zentrale Aliasquelle aufgelöst werden");
 assert.match(service, /propertyIds\.includes\(String\(entry\.object_id/, "Der Buchungsabgleich muss aktuelle und historische Objekt-IDs einbeziehen");
