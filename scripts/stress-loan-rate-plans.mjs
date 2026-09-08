@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [migration, service, ledgerService, entryAdd, loanPage, wealthPage, taxCenter, appData, reports, backup] = await Promise.all([
+const [migration, service, ledgerService, entryAdd, loanPage, wealthPage, taxCenter, taxEngine, appData, reports, backup] = await Promise.all([
   readFile(new URL("../supabase/migrations/20260831193000_monthly_loan_rate_plans.sql", import.meta.url), "utf8"),
   readFile(new URL("../src/services/loanRatePlanService.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/services/propertyLoanLedgerService.ts", import.meta.url), "utf8"),
@@ -9,6 +9,7 @@ const [migration, service, ledgerService, entryAdd, loanPage, wealthPage, taxCen
   readFile(new URL("../src/pages/Darlehensuebersicht.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/ImmobilienVermoegen.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/SteuerCenter.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/services/taxReportEngine.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/state/AppDataContext.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/components/BackupButton.tsx", import.meta.url), "utf8"),
@@ -28,6 +29,7 @@ assert.match(service, /payment, interest \+ principal/, "CSV-Import muss Rate ge
 assert.match(service, /quality_status: rowWarnings\.length \? "warning" : "ok"/, "Quellabweichungen müssen sichtbar gespeichert werden");
 assert.match(service, /onConflict: "user_id,property_key,plan_year,plan_month"/, "Wiederholte Importe müssen aktualisieren statt duplizieren");
 assert.match(service, /backfillBookedLoanSplits/, "Bestehende Kreditraten müssen nachträglich verknüpft werden");
+assert.match(service, /schedule\.payment_amount\) > 0\.02\) continue/, "Automatische Planverknüpfung muss den Gesamtbetrag centgenau abgleichen");
 assert.match(service, /tax_relevant: false/, "Die Gesamtrate darf nicht als steuerlich abziehbarer Betrag markiert werden");
 assert.match(service, /loadLoanRatePlanYearlySummary/, "Die Darlehensseite braucht eine Jahresübersicht direkt aus den Monatsplänen");
 assert.match(service, /paymentTotal[\s\S]*interestTotal[\s\S]*principalTotal[\s\S]*feeTotal[\s\S]*closingBalance/, "Die Jahresübersicht muss Rate, Zins, Tilgung, Gebühren und Restschuld enthalten");
@@ -55,7 +57,10 @@ for (const source of [taxCenter, appData, reports]) {
   assert.match(source, /loan_principal_amount/, "Steuer- und Berichtsdaten müssen den gebuchten Tilgungsanteil lesen");
 }
 assert.match(taxCenter, /Gebuchte Monatsraten/, "Der Steuer-Report muss gebuchte Monatsaufteilungen priorisieren");
+assert.match(taxCenter, /listLoanRatePlanRowsForYear/, "Historische Steuerjahre müssen auf die Monatspläne der Darlehensseite zurückfallen können");
+assert.match(taxEngine, /unallocatedRosensteinLoanInterest/, "Nicht belegbar aufgeteilte Rosenstein-Zinsen müssen erkannt werden");
+assert.match(taxEngine, /wurden nicht ohne Beleg auf P250, P253 und P254 verteilt/, "Der Steuerbericht muss vor einer unbelegten Rosenstein-Aufteilung warnen");
 assert.match(reports, /bookedSplits/, "Berichte & Exporte muss gebuchte Monatsaufteilungen priorisieren");
 assert.match(backup, /property_loan_rate_plan/, "Die neue Hauptquelle muss im App-Backup enthalten sein");
 
-console.log("40 Stressfälle für Tilgungsplan-Import, zentrale Restschuld, kompakte Jahresübersicht, Buchungsaufteilung, Steuerberichte und Sicherheit bestanden.");
+console.log("44 Stressfälle für Tilgungsplan-Import, zentrale Restschuld, kompakte Jahresübersicht, Buchungsaufteilung, Steuerberichte und Sicherheit bestanden.");

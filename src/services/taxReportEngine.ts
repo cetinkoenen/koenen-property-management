@@ -561,7 +561,11 @@ function unallocatedRosensteinLoanInterest(loans: TaxReportLoanRow[], year: numb
       .filter((loan) => !loan.year || Number(loan.year) === year)
       .filter((loan) => {
         const identity = `${loan.property_name ?? ""} ${loan.property_label ?? ""} ${loan.property_id ?? ""}`;
-        return normalize(identity).includes("rosenstein") && !getTaxObjectProfileForLabel(identity);
+        const normalizedIdentity = normalize(identity);
+        const hasSpecificUnit = includesAny(normalizedIdentity, [
+          "p250", "p253", "p254", "e008440000121", "e008440000122", "e008440000123",
+        ]);
+        return normalizedIdentity.includes("rosenstein") && !hasSpecificUnit;
       }),
     (loan) => amount(loan.interest ?? loan.interest_total),
   );
