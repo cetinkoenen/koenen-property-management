@@ -232,7 +232,7 @@ async function syncYearlyLedger(plan: ParsedLoanRatePlan, propertyId: string) {
   if (result.error) throw result.error;
 }
 
-async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanObjectBridgeRow): Promise<number> {
+async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanObjectBridgeRow, bridges: LoanObjectBridgeRow[]): Promise<number> {
   if (!bridge.object_id) return 0;
   const aliasResult = await supabase.from("property_id_aliases").select("object_id,legacy_property_id").limit(500);
   if (aliasResult.error) throw aliasResult.error;
@@ -244,6 +244,10 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
       (aliasResult.data ?? []) as PropertyIdAliasRow[],
     ),
   ].filter((value): value is string => Boolean(value))));
+  const propertyObjectCodes = Array.from(new Set(bridges
+    .filter((row) => resolveLoanProperty(row.property_name ?? "")?.key === plan.propertyKey)
+    .map((row) => String(row.objekt_code ?? "").trim())
+    .filter(Boolean)));
   const dates = plan.rows.map((row) => row.plan_date).sort();
   const first = new Date(`${dates[0].slice(0, 7)}-01T00:00:00`);
   first.setMonth(first.getMonth() - 1);
@@ -269,6 +273,7 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
     const candidates = (result.data ?? [])
       .filter((entry) => !usedEntryIds.has(String(entry.id)))
       .filter((entry) => propertyIds.includes(String(entry.object_id ?? ""))
+        || propertyObjectCodes.includes(String(entry.objekt_code ?? "").trim())
         || resolveLoanProperty(String(entry.objekt_code ?? ""))?.key === plan.propertyKey)
       .filter((entry) => {
         const bookingDate = String(entry.booking_date ?? "");
@@ -332,7 +337,7 @@ export async function importLoanRatePlanFiles(files: File[]): Promise<{ rows: nu
     importedRows += rows.length;
     allWarnings.push(...plan.warnings);
     if (bridge?.property_id) await syncYearlyLedger(plan, bridge.property_id);
-    if (bridge) updatedBookings += await backfillBookedLoanSplits(plan, bridge);
+    if (bridge) updatedBookings += await backfillBookedLoanSplits(plan, bridge, bridges);
   }
   return { rows: importedRows, bookings: updatedBookings, warnings: allWarnings };
 }
