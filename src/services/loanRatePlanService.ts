@@ -123,6 +123,10 @@ function nearlyEqual(left: number | null, right: number | null, tolerance = 0.02
   return Math.abs(left - right) <= tolerance;
 }
 
+function loanReferenceTokens(value: unknown): string[] {
+  return String(value ?? "").match(/\b[0-9][0-9-]{5,}[0-9]\b/g) ?? [];
+}
+
 export function parseLoanRatePlanCsv(filename: string, csvText: string): ParsedLoanRatePlan {
   const property = resolveLoanProperty(filename);
   if (!property) throw new Error(`Objekt konnte aus dem Dateinamen "${filename}" nicht erkannt werden.`);
@@ -257,11 +261,16 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
   const end = last.toISOString().slice(0, 10);
   const result = await supabase
     .from("finance_entry")
-    .select("id,object_id,objekt_code,booking_date,amount,category,entry_type")
+    .select("id,object_id,objekt_code,booking_date,amount,category,entry_type,note")
     .eq("is_deleted", false)
     .gte("booking_date", start)
     .lt("booking_date", end);
   if (result.error) throw result.error;
+
+  const directlyAssignedEntries = (result.data ?? []).filter((entry) => propertyIds.includes(String(entry.object_id ?? ""))
+    || propertyObjectCodes.includes(String(entry.objekt_code ?? "").trim())
+    || resolveLoanProperty(String(entry.objekt_code ?? ""))?.key === plan.propertyKey);
+  const knownLoanReferences = new Set(directlyAssignedEntries.flatMap((entry) => loanReferenceTokens(entry.note)));
 
   let updated = 0;
   const usedEntryIds = new Set<string>();
@@ -274,7 +283,8 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
       .filter((entry) => !usedEntryIds.has(String(entry.id)))
       .filter((entry) => propertyIds.includes(String(entry.object_id ?? ""))
         || propertyObjectCodes.includes(String(entry.objekt_code ?? "").trim())
-        || resolveLoanProperty(String(entry.objekt_code ?? ""))?.key === plan.propertyKey)
+        || resolveLoanProperty(String(entry.objekt_code ?? ""))?.key === plan.propertyKey
+        || loanReferenceTokens(entry.note).some((token) => knownLoanReferences.has(token)))
       .filter((entry) => {
         const bookingDate = String(entry.booking_date ?? "");
         return bookingDate.startsWith(month) || bookingDate.startsWith(previousMonth);

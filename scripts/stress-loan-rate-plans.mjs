@@ -35,6 +35,7 @@ assert.match(service, /expandPropertyIdAliases/, "Historische Objekt-IDs müssen
 assert.match(service, /propertyIds\.includes\(String\(entry\.object_id/, "Der Buchungsabgleich muss aktuelle und historische Objekt-IDs einbeziehen");
 assert.match(service, /resolveLoanProperty\(String\(entry\.objekt_code/, "Historische Buchungen müssen zusätzlich über ihren Objektcode erkannt werden");
 assert.match(service, /propertyObjectCodes\.includes\(String\(entry\.objekt_code/, "Objektcodes aus der zentralen Bridge müssen für Altbuchungen gelten");
+assert.match(service, /knownLoanReferences/, "Eindeutige Darlehensvertragsnummern müssen historische Buchungszuordnungen stabilisieren");
 assert.match(service, /schedule\.payment_amount\) <= 0\.02\)/, "Automatische Planverknüpfung muss den Gesamtbetrag centgenau abgleichen");
 assert.match(service, /tax_relevant: false/, "Die Gesamtrate darf nicht als steuerlich abziehbarer Betrag markiert werden");
 assert.match(service, /loadLoanRatePlanYearlySummary/, "Die Darlehensseite braucht eine Jahresübersicht direkt aus den Monatsplänen");
