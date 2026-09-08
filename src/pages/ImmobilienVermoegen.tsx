@@ -7,6 +7,7 @@ import {
   ChevronDown,
   CircleAlert,
   Eye,
+  ExternalLink,
   Euro,
   FileText,
   Home,
@@ -1367,6 +1368,31 @@ function formatRentPilotDate(value: string | null) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("de-DE");
 }
 
+type PropertySpecialistAreaNoticeProps = {
+  mainPagePath: string;
+  mainPageLabel: string;
+};
+
+function PropertySpecialistAreaNotice({ mainPagePath, mainPageLabel }: PropertySpecialistAreaNoticeProps) {
+  return (
+    <aside
+      aria-label="Hinweis zur gefilterten Objektansicht"
+      className="flex flex-col gap-3 rounded-[18px] border border-sky-200 bg-sky-50 px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <p className="flex max-w-4xl items-start gap-2 text-sm font-bold leading-6 text-sky-950">
+        <Info aria-hidden="true" className="mt-0.5 shrink-0 text-sky-700" size={18} />
+        <span>Dies ist eine gefilterte Informationsübersicht für dieses Objekt. Für Detailbearbeitungen oder die Gesamtübersicht nutzen Sie die Hauptseite.</span>
+      </p>
+      <Link
+        to={mainPagePath}
+        className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#255f6f] px-4 text-center text-sm font-black text-white no-underline shadow-sm transition hover:bg-[#1d4d5a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#255f6f]"
+      >
+        {mainPageLabel} öffnen <ExternalLink aria-hidden="true" size={17} />
+      </Link>
+    </aside>
+  );
+}
+
 function PropertyRentReceiptOverview({ rentObjectId, propertyLabel }: { rentObjectId: string; propertyLabel: string }) {
   const thisYear = currentYear();
   const years = useMemo(() => Array.from({ length: Math.max(1, thisYear - 2024 + 1) }, (_, index) => thisYear - index), [thisYear]);
@@ -1648,12 +1674,15 @@ function DetailPage({
               </div>
             </article>
             <div id="cashflow" className="scroll-mt-6">
-              <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Vermögen und Cashflow werden geladen…</div>}>
-                <CentralWealthCashflowDashboard
-                  lockedPropertyId={centralRentObjectId(card, objects)}
-                  lockedPropertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
-                />
-              </Suspense>
+              <div className="space-y-5">
+                <PropertySpecialistAreaNotice mainPagePath="/dashboard/vermoegen-cashflow" mainPageLabel="Hauptseite Vermögen & Cashflow" />
+                <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Vermögen und Cashflow werden geladen…</div>}>
+                  <CentralWealthCashflowDashboard
+                    lockedPropertyId={centralRentObjectId(card, objects)}
+                    lockedPropertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
+                  />
+                </Suspense>
+              </div>
             </div>
             {isRosensteinCard(card) ? <RosensteinUnitOverview entries={entries} year={year} parkingUnits={parkingUnits} /> : null}
 
@@ -1687,6 +1716,7 @@ function DetailPage({
 
             <div id="miete" className="scroll-mt-6">
               <div className="space-y-5">
+                <PropertySpecialistAreaNotice mainPagePath="/mieter/mieteingang" mainPageLabel="Hauptseite Mieteingang" />
                 <PropertyRentReceiptOverview
                   key={propertyId}
                   rentObjectId={centralRentObjectId(card, objects)}
@@ -1710,12 +1740,15 @@ function DetailPage({
             </div>
 
             <div id="nebenkosten" className="scroll-mt-6">
-              <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Nebenkosten-KPIs werden geladen…</div>}>
-                <PropertyUtilitiesKpiDashboard
-                  propertyId={centralRentObjectId(card, objects)}
-                  propertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
-                />
-              </Suspense>
+              <div className="space-y-5">
+                <PropertySpecialistAreaNotice mainPagePath="/nebenkosten/wohnungen" mainPageLabel="Hauptseite Nebenkosten" />
+                <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Nebenkosten-KPIs werden geladen…</div>}>
+                  <PropertyUtilitiesKpiDashboard
+                    propertyId={centralRentObjectId(card, objects)}
+                    propertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
+                  />
+                </Suspense>
+              </div>
             </div>
 
             {DETAIL_TEMPLATE_SECTIONS.map((section) => {
@@ -1724,12 +1757,15 @@ function DetailPage({
                 <Fragment key={section.id}>
                 {section.id === "darlehen" ? (
                   <div id="darlehen" className="scroll-mt-6">
-                    <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Darlehensübersicht wird geladen…</div>}>
-                      <CentralLoanOverview
-                        lockedPropertyId={centralRentObjectId(card, objects)}
-                        lockedPropertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
-                      />
-                    </Suspense>
+                    <div className="space-y-5">
+                      <PropertySpecialistAreaNotice mainPagePath="/darlehen" mainPageLabel="Hauptseite Darlehen" />
+                      <Suspense fallback={<div role="status" className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-bold text-sky-800">Darlehensübersicht wird geladen…</div>}>
+                        <CentralLoanOverview
+                          lockedPropertyId={centralRentObjectId(card, objects)}
+                          lockedPropertyLabel={card.draft.name || card.row?.property_name || "Immobilie"}
+                        />
+                      </Suspense>
+                    </div>
                   </div>
                 ) : null}
                 <article id={section.id === "darlehen" ? "darlehen-eigenschaften" : section.id} className="rounded-[18px] border border-slate-200 bg-white shadow-sm">

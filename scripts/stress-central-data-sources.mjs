@@ -53,6 +53,13 @@ assert.match(wealth, /<CentralLoanOverview[\s\S]{0,300}?lockedPropertyId=\{centr
 assert.match(loanOverview, /const propertyLocked = Boolean\(fixedPropertyId \|\| lockedPropertyLabel\)/, "Die zentrale Darlehensübersicht muss einen fest gebundenen Objektmodus unterstützen");
 assert.match(loanOverview, /if \(propertyLocked\) \{[\s\S]{0,500}?return rows\.filter/, "Eine Immobilienakte darf nur die Darlehensdaten ihres fest gewählten Objekts anzeigen");
 assert.match(wealth, /<PropertyUtilitiesKpiDashboard[\s\S]{0,300}?propertyId=\{centralRentObjectId\(card, objects\)\}/, "Jede Immobilienakte muss das zentrale Nebenkosten-KPI-Dashboard verwenden");
+assert.match(wealth, /function PropertySpecialistAreaNotice/, "Alle Fachbereiche der Immobilienakte müssen denselben Read-only-Hinweis verwenden");
+assert.match(wealth, /Dies ist eine gefilterte Informationsübersicht für dieses Objekt\. Für Detailbearbeitungen oder die Gesamtübersicht nutzen Sie die Hauptseite\./, "Der vorgeschriebene Hinweistext muss vollständig angezeigt werden");
+assert.match(wealth, /mainPagePath="\/mieter\/mieteingang" mainPageLabel="Hauptseite Mieteingang"/, "Der Mietbereich muss auf die zentrale Mieteingang-Hauptseite verweisen");
+assert.match(wealth, /mainPagePath="\/dashboard\/vermoegen-cashflow" mainPageLabel="Hauptseite Vermögen & Cashflow"/, "Der Cashflow-Bereich muss auf die zentrale Cashflow-Hauptseite verweisen");
+assert.match(wealth, /mainPagePath="\/darlehen" mainPageLabel="Hauptseite Darlehen"/, "Der Darlehensbereich muss auf die zentrale Darlehen-Hauptseite verweisen");
+assert.match(wealth, /mainPagePath="\/nebenkosten\/wohnungen" mainPageLabel="Hauptseite Nebenkosten"/, "Der Nebenkostenbereich muss auf die zentrale Nebenkosten-Hauptseite verweisen");
+assert.equal((wealth.match(/<PropertySpecialistAreaNotice /g) ?? []).length, 4, "Der Fachbereichshinweis muss genau einmal in jedem der vier Fachbereiche erscheinen");
 assert.match(utilitiesKpi, /from\("apartment_billing_workspaces"\)/, "Nebenkosten-KPIs müssen die zentrale Abrechnungsquelle laden");
 assert.match(utilitiesKpi, /filter\(\(row\) => row\.object_id === canonicalBillingObjectId\)/, "Nebenkosten-KPIs müssen strikt auf den Objektcode der zentralen Hauptseite begrenzt sein");
 assert.match(utilitiesKpi, /selectedYear === "all" \? records : records\.filter/, "Der Jahresfilter muss einzelne Jahre und die Gesamthistorie unterstützen");
@@ -64,4 +71,4 @@ assert.match(utilitiesPage, /return summarizeBillingWorkspace\(target\)/, "Haupt
 assert.match(billingService, /const balance = roundMoney\(advance - tenantTotal\)/, "Die zentrale Nebenkostenformel muss Guthaben und Nachzahlung centgenau aus Vorauszahlung minus Kosten berechnen");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
-console.log("44 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("51 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
