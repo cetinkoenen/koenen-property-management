@@ -597,6 +597,8 @@ export default function Darlehensuebersicht({ lockedPropertyId, lockedPropertyLa
   const [importingPlans, setImportingPlans] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
+  const [directImportName, setDirectImportName] = useState("");
+  const [directImportText, setDirectImportText] = useState("");
   const [planDataRevision, setPlanDataRevision] = useState(0);
 
   async function load() {
@@ -754,6 +756,43 @@ export default function Darlehensuebersicht({ lockedPropertyId, lockedPropertyLa
               {importWarnings.length > 20 ? <div style={{ marginTop: 8 }}>Weitere {importWarnings.length - 20} Hinweise sind mit den Monatszeilen in Supabase gespeichert.</div> : null}
             </details>
           ) : null}
+          <details style={{ width: "100%", marginTop: 4, color: "#334155", fontSize: 12, fontWeight: 750 }}>
+            <summary>CSV-Inhalt direkt einfügen</summary>
+            <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+              <input
+                aria-label="CSV-Dateiname"
+                value={directImportName}
+                onChange={(event) => setDirectImportName(event.target.value)}
+                placeholder="z. B. Tilgungsplan Lilienthaler Str. 54.csv"
+                style={styles.input}
+              />
+              <textarea
+                aria-label="CSV-Inhalt"
+                value={directImportText}
+                onChange={(event) => setDirectImportText(event.target.value)}
+                placeholder="Semikolon-getrennten CSV-Inhalt einfügen"
+                rows={7}
+                style={{ ...styles.input, resize: "vertical", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+              />
+              <button
+                type="button"
+                style={{ ...styles.primaryButton, justifySelf: "start" }}
+                disabled={importingPlans || !directImportName.trim() || !directImportText.trim()}
+                onClick={() => {
+                  const filename = directImportName.trim().toLowerCase().endsWith(".csv")
+                    ? directImportName.trim()
+                    : `${directImportName.trim()}.csv`;
+                  const file = new File([directImportText], filename, { type: "text/csv;charset=utf-8" });
+                  void importPlans([file]).then(() => {
+                    setDirectImportName("");
+                    setDirectImportText("");
+                  });
+                }}
+              >
+                CSV-Inhalt übernehmen
+              </button>
+            </div>
+          </details>
         </div>
       </section>
 
