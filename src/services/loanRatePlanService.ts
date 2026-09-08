@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { canonicalizeFinanceCategory } from "@/lib/financeCategories";
+import { expandPropertyIdAliases, type PropertyIdAliasRow } from "@/lib/propertyIdAliases";
 
 export type LoanRatePlanRow = {
   id?: string;
@@ -233,6 +234,16 @@ async function syncYearlyLedger(plan: ParsedLoanRatePlan, propertyId: string) {
 
 async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanObjectBridgeRow): Promise<number> {
   if (!bridge.object_id) return 0;
+  const aliasResult = await supabase.from("property_id_aliases").select("object_id,legacy_property_id").limit(500);
+  if (aliasResult.error) throw aliasResult.error;
+  const propertyIds = Array.from(new Set([
+    bridge.object_id,
+    bridge.property_id,
+    ...expandPropertyIdAliases(
+      [bridge.object_id, bridge.property_id ?? ""],
+      (aliasResult.data ?? []) as PropertyIdAliasRow[],
+    ),
+  ].filter((value): value is string => Boolean(value))));
   const dates = plan.rows.map((row) => row.plan_date).sort();
   const first = new Date(`${dates[0].slice(0, 7)}-01T00:00:00`);
   first.setMonth(first.getMonth() - 1);
@@ -244,7 +255,7 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
     .from("finance_entry")
     .select("id,booking_date,amount,category,entry_type")
     .eq("is_deleted", false)
-    .eq("object_id", bridge.object_id)
+    .in("object_id", propertyIds)
     .gte("booking_date", start)
     .lt("booking_date", end);
   if (result.error) throw result.error;

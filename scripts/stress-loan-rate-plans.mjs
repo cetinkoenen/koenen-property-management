@@ -31,6 +31,8 @@ assert.match(service, /onConflict: "user_id,property_key,plan_year,plan_month"/,
 assert.match(service, /backfillBookedLoanSplits/, "Bestehende Kreditraten müssen nachträglich verknüpft werden");
 assert.match(service, /first\.setMonth\(first\.getMonth\(\) - 1\)/, "Vorausgezahlte Raten am Monatsende müssen in den Abgleich einbezogen werden");
 assert.match(service, /usedEntryIds/, "Eine Buchung darf nicht mehreren Planmonaten zugeordnet werden");
+assert.match(service, /expandPropertyIdAliases/, "Historische Objekt-IDs müssen über die zentrale Aliasquelle aufgelöst werden");
+assert.match(service, /\.in\("object_id", propertyIds\)/, "Der Buchungsabgleich muss aktuelle und historische Objekt-IDs einbeziehen");
 assert.match(service, /schedule\.payment_amount\) <= 0\.02\)/, "Automatische Planverknüpfung muss den Gesamtbetrag centgenau abgleichen");
 assert.match(service, /tax_relevant: false/, "Die Gesamtrate darf nicht als steuerlich abziehbarer Betrag markiert werden");
 assert.match(service, /loadLoanRatePlanYearlySummary/, "Die Darlehensseite braucht eine Jahresübersicht direkt aus den Monatsplänen");
