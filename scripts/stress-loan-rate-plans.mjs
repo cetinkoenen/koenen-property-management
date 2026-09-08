@@ -25,11 +25,13 @@ assert.match(migration, /loan_principal_amount/, "Buchungen müssen den Tilgungs
 for (const property of ["colmarer", "elsasser", "fuerther", "hohenloher", "lilienthaler", "rosenstein"]) {
   assert.match(service, new RegExp(property), `Objektzuordnung für ${property} fehlt`);
 }
-assert.match(service, /payment, interest \+ principal/, "CSV-Import muss Rate gegen Zins plus Tilgung prüfen");
+assert.match(service, /payment, interest \+ principal \+ fee/, "CSV-Import muss Rate gegen Zins plus Tilgung plus Gebühr prüfen");
 assert.match(service, /quality_status: rowWarnings\.length \? "warning" : "ok"/, "Quellabweichungen müssen sichtbar gespeichert werden");
 assert.match(service, /onConflict: "user_id,property_key,plan_year,plan_month"/, "Wiederholte Importe müssen aktualisieren statt duplizieren");
 assert.match(service, /backfillBookedLoanSplits/, "Bestehende Kreditraten müssen nachträglich verknüpft werden");
-assert.match(service, /schedule\.payment_amount\) > 0\.02\) continue/, "Automatische Planverknüpfung muss den Gesamtbetrag centgenau abgleichen");
+assert.match(service, /first\.setMonth\(first\.getMonth\(\) - 1\)/, "Vorausgezahlte Raten am Monatsende müssen in den Abgleich einbezogen werden");
+assert.match(service, /usedEntryIds/, "Eine Buchung darf nicht mehreren Planmonaten zugeordnet werden");
+assert.match(service, /schedule\.payment_amount\) <= 0\.02\)/, "Automatische Planverknüpfung muss den Gesamtbetrag centgenau abgleichen");
 assert.match(service, /tax_relevant: false/, "Die Gesamtrate darf nicht als steuerlich abziehbarer Betrag markiert werden");
 assert.match(service, /loadLoanRatePlanYearlySummary/, "Die Darlehensseite braucht eine Jahresübersicht direkt aus den Monatsplänen");
 assert.match(service, /paymentTotal[\s\S]*interestTotal[\s\S]*principalTotal[\s\S]*feeTotal[\s\S]*closingBalance/, "Die Jahresübersicht muss Rate, Zins, Tilgung, Gebühren und Restschuld enthalten");

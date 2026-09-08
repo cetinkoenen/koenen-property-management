@@ -155,8 +155,8 @@ export function parseLoanRatePlanCsv(filename: string, csvText: string): ParsedL
     if (payment === null || interest === null || principal === null) continue;
 
     const rowWarnings: string[] = [];
-    if (!nearlyEqual(payment, interest + principal)) {
-      rowWarnings.push(`Rate ${payment.toFixed(2)} stimmt nicht mit Zins + Tilgung ${(interest + principal).toFixed(2)} überein.`);
+    if (!nearlyEqual(payment, interest + principal + fee)) {
+      rowWarnings.push(`Rate ${payment.toFixed(2)} stimmt nicht mit Zins + Tilgung + Gebühr ${(interest + principal + fee).toFixed(2)} überein.`);
     }
     if (!nearlyEqual(closing, opening === null ? null : opening - principal)) {
       rowWarnings.push("Restschuld-Fortschreibung innerhalb der Zeile ist abweichend.");
@@ -234,7 +234,9 @@ async function syncYearlyLedger(plan: ParsedLoanRatePlan, propertyId: string) {
 async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanObjectBridgeRow): Promise<number> {
   if (!bridge.object_id) return 0;
   const dates = plan.rows.map((row) => row.plan_date).sort();
-  const start = `${dates[0].slice(0, 7)}-01`;
+  const first = new Date(`${dates[0].slice(0, 7)}-01T00:00:00`);
+  first.setMonth(first.getMonth() - 1);
+  const start = first.toISOString().slice(0, 10);
   const last = new Date(`${dates.at(-1)?.slice(0, 7)}-01T00:00:00`);
   last.setMonth(last.getMonth() + 1);
   const end = last.toISOString().slice(0, 10);
@@ -248,19 +250,34 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
   if (result.error) throw result.error;
 
   let updated = 0;
+  const usedEntryIds = new Set<string>();
   for (const schedule of plan.rows) {
     const month = schedule.plan_date.slice(0, 7);
+    const previousMonthDate = new Date(`${month}-01T00:00:00`);
+    previousMonthDate.setMonth(previousMonthDate.getMonth() - 1);
+    const previousMonth = previousMonthDate.toISOString().slice(0, 7);
     const candidates = (result.data ?? [])
-      .filter((entry) => String(entry.booking_date ?? "").startsWith(month))
+      .filter((entry) => !usedEntryIds.has(String(entry.id)))
+      .filter((entry) => {
+        const bookingDate = String(entry.booking_date ?? "");
+        return bookingDate.startsWith(month) || bookingDate.startsWith(previousMonth);
+      })
       .filter((entry) => canonicalizeFinanceCategory(String(entry.category ?? ""), entry.entry_type === "expense" ? "expense" : "income") === "Kreditrate")
-      .sort((a, b) => Math.abs(Math.abs(Number(a.amount ?? 0)) - schedule.payment_amount) - Math.abs(Math.abs(Number(b.amount ?? 0)) - schedule.payment_amount));
+      .filter((entry) => Math.abs(Math.abs(Number(entry.amount ?? 0)) - schedule.payment_amount) <= 0.02)
+      .sort((a, b) => {
+        const aMonth = String(a.booking_date ?? "").slice(0, 7);
+        const bMonth = String(b.booking_date ?? "").slice(0, 7);
+        const aSameMonth = aMonth === month ? 0 : 1;
+        const bSameMonth = bMonth === month ? 0 : 1;
+        if (aSameMonth !== bSameMonth) return aSameMonth - bSameMonth;
+        return String(b.booking_date ?? "").localeCompare(String(a.booking_date ?? ""));
+      });
     const selected = candidates[0];
     if (!selected) continue;
     // Ein Tilgungsplan darf nur automatisch mit einer Buchung verbunden werden,
     // wenn auch der Gesamtbetrag centgenau passt. Bei Sondertilgungen,
     // Gebuehren oder Ratenaenderungen bleibt die Buchung bewusst ungeaendert und
     // muss anhand eines Bank-/Darlehensbelegs geprueft werden.
-    if (Math.abs(Math.abs(Number(selected.amount ?? 0)) - schedule.payment_amount) > 0.02) continue;
     const update = await supabase.from("finance_entry").update({
       loan_interest_amount: schedule.interest_amount,
       loan_principal_amount: schedule.principal_amount,
@@ -269,6 +286,7 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
       tax_relevant: false,
     }).eq("id", selected.id).eq("is_deleted", false);
     if (update.error) throw update.error;
+    usedEntryIds.add(String(selected.id));
     updated += 1;
   }
   return updated;
