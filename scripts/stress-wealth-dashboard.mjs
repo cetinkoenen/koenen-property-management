@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const wealthSource = readFileSync(new URL("../src/pages/ImmobilienVermoegen.tsx", import.meta.url), "utf8");
+const cashflowDashboardSource = readFileSync(new URL("../src/pages/WealthCashflowDashboard.tsx", import.meta.url), "utf8");
 assert.match(wealthSource, /inputMode=\{field\.type === "number" \? "decimal" : undefined\}/, "Gespeicherte Zahlenfelder müssen auch mit deutscher Dezimalschreibweise erneut editierbar bleiben");
 assert.match(wealthSource, /Bearbeitbar/, "Eigenschaftsgruppen müssen ihren Bearbeitungsstatus sichtbar anzeigen");
 assert.match(wealthSource, /aria-label=\{`\$\{column\.title\} speichern`\}/, "Jede Eigenschaftsgruppe muss eine eigene Speicheraktion anbieten");
@@ -277,6 +278,12 @@ const stored = {
 };
 
 const tests = [
+  () => {
+    const responsiveContainers = cashflowDashboardSource.match(/<ResponsiveContainer\b[^>]*>/g) ?? [];
+    assert.ok(responsiveContainers.length >= 4, "Das Cashflow-Dashboard muss alle vier Diagramme responsiv rendern");
+    assert.ok(responsiveContainers.every((tag) => /minWidth=\{0\}/.test(tag)), "Jeder ResponsiveContainer braucht eine stabile Mindestbreite");
+    assert.ok((cashflowDashboardSource.match(/h-\[3[24]0px\] min-w-0/g) ?? []).length >= 4, "Diagramm-Eltern müssen in Grid-Layouts schrumpfen dürfen");
+  },
   () => {
     const cards = buildCards(rows, stored);
     assert.equal(cards.length, 6);

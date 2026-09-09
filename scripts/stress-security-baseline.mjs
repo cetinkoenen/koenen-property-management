@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [rlsMigration, storageMigration, aliasMigration, invokerViewMigration] = await Promise.all([
+const [rlsMigration, storageMigration, aliasMigration, invokerViewMigration, garageBillingPage] = await Promise.all([
   readFile(new URL("../supabase/migrations/20260826090000_lock_down_public_tables_without_rls.sql", import.meta.url), "utf8"),
   readFile(new URL("../supabase/migrations/20260827153000_private_exposes_storage.sql", import.meta.url), "utf8"),
   readFile(new URL("../supabase/migrations/20260827163000_property_id_aliases.sql", import.meta.url), "utf8"),
   readFile(new URL("../supabase/migrations/20260901143500_secure_object_bridge_view.sql", import.meta.url), "utf8"),
+  readFile(new URL("../src/pages/NebenkostenTiefgarage.tsx", import.meta.url), "utf8"),
 ]);
 
 assert.match(rlsMigration, /relation\.relrowsecurity = false/, "Die Sicherheitsmigration muss alle öffentlichen Tabellen ohne RLS finden");
@@ -24,5 +25,9 @@ assert.match(invokerViewMigration, /grant select on public\.v_koenen_object_brid
 assert.match(invokerViewMigration, /relation\.relrowsecurity = false/i, "Die Sicherheitsmigration muss weiterhin jede öffentliche Tabelle ohne RLS blockieren");
 assert.match(invokerViewMigration, /has_table_privilege\('anon'[\s\S]*has_table_privilege\('authenticated'/i, "Browserlesbare Views müssen vollständig auf SECURITY DEFINER geprüft werden");
 assert.match(invokerViewMigration, /security_invoker=true/i, "Browserlesbare Views müssen als SECURITY INVOKER nachgewiesen werden");
+assert.match(garageBillingPage, /function escapeHtml[\s\S]*\.replace\(\/&\/g, "&amp;"\)/, "Frei editierbare TG-Abrechnungsdaten müssen vor HTML-Export maskiert werden");
+for (const field of ["propertyLabel", "unitLabel", "landlordName", "tenantName", "footerNote"]) {
+  assert.match(garageBillingPage, new RegExp(`escapeHtml\\(record\\.${field}`), `${field} darf nicht unmaskiert in die TG-Druckausgabe gelangen`);
+}
 
-console.log("15 Stressfaelle fuer RLS-, Rollen-, View- und Storage-Grundschutz bestanden.");
+console.log("21 Stressfaelle fuer RLS-, Rollen-, View-, Storage- und HTML-Export-Grundschutz bestanden.");
