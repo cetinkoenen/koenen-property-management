@@ -66,6 +66,19 @@ function metricHtml(metrics: PdfReportMetric[] = [], variant: "hero" | "section"
 }
 
 function tableHtml(table: PdfReportTable) {
+  const columnClass = (header: string, value: unknown): string => {
+    const text = String(value ?? "").trim();
+    const classes: string[] = [];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text) || /^\d{2}\.\d{2}\.\d{4}$/.test(text)) classes.push("date-cell");
+    if (text.includes("€") || /betrag|summe|saldo|eingang|ausgabe|kosten|rate|zins|tilgung|restschuld|kalt|gesamt|vorauszahlung|quote|€\/m²/i.test(header)) classes.push("money-cell");
+    const status = text.endsWith("· bezahlt") || text.startsWith("Guthaben ·")
+      ? "payment-paid"
+      : text.endsWith("· offen") || text.startsWith("Nachzahlung ·")
+        ? "payment-open"
+        : "";
+    if (status) classes.push(status);
+    return classes.join(" ");
+  };
   return `
     <div class="table-block">
       <div class="table-title">${escapeHtml(table.title)}</div>
@@ -78,7 +91,7 @@ function tableHtml(table: PdfReportTable) {
           ${
             table.rows.length
               ? table.rows
-                  .map((row) => `<tr>${row.map((cell) => { const value=String(cell); const cls=value.endsWith("· bezahlt")||value.startsWith("Guthaben ·")?"payment-paid":value.endsWith("· offen")||value.startsWith("Nachzahlung ·")?"payment-open":""; return `<td class="${cls}">${escapeHtml(cell ?? "")}</td>`; }).join("")}</tr>`)
+                  .map((row) => `<tr>${row.map((cell, index) => `<td class="${columnClass(table.headers[index] ?? "", cell)}">${escapeHtml(cell ?? "")}</td>`).join("")}</tr>`)
                   .join("")
               : `<tr><td colspan="${table.headers.length}">Keine Daten vorhanden.</td></tr>`
           }
@@ -118,7 +131,7 @@ export function openProfessionalPdfReport(options: PdfReportOptions) {
   <title>${escapeHtml(options.documentName)}</title>
   <style>
     @page {
-      size: A4;
+      size: ${options.landscape ? "A4 landscape" : "A4"};
       margin: 16mm 12mm 18mm;
       @bottom-left { content: "${escapeHtml(FOOTER_TEXT)}"; }
       @bottom-right { content: "Seite " counter(page) " / " counter(pages); }
@@ -285,6 +298,7 @@ export function openProfessionalPdfReport(options: PdfReportOptions) {
     }
     table {
       width: 100%;
+      table-layout: fixed;
       border-collapse: separate;
       border-spacing: 0;
       margin-top: 8px;
@@ -323,11 +337,21 @@ export function openProfessionalPdfReport(options: PdfReportOptions) {
     }
     .payment-paid { background: #e2f4e8; color: #21603a; }
     .payment-open { background: #fce6e5; color: #a02626; }
-    td, th { overflow-wrap: anywhere; }
+    td, th { overflow-wrap: break-word; word-break: normal; hyphens: auto; }
+    td.date-cell { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    td.money-cell { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
     @media print {
-      @page { size: ${options.landscape ? "A4 landscape" : "A4"}; }
       * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-      .section { break-inside: auto; }
+      .hero { break-after: page; }
+      .section {
+        break-before: page;
+        break-inside: auto;
+        margin-top: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+      }
+      .table-block { break-inside: auto; }
       .section-head, .table-title { break-after: avoid; }
       thead { display: table-header-group; }
       tr { break-inside: avoid; }

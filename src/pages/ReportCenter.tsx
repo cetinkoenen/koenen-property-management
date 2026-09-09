@@ -36,6 +36,34 @@ function Preview({module}:{module:ReportModule}){
   const cellClass=(value:unknown)=>{const cell=String(value);return cell.endsWith('· bezahlt')||cell.startsWith('Guthaben ·')?'report-paid':cell.endsWith('· offen')||cell.startsWith('Nachzahlung ·')?'report-open':'';};
   return <section className="report-preview" aria-label={module.title}><h2>{module.title}</h2>{module.paragraphs?.map(p=><p key={p} className="report-note">{p}</p>)}{module.tables?.map((t,i)=><div key={i}><h3>{t.title}</h3><div className="report-table-scroll" tabIndex={0} role="region" aria-label={t.title}><table><thead><tr>{t.headers.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{t.rows.length?t.rows.map((row,ri)=><tr key={ri}>{row.map((v,ci)=><td key={ci} className={cellClass(v)}>{String(v??'—')}</td>)}</tr>):<tr><td colSpan={t.headers.length}>Keine gespeicherten Daten für diese Auswahl.</td></tr>}</tbody></table></div></div>)}</section>;
 }
+
+function pdfSections(modules: ReportModule[]): ReportModule[] {
+  const repeatedColumns = 3;
+  const columnsPerPart = 6;
+  const maxColumnsPerTable = repeatedColumns + columnsPerPart;
+
+  return modules.map((module) => ({
+    ...module,
+    tables: module.tables?.flatMap((table) => {
+      if (table.headers.length <= maxColumnsPerTable) return [table];
+      const parts: typeof table[] = [];
+      for (let start = repeatedColumns; start < table.headers.length; start += columnsPerPart) {
+        const end = Math.min(start + columnsPerPart, table.headers.length);
+        const detailHeaders = table.headers.slice(start, end);
+        parts.push({
+          ...table,
+          title: `${table.title} · ${detailHeaders[0]} bis ${detailHeaders.at(-1)}`,
+          headers: [...table.headers.slice(0, repeatedColumns), ...detailHeaders],
+          rows: table.rows.map((row) => [
+            ...row.slice(0, repeatedColumns),
+            ...row.slice(start, end),
+          ]),
+        });
+      }
+      return parts;
+    }),
+  }));
+}
 export default function ReportCenter({portfolio=false}:{portfolio?:boolean}){
   const app=useAppData();const year=new Date().getFullYear();
   const [from,setFrom]=useState(`${year}-01-01`);const [to,setTo]=useState(`${year}-12-31`);const [objectId,setObjectId]=useState('');
@@ -55,7 +83,7 @@ export default function ReportCenter({portfolio=false}:{portfolio?:boolean}){
     if(blocked)return;
     const title=portfolio?chosen[0].title:'Steuerberater-Report';
     if(format==='pdf'){
-      openProfessionalPdfReport({documentName:`${title}-${from}-${to}`,title,subtitle:'Könen Property Management',meta:[{label:'Zeitraum',value:`${from} bis ${to}`},{label:'Objekt',value:app.objects.find(o=>o.id===objectId)?.label??'Alle Immobilien'},{label:'Erstellt',value:new Date().toLocaleString('de-DE')}],sections:chosen.map(m=>({...m,tables:m.tables?.flatMap(t=>t.headers.length<=13?[t]:[0,1].map(half=>({...t,title:`${t.title} · ${half===0?'Januar–Juni':'Juli–Dezember'}`,headers:[...t.headers.slice(0,3),...t.headers.slice(3+half*6,9+half*6)],rows:t.rows.map(r=>[...r.slice(0,3),...r.slice(3+half*6,9+half*6)])})))})),landscape:true});
+      openProfessionalPdfReport({documentName:`${title}-${from}-${to}`,title,subtitle:'Könen Property Management',meta:[{label:'Zeitraum',value:`${from} bis ${to}`},{label:'Objekt',value:app.objects.find(o=>o.id===objectId)?.label??'Alle Immobilien'},{label:'Erstellt',value:new Date().toLocaleString('de-DE')}],sections:pdfSections(chosen),landscape:true});
       setMessage('Druckansicht geöffnet. Im Druckdialog „Als PDF sichern“ wählen.');return;
     }
     const blob=format==='excel'?new Blob([reportWorkbook(chosen) as BlobPart],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}):new Blob([reportCsv(chosen)],{type:'text/csv;charset=utf-8'});

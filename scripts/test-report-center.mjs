@@ -88,6 +88,13 @@ const { readFile } = await import('node:fs/promises');
 const ts = await import('typescript');
 const { runInNewContext } = await import('node:vm');
 const pageSource = await readFile('src/pages/ReportCenter.tsx', 'utf8');
+const pdfSource = await readFile('src/lib/professionalPdfReport.ts', 'utf8');
+assert.match(pageSource, /const maxColumnsPerTable = repeatedColumns \+ columnsPerPart;/, 'PDF tables need a bounded column count');
+assert.match(pageSource, /sections:pdfSections\(chosen\)/, 'Every selected report module must use the PDF table splitter');
+assert.match(pdfSource, /size: \$\{options\.landscape \? "A4 landscape" : "A4"\}/, 'Landscape must be declared in the top-level @page rule');
+assert.doesNotMatch(pdfSource, /overflow-wrap:\s*anywhere/, 'PDF cells must not wrap in the middle of dates or amounts');
+assert.match(pdfSource, /td\.money-cell \{ text-align: right; white-space: nowrap;/, 'Financial amounts must be right-aligned and stay on one line');
+assert.match(pdfSource, /\.hero \{ break-after: page; \}/, 'The cover page must end before the first report section');
 const ast = ts.createSourceFile('ReportCenter.tsx', pageSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const loaderSource = ast.statements.filter(statement =>
   ts.isFunctionDeclaration(statement) && statement.name?.text === 'loadSources'
