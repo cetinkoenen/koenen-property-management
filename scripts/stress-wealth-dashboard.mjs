@@ -282,6 +282,7 @@ const tests = [
     const responsiveContainers = cashflowDashboardSource.match(/<ResponsiveContainer\b[^>]*>/g) ?? [];
     assert.ok(responsiveContainers.length >= 4, "Das Cashflow-Dashboard muss alle vier Diagramme responsiv rendern");
     assert.ok(responsiveContainers.every((tag) => /minWidth=\{0\}/.test(tag)), "Jeder ResponsiveContainer braucht eine stabile Mindestbreite");
+    assert.ok(responsiveContainers.every((tag) => /initialDimension=\{\{ width: \d+, height: \d+ \}\}/.test(tag)), "Jeder ResponsiveContainer braucht für den ersten Render eine gültige Initialgröße");
     assert.ok((cashflowDashboardSource.match(/h-\[3[24]0px\] min-w-0/g) ?? []).length >= 4, "Diagramm-Eltern müssen in Grid-Layouts schrumpfen dürfen");
   },
   () => {
