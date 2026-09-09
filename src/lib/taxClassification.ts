@@ -115,6 +115,19 @@ export function classifyTaxRelevance(entry: TaxRuleEntry, objectLabel?: string |
     };
   }
 
+  // Gutschriften/Erstattungen zu einer bereits als Aufwand gefuehrten
+  // Verwaltungskosten-Buchung sind keine Miete. Sie bleiben steuerlich
+  // relevant, muessen im Anlage-V-Bericht aber die Verwaltungskosten mindern.
+  if (entryType === "income" && canonicalCategory === "Verwaltungskosten") {
+    return {
+      taxRelevant: true,
+      relevance: "tax",
+      group: "Erstattung Verwaltungskosten (Kostenminderung)",
+      hint: "Gutschrift der Hausverwaltung: keine Mieteinnahme; wird im Anlage-V-Bericht als Minderung der Verwaltungskosten ausgewiesen.",
+      locked: true,
+    };
+  }
+
   if (entryType === "income") {
     if (isHohenloher) {
       return {

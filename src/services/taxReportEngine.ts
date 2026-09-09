@@ -460,6 +460,16 @@ function classifyBookingForAnlageV(entry: TaxReportEntry, profile: TaxObjectProf
   const isSettlement = category === MIETE_NACHZAHLUNG_CATEGORY || includesAny(text, ["mietnachzahlung", "nebenkostenabrechnung", "betriebskostenabrechnung", "erstattung"]);
 
   if (entry.entry_type === "income") {
+    if (category === "Verwaltungskosten") {
+      return {
+        categoryName: "Nicht umlagefähige Kosten / Verwaltung",
+        officialFormLine: "Anlage V Zeilen 76-78",
+        incomeAmount: 0,
+        expenseAmount: -value,
+        apportionableStatus: "Nein",
+        reviewStatus: "Exportiert",
+      };
+    }
     if (category === "Mietbestandteil-NK" || includesAny(text, ["nebenkostenvorauszahlung", "mietbestandteil nk", "betriebskostenvorauszahlung"])) {
       return { categoryName: "Nebenkostenvorauszahlung", officialFormLine: "Anlage V Zeile 20", incomeAmount: value, expenseAmount: 0, apportionableStatus: "Nicht anwendbar", reviewStatus: "Exportiert" };
     }
