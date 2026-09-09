@@ -133,6 +133,34 @@ function loanReferenceTokens(value: unknown): string[] {
   return String(value ?? "").match(/\b[0-9][0-9-]{5,}[0-9]\b/g) ?? [];
 }
 
+function explicitPlanMonthFromNote(note: unknown, bookingDate: unknown): string | null {
+  const text = normalizeText(note);
+  if (!text) return null;
+  const monthTerms: Array<[number, string[]]> = [
+    [1, ["januar", "jan"]],
+    [2, ["februar", "feb"]],
+    [3, ["marz", "maerz", "mar"]],
+    [4, ["april", "apr"]],
+    [5, ["mai"]],
+    [6, ["juni", "jun"]],
+    [7, ["juli", "jul"]],
+    [8, ["august", "aug"]],
+    [9, ["september", "sep"]],
+    [10, ["oktober", "okt"]],
+    [11, ["november", "nov"]],
+    [12, ["dezember", "dez"]],
+  ];
+  const month = monthTerms.find(([, terms]) => terms.some((term) => new RegExp(`\\b${term}\\b`).test(text)))?.[0];
+  if (!month) return null;
+  const bookingKey = String(bookingDate ?? "").slice(0, 7);
+  const bookingYear = Number(bookingKey.slice(0, 4));
+  if (!Number.isFinite(bookingYear)) return null;
+  const explicitYear = Number(text.match(/\b20\d{2}\b/)?.[0] ?? bookingYear);
+  const bookingMonth = Number(bookingKey.slice(5, 7));
+  const year = !text.match(/\b20\d{2}\b/) && month === 12 && bookingMonth === 1 ? bookingYear - 1 : explicitYear;
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
 export function parseLoanRatePlanCsv(filename: string, csvText: string): ParsedLoanRatePlan {
   const property = resolveLoanProperty(filename);
   if (!property) throw new Error(`Objekt konnte aus dem Dateinamen "${filename}" nicht erkannt werden.`);
@@ -292,6 +320,11 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
       .filter((entry) => canonicalizeFinanceCategory(String(entry.category ?? ""), entry.entry_type === "expense" ? "expense" : "income") === "Kreditrate")
       .filter((entry) => Math.abs(Math.abs(Number(entry.amount ?? 0)) - schedule.payment_amount) <= 0.02)
       .sort((a, b) => {
+        const aExplicitMonth = explicitPlanMonthFromNote(a.note, a.booking_date);
+        const bExplicitMonth = explicitPlanMonthFromNote(b.note, b.booking_date);
+        const aExplicitRank = aExplicitMonth === month ? 0 : aExplicitMonth ? 2 : 1;
+        const bExplicitRank = bExplicitMonth === month ? 0 : bExplicitMonth ? 2 : 1;
+        if (aExplicitRank !== bExplicitRank) return aExplicitRank - bExplicitRank;
         const aMonth = String(a.booking_date ?? "").slice(0, 7);
         const bMonth = String(b.booking_date ?? "").slice(0, 7);
         const aSameMonth = aMonth === month ? 0 : 1;

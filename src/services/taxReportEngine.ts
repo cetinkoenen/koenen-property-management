@@ -50,6 +50,7 @@ export type TaxReportLoanRow = {
   interest?: number | null;
   principal?: number | null;
   year?: number | null;
+  source?: string | null;
 };
 
 export type TaxReportObjectOption = {
@@ -565,6 +566,13 @@ function loanInterestForProfile(loans: TaxReportLoanRow[], profile: TaxObjectPro
   );
 }
 
+function hasMonthlyLoanEvidence(loans: TaxReportLoanRow[], profile: TaxObjectProfile, year: number): boolean {
+  return loans
+    .filter((loan) => !loan.year || Number(loan.year) === year)
+    .filter((loan) => getTaxObjectProfileForLabel(`${loan.property_name ?? ""} ${loan.property_label ?? ""} ${loan.property_id ?? ""}`)?.key === profile.key)
+    .some((loan) => /tilgungsplan|csv-monatsplan|gebuchte monatsraten/i.test(String(loan.source ?? "")));
+}
+
 function unallocatedRosensteinLoanInterest(loans: TaxReportLoanRow[], year: number) {
   return sumCurrency(
     loans
@@ -643,6 +651,7 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
     },
   );
   const ledgerLoanInterest = loanInterestForProfile(loans, profile, year);
+  const monthlyLoanEvidence = hasMonthlyLoanEvidence(loans, profile, year);
   const unallocatedRosensteinInterest = profile.key.startsWith("rosenstein-")
     ? unallocatedRosensteinLoanInterest(loans, year)
     : 0;
@@ -666,7 +675,9 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
     profile.usage === "rented_residential" && livingAreaM2 === null ? "Wohnfläche fehlt. Bitte in den Immobilien-Stammdaten ergänzen." : "",
     blockedEntries.some((entry) => isReserveContribution(entry, profile)) ? "Zuführung zur Instandhaltungsrücklage wurde blockiert. Abzug erst bei tatsächlicher Verwendung für Erhaltungsmaßnahmen." : "",
     blockedEntries.some((entry) => isUnsplitHausgeld(entry, profile)) ? "Mindestens eine Hausgeldzahlung ist nicht in umlagefähige Kosten, nicht umlagefähige Kosten und Rücklage aufgeteilt und wurde blockiert." : "",
-    ledgerLoanInterest > 0 ? "Schuldzinsen stammen als Jahressumme aus dem Darlehens-Ledger. Einzelne Zahlungstage bitte anhand des Darlehenskontos belegen." : "",
+    ledgerLoanInterest > 0 && !monthlyLoanEvidence
+      ? "Schuldzinsen stammen nur als Jahressumme aus dem Darlehens-Ledger. Einzelne Zahlungstage bitte anhand des Darlehenskontos belegen."
+      : "",
     unallocatedRosensteinInterest > 0
       ? `Rosenstein-Schuldzinsen von ${formatTaxCurrency(unallocatedRosensteinInterest)} liegen nur als Gesamtwert vor und wurden nicht ohne Beleg auf P250, P253 und P254 verteilt. Aufteilungsschluessel mit dem Steuerberater/Darlehensnachweis festlegen.`
       : "",
