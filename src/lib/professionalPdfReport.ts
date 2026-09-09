@@ -66,11 +66,32 @@ function metricHtml(metrics: PdfReportMetric[] = [], variant: "hero" | "section"
 }
 
 function tableHtml(table: PdfReportTable) {
+  const normalizedHeader = (header: string) => header.trim().toLocaleLowerCase("de-DE");
+  const isMoneyHeader = (header: string) => /betrag|summe|saldo|eingang|ausgabe|kosten|rate|zins|tilgung|restschuld|kalt|gesamt|vorauszahlung|quote|netto|steuer|brutto|kaution|€\/m²/.test(normalizedHeader(header));
+  const isDescriptionHeader = (header: string) => /beschreibung|verwendungszweck|notiz|details|hinweis|quelle/.test(normalizedHeader(header));
+  const moneyValuePattern = /^-?\d{1,3}(?:\.\d{3})*,\d{2}[\s\u00a0]*€$/;
+  const paymentParts = (value: unknown) => String(value ?? "").trim().match(/^(.+?€)\s*\/\s*(.+?€)\s*·\s*(.+)$/);
+  const paymentStatusClass = (status: string): string => {
+    const normalized = status.toLocaleLowerCase("de-DE");
+    if (normalized.includes("bezahlt") || normalized.includes("guthaben")) return "payment-paid";
+    if (normalized.includes("offen") || normalized.includes("nachzahlung")) return "payment-open";
+    return "payment-neutral";
+  };
+  const columnWeight = (header: string): number => {
+    const normalized = normalizedHeader(header);
+    if (isDescriptionHeader(header)) return 2.8;
+    if (/objekt|immobilie|mieter|bezug|kategorie/.test(normalized)) return 1.35;
+    if (/einheit|datum|von|bis|typ|status/.test(normalized)) return 1.05;
+    return 1;
+  };
+  const weights = table.headers.map(columnWeight);
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
   const columnClass = (header: string, value: unknown): string => {
     const text = String(value ?? "").trim();
     const classes: string[] = [];
     if (/^\d{4}-\d{2}-\d{2}$/.test(text) || /^\d{2}\.\d{2}\.\d{4}$/.test(text)) classes.push("date-cell");
-    if (text.includes("€") || /betrag|summe|saldo|eingang|ausgabe|kosten|rate|zins|tilgung|restschuld|kalt|gesamt|vorauszahlung|quote|€\/m²/i.test(header)) classes.push("money-cell");
+    if (isMoneyHeader(header) || moneyValuePattern.test(text)) classes.push("money-cell");
+    if (isDescriptionHeader(header)) classes.push("description-cell");
     const status = text.endsWith("· bezahlt") || text.startsWith("Guthaben ·")
       ? "payment-paid"
       : text.endsWith("· offen") || text.startsWith("Nachzahlung ·")
@@ -79,11 +100,20 @@ function tableHtml(table: PdfReportTable) {
     if (status) classes.push(status);
     return classes.join(" ");
   };
+  const cellHtml = (header: string, value: unknown): string => {
+    const parts = paymentParts(value);
+    if (parts) {
+      const [, actual, expected, status] = parts;
+      return `<td class="payment-cell ${paymentStatusClass(status)}"><span class="payment-amount"><small>Ist</small>${escapeHtml(actual)}</span><span class="payment-amount"><small>Soll</small>${escapeHtml(expected)}</span><span class="payment-status">${escapeHtml(status)}</span></td>`;
+    }
+    return `<td class="${columnClass(header, value)}">${escapeHtml(value ?? "")}</td>`;
+  };
   return `
     <div class="table-block">
       <div class="table-title">${escapeHtml(table.title)}</div>
       ${table.subtitle ? `<div class="table-subtitle">${escapeHtml(table.subtitle)}</div>` : ""}
       <table>
+        <colgroup>${weights.map((weight) => `<col style="width:${((weight / weightTotal) * 100).toFixed(3)}%">`).join("")}</colgroup>
         <thead>
           <tr>${table.headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
         </thead>
@@ -91,7 +121,7 @@ function tableHtml(table: PdfReportTable) {
           ${
             table.rows.length
               ? table.rows
-                  .map((row) => `<tr>${row.map((cell, index) => `<td class="${columnClass(table.headers[index] ?? "", cell)}">${escapeHtml(cell ?? "")}</td>`).join("")}</tr>`)
+                  .map((row) => `<tr>${row.map((cell, index) => cellHtml(table.headers[index] ?? "", cell)).join("")}</tr>`)
                   .join("")
               : `<tr><td colspan="${table.headers.length}">Keine Daten vorhanden.</td></tr>`
           }
@@ -337,9 +367,52 @@ export function openProfessionalPdfReport(options: PdfReportOptions) {
     }
     .payment-paid { background: #e2f4e8; color: #21603a; }
     .payment-open { background: #fce6e5; color: #a02626; }
+    .payment-neutral { background: #f8fafc; color: #475569; }
     td, th { overflow-wrap: break-word; word-break: normal; hyphens: auto; }
     td.date-cell { white-space: nowrap; font-variant-numeric: tabular-nums; }
     td.money-cell { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    td.description-cell {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: normal;
+      font-size: 9.2px;
+      line-height: 1.35;
+    }
+    td.payment-cell {
+      padding: 7px 8px;
+      text-align: right;
+      white-space: normal;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+    }
+    .payment-amount {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 4px;
+      white-space: nowrap;
+      font-size: 8.6px;
+      font-weight: 850;
+    }
+    .payment-amount + .payment-amount { margin-top: 3px; }
+    .payment-amount small {
+      color: currentColor;
+      font-size: 6.8px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      opacity: 0.72;
+      text-transform: uppercase;
+    }
+    .payment-status {
+      display: block;
+      margin-top: 4px;
+      white-space: normal;
+      font-size: 6.8px;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-align: right;
+      text-transform: uppercase;
+    }
     @media print {
       * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
       .hero { break-after: page; }
