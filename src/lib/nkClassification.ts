@@ -97,6 +97,13 @@ const NK_EXCLUDE_WORDS = [
   "tilgung",
   "kreditrate",
   "darlehen",
+  "anschaffungskosten",
+  "erwerbsnebenkosten",
+  "kaufnebenkosten",
+  "notar",
+  "grundbuch",
+  "grunderwerbsteuer",
+  "makler",
 ];
 
 export function normalizeNkText(value: string | null | undefined): string {

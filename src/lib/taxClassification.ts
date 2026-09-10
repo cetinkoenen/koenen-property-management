@@ -1,4 +1,4 @@
-import { MIETE_NACHZAHLUNG_CATEGORY, canonicalizeFinanceCategory, normalizeFinanceCategoryText, type FinanceEntryType } from "./financeCategories";
+import { DARLEHENSAUSZAHLUNG_CATEGORY, MIETE_NACHZAHLUNG_CATEGORY, NK_NACHZAHLUNG_CATEGORY, canonicalizeFinanceCategory, normalizeFinanceCategoryText, type FinanceEntryType } from "./financeCategories";
 import { isHohenloherMietbestandteilNk, MIETBESTANDTEIL_NK_CATEGORY } from "./financeEntryLabels";
 import { isBusinessMealCategory } from "./businessMealTax";
 import { isAllocatablePortfolioExpenseEntry, isPersonalMovingExpense } from "./portfolioExpense";
@@ -105,6 +105,16 @@ export function classifyTaxRelevance(entry: TaxRuleEntry, objectLabel?: string |
     };
   }
 
+  if (canonicalCategory === DARLEHENSAUSZAHLUNG_CATEGORY) {
+    return {
+      taxRelevant: false,
+      relevance: "private",
+      group: "Darlehensauszahlung (steuerneutraler Finanzierungszufluss)",
+      hint: "Die Darlehensauszahlung ist keine Mieteinnahme und wird nicht in Anlage V angesetzt.",
+      locked: true,
+    };
+  }
+
   if (isAcquisitionSideCost(text)) {
     return {
       taxRelevant: false,
@@ -140,14 +150,14 @@ export function classifyTaxRelevance(entry: TaxRuleEntry, objectLabel?: string |
     }
 
     if (
-      ["Miete", "Miete Garage", MIETE_NACHZAHLUNG_CATEGORY, MIETBESTANDTEIL_NK_CATEGORY].includes(canonicalCategory) ||
+      ["Miete", "Miete Garage", MIETE_NACHZAHLUNG_CATEGORY, NK_NACHZAHLUNG_CATEGORY, MIETBESTANDTEIL_NK_CATEGORY].includes(canonicalCategory) ||
       includesAny(text, ["warmmiete", "kaltmiete", "nebenkosten", "betriebskosten", "garage", "stellplatz", "sonderzahlung", "nachzahlung"])
     ) {
       return {
         taxRelevant: true,
         relevance: "tax",
         group:
-          canonicalCategory === MIETE_NACHZAHLUNG_CATEGORY
+          canonicalCategory === MIETE_NACHZAHLUNG_CATEGORY || canonicalCategory === NK_NACHZAHLUNG_CATEGORY
             ? "Miete Nachzahlung / Sonderzahlung (Einnahme)"
             : canonicalCategory === "Miete Garage" || includesAny(text, ["garage", "stellplatz"])
               ? "Miete Garage (Einnahme)"

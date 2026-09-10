@@ -1,5 +1,5 @@
 import { canonicalCategoryForTax, isCreditRateEntry } from "../lib/taxClassification";
-import { MIETE_NACHZAHLUNG_CATEGORY, normalizeFinanceCategoryText } from "../lib/financeCategories";
+import { MIETE_NACHZAHLUNG_CATEGORY, NK_NACHZAHLUNG_CATEGORY, normalizeFinanceCategoryText } from "../lib/financeCategories";
 import { calculateBusinessMealDeductible, isBusinessMealCategory, parseBusinessMealDetails } from "../lib/businessMealTax";
 import { isTelecommunicationCategory, parseTelecommunicationTaxDetails } from "../lib/telecommunicationTax";
 import { isAllocatablePortfolioExpenseEntry, isPortfolioGeneralEntry } from "../lib/portfolioExpense";
@@ -419,7 +419,7 @@ function isIncomeForAnlageV(entry: TaxReportEntry, profile: TaxObjectProfile) {
   const category = canonicalCategoryForTax(entry, profile.label);
   const text = entryText(entry, profile.label);
   return (
-    ["Miete", "Miete Garage", MIETE_NACHZAHLUNG_CATEGORY, "Mietbestandteil-NK"].includes(category) ||
+    ["Miete", "Miete Garage", MIETE_NACHZAHLUNG_CATEGORY, NK_NACHZAHLUNG_CATEGORY, "Mietbestandteil-NK"].includes(category) ||
     includesAny(text, ["miete", "garage", "stellplatz", "nebenkosten", "betriebskosten", "sonderzahlung", "nachzahlung"])
   );
 }
@@ -458,7 +458,7 @@ function classifyBookingForAnlageV(entry: TaxReportEntry, profile: TaxObjectProf
   const category = canonicalCategoryForTax(entry, profile.label);
   const text = entryText(entry, profile.label);
   const value = amount(entry.amount);
-  const isSettlement = category === MIETE_NACHZAHLUNG_CATEGORY || includesAny(text, ["mietnachzahlung", "nebenkostenabrechnung", "betriebskostenabrechnung", "erstattung"]);
+  const isSettlement = category === MIETE_NACHZAHLUNG_CATEGORY || category === NK_NACHZAHLUNG_CATEGORY || includesAny(text, ["mietnachzahlung", "nebenkostenabrechnung", "betriebskostenabrechnung", "erstattung"]);
 
   if (entry.entry_type === "income") {
     if (category === "Verwaltungskosten") {
@@ -494,6 +494,9 @@ function classifyBookingForAnlageV(entry: TaxReportEntry, profile: TaxObjectProf
   }
 
   if (entry.entry_type === "expense") {
+    if (isAcquisitionSideCostEntry(entry, profile)) {
+      return { categoryName: "Erwerbsnebenkosten / Anschaffungskosten", officialFormLine: "AfA-Basis prüfen – keine laufenden Werbungskosten", incomeAmount: 0, expenseAmount: 0, apportionableStatus: "Nein", reviewStatus: "Blockiert" };
+    }
     if (isCreditRateEntry(entry, profile.label)) {
       return { categoryName: "Tilgung / Kreditrate", officialFormLine: "Nicht abzugsfähig", incomeAmount: 0, expenseAmount: 0, apportionableStatus: "Nein", reviewStatus: "Blockiert" };
     }

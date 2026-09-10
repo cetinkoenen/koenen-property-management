@@ -11,6 +11,8 @@ const loanLedgerService = await readFile(new URL("../src/services/propertyLoanLe
 const repairCapex = await readFile(new URL("../src/lib/repairCapex.ts", import.meta.url), "utf8");
 const cashflowDashboard = await readFile(new URL("../src/pages/WealthCashflowDashboard.tsx", import.meta.url), "utf8");
 const loanRatePlanService = await readFile(new URL("../src/services/loanRatePlanService.ts", import.meta.url), "utf8");
+const nkClassification = await readFile(new URL("../src/lib/nkClassification.ts", import.meta.url), "utf8");
+const financeCategories = await readFile(new URL("../src/lib/financeCategories.ts", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -45,11 +47,14 @@ assert.match(app, /recordType: "Leerstand"/, "Leerstände müssen als Zusatzdate
 assert.match(taxEngine, /key: "rosenstein-p250"[\s\S]*key: "rosenstein-p253"[\s\S]*key: "rosenstein-p254"/, "Die drei Rosenstein-Stellplätze müssen getrennte Steuerobjekte sein");
 assert.match(taxEngine, /entryYear\(entry\) === year/, "Buchungen müssen strikt nach tatsächlichem Zahlungsjahr gefiltert werden");
 assert.match(taxEngine, /Instandhaltungsrücklage - Zuführung[\s\S]*reviewStatus: "Blockiert"/, "Rücklagenzuführungen müssen steuerlich blockiert werden");
+assert.match(taxEngine, /isAcquisitionSideCostEntry\(entry, profile\)[\s\S]*AfA-Basis prüfen[\s\S]*reviewStatus: "Blockiert"/, "Erwerbsnebenkosten müssen vor der NK-Logik als laufende Werbungskosten blockiert werden");
 assert.match(taxEngine, /Hausgeld - Aufteilung erforderlich[\s\S]*reviewStatus: "Blockiert"/, "Nicht aufgeschlüsseltes Hausgeld muss blockiert werden");
 assert.match(taxEngine, /Anlage V Zeile 20/, "Nebenkostenvorauszahlungen müssen der amtlichen Formularzeile zugeordnet werden");
 assert.match(taxEngine, /Anlage V Zeilen 46-48/, "Schuldzinsen müssen der amtlichen Formularzeile zugeordnet werden");
 assert.match(taxEngine, /bankAccountFlatFee: 0/, "Pauschale Kontoführungsgebühren dürfen das Zufluss-/Abflussprinzip nicht verletzen");
 assert.match(portfolioExpense, /isPersonalMovingExpense[\s\S]*umzugskosten/, "Private Umzugskosten müssen aus der pauschalen Portfolio-Verteilung ausgeschlossen sein");
+assert.match(nkClassification, /anschaffungskosten[\s\S]*erwerbsnebenkosten[\s\S]*grundbuch[\s\S]*grunderwerbsteuer/, "Anschaffungs-/Erwerbsnebenkosten dürfen nie als umlagefähige Nebenkosten klassifiziert werden");
+assert.match(financeCategories, /NK_NACHZAHLUNG_CATEGORY[\s\S]*DARLEHENSAUSZAHLUNG_CATEGORY/, "NK-Nachzahlung und Darlehensauszahlung müssen eindeutige zentrale Kategorien besitzen");
 assert.match(taxEngine, /isRosensteinSharedExpense[\s\S]*Anteil 1\/3/, "Gemeinsame Rosenstein-Kosten müssen ausschließlich auf die drei Stellplätze verteilt werden");
 assert.match(appData, /property_extra_info[\s\S]*wealth_profile[\s\S]*totalArea/, "Der Steuerreport muss die Wohnfläche aus den zentralen Immobilienvermögen-Details übernehmen");
 assert.doesNotMatch(taxClassification, /function isCreditRateEntry[\s\S]{0,180}entry_type !== "expense"/, "Kreditraten müssen auch bei einem historisch falschen Importtyp gesperrt bleiben");
@@ -119,4 +124,4 @@ assert.match(app, /Neue Inserat-Nachweise \(z\.B\. Immobilienscout24-PDF\)/, "Di
 assert.match(app, /category: "expose"[\s\S]*Leerstand_Nachweise/, "Inserat-Nachweise müssen zentral gespeichert und dem Objektordner im ZIP zugeordnet werden");
 assert.match(app, /Bodenrichtwert \(€\/m²\)[\s\S]*Primärenergiebedarf \(kWh\/\(m²a\)\)[\s\S]*Primärenergieverbrauch \(kWh\/\(m²a\)\)/, "Immobilien-PDFs müssen die geforderten Wert- und Energieeinheiten ausweisen");
 
-console.log("92 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("95 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");

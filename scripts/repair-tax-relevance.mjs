@@ -55,6 +55,9 @@ function canonicalCategory(category, entryType) {
   const text = normalize(raw);
   if (!text) return "";
   const aliases = [
+    ["nk nachzahlung", "NK-Nachzahlung"],
+    ["nebenkosten nachzahlung", "NK-Nachzahlung"],
+    ["darlehensauszahlung", "Darlehensauszahlung"],
     ["mietbestandteil nk", "Mietbestandteil-NK"],
     ["nebenkosten", "Mietbestandteil-NK"],
     ["betriebskosten", "Mietbestandteil-NK"],
@@ -143,6 +146,10 @@ function classify(entry, objectLabel) {
   const category = canonicalCategory(entry.category, entryType);
   const text = normalize(`${category} ${entry.category ?? ""} ${entry.note ?? ""} ${entry.objekt_code ?? ""} ${objectLabel ?? ""}`);
   const isHohenloher = includesAny(text, ["hohenloher", "brettach", "langenbrettach"]);
+
+  if (category === "Darlehensauszahlung") {
+    return { expected: false, action: "update", reason: "Darlehensauszahlung ist ein steuerneutraler Finanzierungszufluss" };
+  }
 
   if (entryType === "income") {
     if (isHohenloher) return { expected: false, action: "update", reason: "Selbstgenutzt / WEG: keine Anlage V" };

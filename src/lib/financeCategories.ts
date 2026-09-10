@@ -6,11 +6,15 @@ export type FinanceCategoryOption = {
 };
 
 export const MIETE_NACHZAHLUNG_CATEGORY = "Miete Nachzahlung";
+export const NK_NACHZAHLUNG_CATEGORY = "NK-Nachzahlung";
+export const DARLEHENSAUSZAHLUNG_CATEGORY = "Darlehensauszahlung";
 
 export const FINANCE_CATEGORY_OPTIONS: FinanceCategoryOption[] = [
   { value: "Miete", type: "income" },
   { value: "Miete Garage", type: "income" },
   { value: MIETE_NACHZAHLUNG_CATEGORY, type: "income" },
+  { value: NK_NACHZAHLUNG_CATEGORY, type: "income" },
+  { value: DARLEHENSAUSZAHLUNG_CATEGORY, type: "income" },
   { value: "Kaution", type: "both" },
   { value: "Mietbestandteil-NK", type: "income" },
 
@@ -39,6 +43,9 @@ const CATEGORY_ALIAS_PAIRS: Array<[string, string]> = [
   ["nebenkosten", "Mietbestandteil-NK"],
   ["betriebskosten", "Mietbestandteil-NK"],
   ["mietbestandteil nk", "Mietbestandteil-NK"],
+  ["nk nachzahlung", NK_NACHZAHLUNG_CATEGORY],
+  ["nebenkosten nachzahlung", NK_NACHZAHLUNG_CATEGORY],
+  ["betriebskosten nachzahlung", NK_NACHZAHLUNG_CATEGORY],
   ["hausverwaltung", "Verwaltungskosten"],
   ["hausgeld", "Verwaltungskosten"],
   ["weg", "Verwaltungskosten"],
@@ -108,6 +115,7 @@ const CATEGORY_ALIAS_PAIRS: Array<[string, string]> = [
   ["darlehensrate", "Kreditrate"],
   ["darlehen", "Kreditrate"],
   ["tilgung", "Kreditrate"],
+  ["darlehensauszahlung", DARLEHENSAUSZAHLUNG_CATEGORY],
   ["schonsteinfeger", "Schonsteinfeger"],
   ["schornsteinfeger", "Schonsteinfeger"],
   ["software", "Software"],
