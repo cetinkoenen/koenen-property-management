@@ -19,6 +19,7 @@
     "stress:report-logos": "node scripts/stress-report-logos.mjs",
     "stress:security": "node scripts/stress-security-baseline.mjs",
     "stress:loan-rate-plans": "node scripts/stress-loan-rate-plans.mjs",
+    "audit:tax-reports": "node --env-file=.env.local scripts/run-tax-report-audit.mjs",
     "stress:branding": "node scripts/stress-branding.mjs",
     "verify": "node scripts/verify-project.mjs",
     "preview": "vite preview",

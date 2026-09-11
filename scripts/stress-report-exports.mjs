@@ -13,6 +13,7 @@ const cashflowDashboard = await readFile(new URL("../src/pages/WealthCashflowDas
 const loanRatePlanService = await readFile(new URL("../src/services/loanRatePlanService.ts", import.meta.url), "utf8");
 const nkClassification = await readFile(new URL("../src/lib/nkClassification.ts", import.meta.url), "utf8");
 const financeCategories = await readFile(new URL("../src/lib/financeCategories.ts", import.meta.url), "utf8");
+const steuerCenter = await readFile(new URL("../src/pages/SteuerCenter.tsx", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -48,6 +49,9 @@ assert.match(taxEngine, /key: "rosenstein-p250"[\s\S]*key: "rosenstein-p253"[\s\
 assert.match(taxEngine, /entryYear\(entry\) === year/, "Buchungen müssen strikt nach tatsächlichem Zahlungsjahr gefiltert werden");
 assert.match(taxEngine, /Instandhaltungsrücklage - Zuführung[\s\S]*reviewStatus: "Blockiert"/, "Rücklagenzuführungen müssen steuerlich blockiert werden");
 assert.match(taxEngine, /isAcquisitionSideCostEntry\(entry, profile\)[\s\S]*AfA-Basis prüfen[\s\S]*reviewStatus: "Blockiert"/, "Erwerbsnebenkosten müssen vor der NK-Logik als laufende Werbungskosten blockiert werden");
+assert.match(taxEngine, /if \(isPortfolioGeneralEntry\(entry\)\) return null;[\s\S]*const entryIds = \[entry\.object_id, entry\.objekt_code\]/, "Portfolio-Buchungstexte dürfen nicht über Betragsfragmente einer Immobilie zugeordnet werden");
+assert.match(steuerCenter, /const advisorTotals = useMemo[\s\S]*calculateTaxTotals\(classifiedRows[\s\S]*rows: classifiedRows/, "Der Steuerberater-Export muss alle Jahresbuchungen unabhängig vom sichtbaren Such-/Statusfilter enthalten");
+assert.match(taxEngine, /acquisitionDate: "2025-09-01"[\s\S]*isProfileAcquiredByYear[\s\S]*isProfileAcquiredByYear\(profile, params\.year\)/, "Rosenstein darf vor dem belegten Erwerbsjahr 2025 nicht als Anlage-V-Steuerobjekt erscheinen");
 assert.match(taxEngine, /Hausgeld - Aufteilung erforderlich[\s\S]*reviewStatus: "Blockiert"/, "Nicht aufgeschlüsseltes Hausgeld muss blockiert werden");
 assert.match(taxEngine, /Anlage V Zeile 20/, "Nebenkostenvorauszahlungen müssen der amtlichen Formularzeile zugeordnet werden");
 assert.match(taxEngine, /Anlage V Zeilen 46-48/, "Schuldzinsen müssen der amtlichen Formularzeile zugeordnet werden");
@@ -124,4 +128,4 @@ assert.match(app, /Neue Inserat-Nachweise \(z\.B\. Immobilienscout24-PDF\)/, "Di
 assert.match(app, /category: "expose"[\s\S]*Leerstand_Nachweise/, "Inserat-Nachweise müssen zentral gespeichert und dem Objektordner im ZIP zugeordnet werden");
 assert.match(app, /Bodenrichtwert \(€\/m²\)[\s\S]*Primärenergiebedarf \(kWh\/\(m²a\)\)[\s\S]*Primärenergieverbrauch \(kWh\/\(m²a\)\)/, "Immobilien-PDFs müssen die geforderten Wert- und Energieeinheiten ausweisen");
 
-console.log("95 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("98 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");

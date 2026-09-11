@@ -3,8 +3,8 @@ import { MIETE_NACHZAHLUNG_CATEGORY, NK_NACHZAHLUNG_CATEGORY, normalizeFinanceCa
 import { calculateBusinessMealDeductible, isBusinessMealCategory, parseBusinessMealDetails } from "../lib/businessMealTax";
 import { isTelecommunicationCategory, parseTelecommunicationTaxDetails } from "../lib/telecommunicationTax";
 import { isAllocatablePortfolioExpenseEntry, isPortfolioGeneralEntry } from "../lib/portfolioExpense";
-import { splitSection35aTripCosts } from "../lib/travelTax";
-import { MILEAGE_RATE_EUR, type MileageTripRow } from "./mileageTripService";
+import { splitSection35aTripCosts, TRAVEL_RATE_EUR as MILEAGE_RATE_EUR } from "../lib/travelTax";
+import type { MileageTripRow } from "./mileageTripService";
 
 export type TaxObjectUsage = "rented_residential" | "rented_parking" | "self_used_weg";
 
@@ -15,6 +15,7 @@ export type TaxObjectProfile = {
   reportLabel: string;
   usage: TaxObjectUsage;
   aliases: string[];
+  acquisitionDate?: string;
   buildingYear: number;
   acquisitionPrice: number;
   afaRate: number;
@@ -79,6 +80,7 @@ export type AnlageVBookingExportRow = {
 };
 
 export type AnlageVReport = {
+  year: number;
   profile: TaxObjectProfile;
   incomeLabel: string;
   income: number;
@@ -197,6 +199,7 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     reportLabel: "Rosensteinstr. 25 - P250-E008440000121",
     usage: "rented_parking",
     aliases: ["p250", "p250-e008440000121", "p250 e008440000121", "e008440000121"],
+    acquisitionDate: "2025-09-01",
     buildingYear: 1960,
     acquisitionPrice: 0,
     afaRate: 0,
@@ -210,6 +213,7 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     reportLabel: "Rosensteinstr. 25 - P253-E008440000122",
     usage: "rented_parking",
     aliases: ["p253", "p253-e008440000122", "p253 e008440000122", "e008440000122"],
+    acquisitionDate: "2025-09-01",
     buildingYear: 1960,
     acquisitionPrice: 0,
     afaRate: 0,
@@ -223,6 +227,7 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     reportLabel: "Rosensteinstr. 25 - P254-E008440000123",
     usage: "rented_parking",
     aliases: ["p254", "p254-e008440000123", "p254 e008440000123", "e008440000123"],
+    acquisitionDate: "2025-09-01",
     buildingYear: 1960,
     acquisitionPrice: 0,
     afaRate: 0,
@@ -377,9 +382,12 @@ export function getTaxObjectProfileForLabel(value: string | null | undefined): T
 }
 
 export function resolveEntryTaxProfile(entry: TaxReportEntry, objects: TaxReportObjectOption[] = []): TaxObjectProfile | null {
+  // Portfolio-Ausgaben haben bewusst kein einzelnes Steuerobjekt. Betragsangaben
+  // wie "je Objekt 2,20 EUR" duerfen nicht den Code "Objekt_2" treffen.
+  if (isPortfolioGeneralEntry(entry)) return null;
   const object = objects.find((item) => {
     const ids = [item.id, item.code, item.label, ...(item.aliases ?? [])].map(normalize);
-    const entryIds = [entry.object_id, entry.objekt_code, entry.note, entry.category].map(normalize);
+    const entryIds = [entry.object_id, entry.objekt_code].map(normalize);
     return ids.some((id) => id && entryIds.some((entryId) => entryId && (id.includes(entryId) || entryId.includes(id))));
   });
   return getTaxObjectProfileForLabel(`${object?.label ?? ""} ${object?.code ?? ""} ${object?.id ?? ""} ${object?.aliases?.join(" ") ?? ""} ${entry.objekt_code ?? ""} ${entry.note ?? ""}`);
@@ -403,6 +411,16 @@ export function isRosensteinSharedExpense(entry: TaxReportEntry, objects: TaxRep
 
 export function isAnlageVEligible(profile: TaxObjectProfile | null): boolean {
   return profile?.usage === "rented_residential" || profile?.usage === "rented_parking";
+}
+
+function isProfileAcquiredByYear(profile: TaxObjectProfile, year: number): boolean {
+  if (!profile.acquisitionDate) return true;
+  const acquisitionYear = Number(profile.acquisitionDate.slice(0, 4));
+  return !Number.isFinite(acquisitionYear) || year >= acquisitionYear;
+}
+
+function anlageVObjectCountForYear(year: number): number {
+  return TAX_OBJECT_PROFILES.filter((profile) => isAnlageVEligible(profile) && isProfileAcquiredByYear(profile, year)).length;
 }
 
 export function isSection35aProfile(profile: TaxObjectProfile | null): boolean {
@@ -629,7 +647,7 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
   const livingAreaM2 = livingAreaForProfile(profile, objects);
   const bookingRows = profileEntries.map((entry) => buildBookingExportRow(entry, profile, livingAreaM2, year));
   const blockedEntries = profileEntries.filter((_, index) => bookingRows[index]?.reviewStatus === "Blockiert");
-  const rentedObjectCount = TAX_OBJECT_PROFILES.filter(isAnlageVEligible).length;
+  const rentedObjectCount = anlageVObjectCountForYear(year);
   const portfolioAdministrationRows = entries.filter((entry) => (
     entryYear(entry) === year
     && entry.entry_type === "expense"
@@ -692,6 +710,7 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
   ].filter(Boolean);
 
   return {
+    year,
     profile,
     incomeLabel: profile.usage === "rented_parking"
       ? "Einnahmen aus Vermietung anderer Immobilien / Stellplätze ohne Wohnraum"
@@ -852,7 +871,7 @@ export function buildTaxAdvisorDashboard(params: {
   const mileageTrips = params.mileageTrips ?? [];
   const objects = params.objects ?? [];
   const AnlageVReports = TAX_OBJECT_PROFILES
-    .filter(isAnlageVEligible)
+    .filter((profile) => isAnlageVEligible(profile) && isProfileAcquiredByYear(profile, params.year))
     .map((profile) => buildAnlageVReport(profile, entries, loans, mileageTrips, objects, params.year));
   const section35aReport = buildSection35aReport(entries, mileageTrips, objects, params.year);
   const unresolvedTaxEntries = entries.filter((entry) => (
@@ -926,7 +945,7 @@ export function buildAnlageVReportLines(report: AnlageVReport): string[] {
           "",
           "Telekommunikations-Dokumentation:",
           ...report.telecommunicationRows.map((entry) => {
-            const details = parseTelecommunicationTaxDetails({ ...entry, rentedObjectCount: TAX_OBJECT_PROFILES.filter(isAnlageVEligible).length });
+            const details = parseTelecommunicationTaxDetails({ ...entry, rentedObjectCount: anlageVObjectCountForYear(report.year) });
             const total = details?.totalAmount ?? amount(entry.amount);
             const allocated = details?.allocatedPerRentedObject ?? 0;
             return `- ${entry.booking_date ?? "-"} | Anteilige Telefon-/Internetkosten Eheleute (20% gedeckelt) - Gesamtbeleg: ${formatTaxCurrency(total)} - Objektanteil: ${formatTaxCurrency(allocated)}`;
@@ -937,7 +956,7 @@ export function buildAnlageVReportLines(report: AnlageVReport): string[] {
       ? [
           "",
           "Portfolio-Ausgaben-Dokumentation:",
-          ...report.portfolioAdministrationRows.map((entry) => `- ${entry.booking_date ?? "-"} | ${entry.category ?? "-"} | Gesamt: ${formatTaxCurrency(amount(entry.amount))} | Objektanteil: ${formatTaxCurrency(amount(entry.amount) / TAX_OBJECT_PROFILES.filter(isAnlageVEligible).length)} | ${entry.note ?? ""}`),
+          ...report.portfolioAdministrationRows.map((entry) => `- ${entry.booking_date ?? "-"} | ${entry.category ?? "-"} | Gesamt: ${formatTaxCurrency(amount(entry.amount))} | Objektanteil: ${formatTaxCurrency(amount(entry.amount) / anlageVObjectCountForYear(report.year))} | ${entry.note ?? ""}`),
         ]
       : []),
     ...(report.businessMealRows.length

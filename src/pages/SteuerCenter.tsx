@@ -636,6 +636,44 @@ function taxableEntryAmount(row: ClassifiedEntry): number {
   return roundCurrency(row.amount);
 }
 
+function summarizeTaxRows(rows: ClassifiedEntry[]): SummaryRow[] {
+  const map = new Map<string, SummaryRow>();
+  for (const row of rows.filter((entry) => entry.relevance === "tax")) {
+    const current = map.get(row.tax_group) ?? { group: row.tax_group, income: 0, expense: 0, count: 0 };
+    current.count += 1;
+    if (row.entry_type === "income") current.income = roundCurrency(current.income + taxableEntryAmount(row));
+    else current.expense = roundCurrency(current.expense + taxableEntryAmount(row));
+    map.set(row.tax_group, current);
+  }
+  return Array.from(map.values()).sort((a, b) => Math.abs(b.income - b.expense) - Math.abs(a.income - a.expense));
+}
+
+function calculateTaxTotals(rows: ClassifiedEntry[], loanRows: LoanTaxRow[], mileageRows: MileageSummaryRow[]): TaxTotals {
+  const income = sumCurrency(rows.filter((row) => row.entry_type === "income"), (row) => row.amount);
+  const expense = sumCurrency(rows.filter((row) => row.entry_type === "expense"), (row) => row.amount);
+  const taxIncome = sumCurrency(rows.filter((row) => row.relevance === "tax" && row.entry_type === "income"), taxableEntryAmount);
+  const taxExpense = sumCurrency(rows.filter((row) => row.relevance === "tax" && row.entry_type === "expense"), taxableEntryAmount);
+  const mileageExpense = sumCurrency(mileageRows, (row) => row.total_amount);
+  const loanInterest = sumCurrency(loanRows, (row) => row.interest);
+  const loanPrincipal = sumCurrency(loanRows, (row) => row.principal);
+  const taxRows = rows.filter((row) => row.relevance === "tax").length;
+  const checkRows = rows.filter((row) => row.relevance === "check").length;
+  return {
+    income,
+    expense,
+    net: roundCurrency(income - expense),
+    taxIncome,
+    taxExpense,
+    mileageExpense,
+    taxNetIncludingLoans: roundCurrency(taxIncome - taxExpense - mileageExpense - loanInterest),
+    loanInterest,
+    loanPrincipal,
+    taxRows,
+    checkRows,
+    count: rows.length,
+  };
+}
+
 function escapeCsv(value: unknown): string {
   const text = String(value ?? "");
   if (text.includes(";") || text.includes("\"") || text.includes("\n") || text.includes("\r")) {
@@ -1418,23 +1456,7 @@ export default function SteuerCenter() {
   }, [classifiedRows, relevance, search]);
 
   const summary = useMemo(() => {
-    const map = new Map<string, SummaryRow>();
-
-    for (const row of filteredRows.filter((entry) => entry.relevance === "tax")) {
-      const current = map.get(row.tax_group) ?? {
-        group: row.tax_group,
-        income: 0,
-        expense: 0,
-        count: 0,
-      };
-
-      current.count += 1;
-      if (row.entry_type === "income") current.income = roundCurrency(current.income + taxableEntryAmount(row));
-      else current.expense = roundCurrency(current.expense + taxableEntryAmount(row));
-      map.set(row.tax_group, current);
-    }
-
-    return Array.from(map.values()).sort((a, b) => Math.abs(b.income - b.expense) - Math.abs(a.income - a.expense));
+    return summarizeTaxRows(filteredRows);
   }, [filteredRows]);
 
   const filteredMileageTrips = useMemo(() => {
@@ -1481,30 +1503,17 @@ export default function SteuerCenter() {
   }, [filteredMileageTrips, year]);
 
   const totals = useMemo<TaxTotals>(() => {
-    const income = sumCurrency(filteredRows.filter((row) => row.entry_type === "income"), (row) => row.amount);
-    const expense = sumCurrency(filteredRows.filter((row) => row.entry_type === "expense"), (row) => row.amount);
-    const taxIncome = sumCurrency(filteredRows.filter((row) => row.relevance === "tax" && row.entry_type === "income"), taxableEntryAmount);
-    const taxExpense = sumCurrency(filteredRows.filter((row) => row.relevance === "tax" && row.entry_type === "expense"), taxableEntryAmount);
-    const mileageExpense = sumCurrency(mileageSummaryRows, (row) => row.total_amount);
-    const loanInterest = sumCurrency(loanTaxRows, (row) => row.interest);
-    const loanPrincipal = sumCurrency(loanTaxRows, (row) => row.principal);
-    const taxRows = filteredRows.filter((row) => row.relevance === "tax").length;
-    const checkRows = filteredRows.filter((row) => row.relevance === "check").length;
-    return {
-      income,
-      expense,
-      net: roundCurrency(income - expense),
-      taxIncome,
-      taxExpense,
-      mileageExpense,
-      taxNetIncludingLoans: roundCurrency(taxIncome - taxExpense - mileageExpense - loanInterest),
-      loanInterest,
-      loanPrincipal,
-      taxRows,
-      checkRows,
-      count: filteredRows.length,
-    };
+    return calculateTaxTotals(filteredRows, loanTaxRows, mileageSummaryRows);
   }, [filteredRows, loanTaxRows, mileageSummaryRows]);
+
+  // Der sichtbare Such-/Statusfilter darf den verbindlichen Jahresauszug nicht
+  // unbemerkt verkürzen. Exporte enthalten immer jede geladene Jahresbuchung
+  // und weisen nicht abziehbare bzw. blockierte Zeilen ausdrücklich aus.
+  const advisorSummary = useMemo(() => summarizeTaxRows(classifiedRows), [classifiedRows]);
+  const advisorTotals = useMemo(
+    () => calculateTaxTotals(classifiedRows, loanTaxRows, mileageSummaryRows),
+    [classifiedRows, loanTaxRows, mileageSummaryRows],
+  );
 
   const taxVacancyRows = useMemo<TaxVacancyRow[]>(() => {
     const from = `${year}-01-01`;
@@ -1540,24 +1549,24 @@ export default function SteuerCenter() {
 
   const filenameObject = objectCode === "ALL" ? "alle_objekte" : objectCode.replace(/[^a-zA-Z0-9_-]+/g, "_");
   const selectedObjectLabel = objectCode === "ALL" ? "Alle Objekte" : objectLabelByCode.get(objectCode) ?? objectCode;
-  const advisorStatus = totals.count === 0
+  const advisorStatus = advisorTotals.count === 0
     ? "Keine Buchungen"
-    : totals.checkRows === 0
+    : advisorTotals.checkRows === 0
       ? "Exportbereit"
-      : `${totals.checkRows} Buchungen pruefen`;
-  const advisorStatusTone: "green" | "amber" | "slate" = totals.count === 0 ? "slate" : totals.checkRows === 0 ? "green" : "amber";
+      : `${advisorTotals.checkRows} Buchungen pruefen`;
+  const advisorStatusTone: "green" | "amber" | "slate" = advisorTotals.count === 0 ? "slate" : advisorTotals.checkRows === 0 ? "green" : "amber";
   const loanRowsWithYearValue = loanTaxRows.filter((row) => row.has_year_value);
   const loanRowsMissingYearValue = loanTaxRows.filter((row) => !row.has_year_value);
   const advisorChecks = [
     {
       label: "Buchungen aus Hauptquelle finance_entry",
-      value: `${totals.count} Zeilen`,
-      relevance: totals.count > 0 ? "tax" : "private",
+      value: `${advisorTotals.count} Zeilen`,
+      relevance: advisorTotals.count > 0 ? "tax" : "private",
     },
     {
       label: "Offene steuerliche Prueffaelle",
-      value: totals.checkRows === 0 ? "0 offen" : `${totals.checkRows} offen`,
-      relevance: totals.checkRows === 0 ? "tax" : "check",
+      value: advisorTotals.checkRows === 0 ? "0 offen" : `${advisorTotals.checkRows} offen`,
+      relevance: advisorTotals.checkRows === 0 ? "tax" : "check",
     },
     {
       label: "Darlehenszinsen aus Seite Darlehen",
@@ -1602,13 +1611,13 @@ export default function SteuerCenter() {
   const advisorExportPayload: AdvisorExportPayload = {
     year,
     objectLabel: selectedObjectLabel,
-    totals,
-    summary,
+    totals: advisorTotals,
+    summary: advisorSummary,
     loanRows: loanTaxRows,
     vacancyRows: taxVacancyRows,
     mileageSummaryRows,
     mileageRows: filteredMileageTrips,
-    rows: filteredRows,
+    rows: classifiedRows,
     dashboard: taxAdvisorDashboard,
   };
 
