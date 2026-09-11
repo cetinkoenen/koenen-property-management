@@ -9,6 +9,8 @@ assert.match(wealthSource, /aria-label=\{`\$\{column\.title\} speichern`\}/, "Je
 assert.match(wealthSource, /const storageId = card\?\.row\?\.property_id \?\? id/, "Feldänderungen müssen unter der zentralen Supabase-Objekt-ID gespeichert werden");
 assert.match(wealthSource, /\[storageId\]: \{/, "Die zentrale Objekt-ID muss beim lokalen Formularzustand Vorrang haben");
 assert.match(wealthSource, /field\.key === "remainingDebt"/, "Die zentrale Restschuld muss auf der Vermögensseite schreibgeschützt bleiben");
+assert.match(cashflowDashboardSource, /ReferenceLine[\s\S]*value: "TODAY"[\s\S]*visibleTodayMonthKey/, "Alle zeitbezogenen Vermögen-und-Cashflow-Charts müssen den heutigen Monat mit einer TODAY-Linie markieren");
+assert.match(wealthSource, /CentralWealthCashflowDashboard[\s\S]*lockedPropertyId[\s\S]*lockedPropertyLabel/, "Immobilien-Detailseiten müssen dieselbe zentrale TODAY-fähige Cashflow-Komponente verwenden");
 
 const EMPTY_DRAFT = {
   name: "",
