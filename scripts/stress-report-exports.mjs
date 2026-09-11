@@ -55,6 +55,8 @@ assert.match(taxEngine, /acquisitionDate: "2025-09-01"[\s\S]*isProfileAcquiredBy
 assert.match(taxEngine, /Hausgeld - Aufteilung erforderlich[\s\S]*reviewStatus: "Blockiert"/, "Nicht aufgeschlüsseltes Hausgeld muss blockiert werden");
 assert.match(taxEngine, /Anlage V Zeile 20/, "Nebenkostenvorauszahlungen müssen der amtlichen Formularzeile zugeordnet werden");
 assert.match(taxEngine, /Anlage V Zeilen 46-48/, "Schuldzinsen müssen der amtlichen Formularzeile zugeordnet werden");
+assert.match(taxClassification, /entryType === "income" && canonicalCategory === "Verwaltungskosten"[\s\S]*taxRelevant: true[\s\S]*locked: false/, "Hausverwaltungs-Gutschriften muessen steuerlich als Kostenminderung freigegeben bleiben");
+assert.match(taxEngine, /category === "Verwaltungskosten"[\s\S]*categoryName: "Nicht umlagefähige Kosten \/ Verwaltung"[\s\S]*expenseAmount: -value/, "Hausverwaltungs-Gutschriften muessen die Verwaltungskosten im Anlage-V-Bericht mindern");
 assert.match(taxEngine, /bankAccountFlatFee: 0/, "Pauschale Kontoführungsgebühren dürfen das Zufluss-/Abflussprinzip nicht verletzen");
 assert.match(portfolioExpense, /isPersonalMovingExpense[\s\S]*umzugskosten/, "Private Umzugskosten müssen aus der pauschalen Portfolio-Verteilung ausgeschlossen sein");
 assert.match(nkClassification, /anschaffungskosten[\s\S]*erwerbsnebenkosten[\s\S]*grundbuch[\s\S]*grunderwerbsteuer/, "Anschaffungs-/Erwerbsnebenkosten dürfen nie als umlagefähige Nebenkosten klassifiziert werden");
@@ -128,4 +130,4 @@ assert.match(app, /Neue Inserat-Nachweise \(z\.B\. Immobilienscout24-PDF\)/, "Di
 assert.match(app, /category: "expose"[\s\S]*Leerstand_Nachweise/, "Inserat-Nachweise müssen zentral gespeichert und dem Objektordner im ZIP zugeordnet werden");
 assert.match(app, /Bodenrichtwert \(€\/m²\)[\s\S]*Primärenergiebedarf \(kWh\/\(m²a\)\)[\s\S]*Primärenergieverbrauch \(kWh\/\(m²a\)\)/, "Immobilien-PDFs müssen die geforderten Wert- und Energieeinheiten ausweisen");
 
-console.log("98 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("100 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");

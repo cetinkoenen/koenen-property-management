@@ -134,7 +134,9 @@ export function classifyTaxRelevance(entry: TaxRuleEntry, objectLabel?: string |
       relevance: "tax",
       group: "Erstattung Verwaltungskosten (Kostenminderung)",
       hint: "Gutschrift der Hausverwaltung: keine Mieteinnahme; wird im Anlage-V-Bericht als Minderung der Verwaltungskosten ausgewiesen.",
-      locked: true,
+      // Anders als steuerneutrale, gesperrte Sonderfaelle muss diese
+      // Kostenminderung mit St=true in den Anlage-V-Bericht gelangen.
+      locked: false,
     };
   }
 

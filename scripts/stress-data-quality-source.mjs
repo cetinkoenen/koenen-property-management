@@ -28,5 +28,6 @@ assert.doesNotMatch(appDataContext, /from\("properties"\)\.select\([^\n]*living_
 assert.match(exposeService, /message\.toLowerCase\(\)\.includes\("object not found"\)/, "Ein veralteter Exposé-Verweis darf das Laden aller übrigen Exposés nicht blockieren");
 assert.match(dataCheckPage, /issue_code !== "missing_documents"/, "Fehlende Dokument-Uploads dürfen nicht als Konsistenzfehler gewertet werden");
 assert.match(consistencyEngine, /today\.getDate\(\) > 10/, "Der laufende Monat darf erst nach der Zahlungskalender-Kulanz als fehlend gelten");
+assert.match(consistencyEngine, /resolveChfLoanSplitRule[\s\S]*loan-increase-chf-[\s\S]*severity: "ok"/, "Bestaetigte CHF-Darlehen duerfen bei wechselkursbedingtem EUR-Restschuldanstieg keine falsche Warnung erzeugen");
 
-console.log("18 Stressfaelle fuer zentrale Objektzuordnung und Datenqualitaet bestanden.");
+console.log("19 Stressfaelle fuer zentrale Objektzuordnung und Datenqualitaet bestanden.");

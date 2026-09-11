@@ -3,6 +3,7 @@ import { canonicalizeFinanceCategory, isPureRentBackPayment, normalizeFinanceCat
 import { isAllocatablePortfolioExpenseEntry, isPortfolioExpenseCategory, isPortfolioGeneralEntry, isPortfolioGeneralReference, PORTFOLIO_GENERAL_LABEL } from "@/lib/portfolioExpense";
 import { classifyTaxRelevance } from "@/lib/taxClassification";
 import { classifyNkRelevance } from "@/lib/nkClassification";
+import { resolveChfLoanSplitRule } from "@/lib/chfLoanSplit";
 import { isAnlageVEligible, isRosensteinSharedExpense, isSection35aProfile, resolveEntryTaxProfile, TAX_OBJECT_PROFILES, type TaxReportObjectOption } from "@/services/taxReportEngine";
 
 export type ConsistencySeverity = "ok" | "warning" | "critical";
@@ -732,12 +733,29 @@ export function buildFinanceConsistencySummary(input: ConsistencyInput): Consist
       const current = sorted[index];
       const delta = round2(current.balance - previous.balance);
       if (delta > 1) {
+        const propertyName = names[propertyId] ?? "Unbekanntes Objekt";
+        const chfRule = resolveChfLoanSplitRule(`${propertyName} ${propertyId}`);
+        if (chfRule) {
+          addCheck(checks, {
+            id: `loan-increase-chf-${propertyId}-${current.year}`,
+            severity: "ok",
+            area: "Darlehen",
+            propertyId,
+            propertyName,
+            detail: `EUR-Restschuld steigt von ${previous.year} auf ${current.year}; bestätigtes CHF-Darlehen mit Wechselkurseffekt.`,
+            repairHint: `Bewusst akzeptierter CHF-Sonderfall. Der validierte Quellsaldo bleibt unverändert; feste Tilgung ${chfRule.fixedPrincipalEur.toLocaleString("de-DE")} € je Rate.`,
+            expectedValue: previous.balance,
+            actualValue: current.balance,
+            delta,
+          });
+          continue;
+        }
         addCheck(checks, {
           id: `loan-increase-${propertyId}-${current.year}`,
           severity: "warning",
           area: "Darlehen",
           propertyId,
-          propertyName: names[propertyId] ?? "Unbekanntes Objekt",
+          propertyName,
           detail: `Restschuld steigt von ${previous.year} auf ${current.year}.`,
           repairHint: "Ledger-Zeilen prüfen. Falls Sonderfall/Neufinanzierung: bewusst akzeptieren, sonst Saldo korrigieren.",
           expectedValue: previous.balance,
