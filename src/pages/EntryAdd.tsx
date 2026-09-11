@@ -10,6 +10,7 @@ import { buildTelecommunicationNote, calculateTelecommunicationTax, isTelecommun
 import { PORTFOLIO_GENERAL_LABEL, PORTFOLIO_GENERAL_OBJECT_CODE, PORTFOLIO_GENERAL_OBJECT_ID, isPortfolioGeneralReference } from "../lib/portfolioExpense";
 import { emitFinanceEntryChanged } from "../lib/appCache";
 import { findLoanRatePlanForBooking, type LoanRatePlanRow } from "../services/loanRatePlanService";
+import { calculateChfLoanSplit, resolveChfLoanSplitRule } from "../lib/chfLoanSplit";
 
 type DropdownRow = {
   /** Muss für finance_entry.object_id die UUID aus public.objects.id sein. */
@@ -117,6 +118,7 @@ export default function EntryAdd() {
   );
   const selectedObjectLabel = useMemo(() => objects.find((object) => String(object.value) === String(objectId))?.label ?? "", [objectId, objects]);
   const isCreditRate = kind === "expense" && resolvedCategory === "Kreditrate";
+  const chfLoanRule = useMemo(() => resolveChfLoanSplitRule(`${selectedObjectLabel} ${objektCodePreview}`), [objektCodePreview, selectedObjectLabel]);
   const loanInterestNumber = useMemo(() => parseNumberInput(loanInterest), [loanInterest]);
   const loanPrincipalNumber = useMemo(() => parseNumberInput(loanPrincipal), [loanPrincipal]);
   const isPortfolioGeneralSelected = isPortfolioGeneralReference(objectId) || isPortfolioGeneralReference(objektCodePreview);
@@ -157,6 +159,21 @@ export default function EntryAdd() {
       };
     }
 
+    if (chfLoanRule) {
+      const split = calculateChfLoanSplit(amountNumber, `${selectedObjectLabel} ${objektCodePreview}`);
+      const applyRule = window.setTimeout(() => {
+        if (!alive) return;
+        setLoanRatePlan(null);
+        setLoanPrincipal(chfLoanRule.fixedPrincipalEur.toFixed(2).replace(".", ","));
+        setLoanInterest(split ? split.interestEur.toFixed(2).replace(".", ",") : "");
+        setLoanPlanLoading(false);
+      }, 0);
+      return () => {
+        alive = false;
+        window.clearTimeout(applyRule);
+      };
+    }
+
     const startLookup = window.setTimeout(() => {
       if (!alive) return;
       setLoanPlanLoading(true);
@@ -182,7 +199,7 @@ export default function EntryAdd() {
       alive = false;
       window.clearTimeout(startLookup);
     };
-  }, [bookingDate, isCreditRate, objectId, selectedObjectLabel]);
+  }, [amountNumber, bookingDate, chfLoanRule, isCreditRate, objectId, objektCodePreview, selectedObjectLabel]);
 
   useEffect(() => {
     let alive = true;
@@ -312,6 +329,10 @@ export default function EntryAdd() {
     }
 
     if (isCreditRate) {
+      if (chfLoanRule && effectiveAmountNumber < chfLoanRule.fixedPrincipalEur) {
+        setMsg(`❌ Die Kreditrate ist kleiner als die bestätigte feste Tilgung von ${chfLoanRule.fixedPrincipalEur.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}. Bitte Gesamtbetrag prüfen.`);
+        return;
+      }
       if (!Number.isFinite(loanInterestNumber) || loanInterestNumber < 0) {
         setMsg("❌ Bitte einen gültigen Zinsanteil ab 0,00 EUR eintragen.");
         return;
@@ -384,7 +405,7 @@ export default function EntryAdd() {
         loan_interest_amount: isCreditRate ? loanInterestNumber : null,
         loan_principal_amount: isCreditRate ? loanPrincipalNumber : null,
         loan_rate_plan_id: isCreditRate ? loanRatePlan?.id ?? null : null,
-        loan_split_source: isCreditRate ? (loanRatePlan ? `csv:${loanRatePlan.source_file}` : "manual") : null,
+        loan_split_source: isCreditRate ? (chfLoanRule?.source ?? (loanRatePlan ? `csv:${loanRatePlan.source_file}` : "manual")) : null,
       };
 
       const { error } = await supabase.from("finance_entry").insert(payload);
@@ -822,17 +843,19 @@ export default function EntryAdd() {
                 padding: 14,
                 display: "grid",
                 gap: 12,
-                background: loanRatePlan ? "#f1f5f9" : "#fffbeb",
-                borderColor: loanRatePlan ? "#cbd5e1" : "#fde68a",
+                background: loanRatePlan || chfLoanRule ? "#f1f5f9" : "#fffbeb",
+                borderColor: loanRatePlan || chfLoanRule ? "#cbd5e1" : "#fde68a",
               }}
             >
               <div>
-                <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: "0.12em", textTransform: "uppercase", color: loanRatePlan ? "#475569" : "#92400e" }}>
+                <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: "0.12em", textTransform: "uppercase", color: loanRatePlan || chfLoanRule ? "#475569" : "#92400e" }}>
                   Aufteilung der Kreditrate
                 </div>
                 <div style={{ marginTop: 4, fontSize: 13, fontWeight: 800, color: "#64748b", lineHeight: 1.4 }}>
                   {loanPlanLoading
                     ? "Monatswert wird aus dem Tilgungsplan geladen…"
+                    : chfLoanRule
+                      ? `CHF-Darlehen: Tilgung fest ${chfLoanRule.fixedPrincipalEur.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}; Zins = tatsächliche EUR-Rate abzüglich Tilgung. Felder sind schreibgeschützt.`
                     : loanRatePlan
                       ? `Quelle: ${loanRatePlan.source_file} · ${loanRatePlan.plan_date} · Felder sind schreibgeschützt.`
                       : "Für diesen Objektmonat fehlt ein importierter Planwert. Zins und Tilgung bitte manuell eintragen."}
@@ -844,9 +867,9 @@ export default function EntryAdd() {
                   <input
                     value={loanInterest}
                     onChange={(event) => setLoanInterest(event.target.value)}
-                    disabled={loanPlanLoading || Boolean(loanRatePlan)}
+                    disabled={loanPlanLoading || Boolean(loanRatePlan) || Boolean(chfLoanRule)}
                     placeholder="z. B. 96,49"
-                    style={{ ...inputStyle(), background: loanRatePlan ? "#e2e8f0" : "#ffffff", color: loanRatePlan ? "#475569" : "#111827" }}
+                    style={{ ...inputStyle(), background: loanRatePlan || chfLoanRule ? "#e2e8f0" : "#ffffff", color: loanRatePlan || chfLoanRule ? "#475569" : "#111827" }}
                   />
                 </label>
                 <label style={fieldLabelStyle()}>
@@ -854,9 +877,9 @@ export default function EntryAdd() {
                   <input
                     value={loanPrincipal}
                     onChange={(event) => setLoanPrincipal(event.target.value)}
-                    disabled={loanPlanLoading || Boolean(loanRatePlan)}
+                    disabled={loanPlanLoading || Boolean(loanRatePlan) || Boolean(chfLoanRule)}
                     placeholder="z. B. 1.103,51"
-                    style={{ ...inputStyle(), background: loanRatePlan ? "#e2e8f0" : "#ffffff", color: loanRatePlan ? "#475569" : "#111827" }}
+                    style={{ ...inputStyle(), background: loanRatePlan || chfLoanRule ? "#e2e8f0" : "#ffffff", color: loanRatePlan || chfLoanRule ? "#475569" : "#111827" }}
                   />
                 </label>
               </div>

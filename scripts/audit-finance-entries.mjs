@@ -246,7 +246,8 @@ for (const entry of entries) {
     const rate = Math.abs(amount(entry.amount));
     const split = round2(interest + principal);
     const linkedPlan = plans.find((plan) => plan.id === entry.loan_rate_plan_id);
-    if (!entry.loan_rate_plan_id || !linkedPlan) add("high", "loan_plan_missing", entry, "Kreditrate ist nicht mit einem Monatsplan verknüpft.", "Passenden Tilgungsplan anhand Objekt, Monat, Betrag und Darlehensreferenz zuordnen.");
+    const confirmedChfRule = String(entry.loan_split_source ?? "").startsWith("rule:CHF-fixed-principal:");
+    if ((!entry.loan_rate_plan_id || !linkedPlan) && !confirmedChfRule) add("high", "loan_plan_missing", entry, "Kreditrate ist nicht mit einem Monatsplan verknüpft.", "Passenden Tilgungsplan anhand Objekt, Monat, Betrag und Darlehensreferenz zuordnen.");
     if (entry.loan_interest_amount == null || entry.loan_principal_amount == null) {
       add(
         "high",

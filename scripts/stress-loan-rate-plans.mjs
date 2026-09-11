@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [migration, service, ledgerService, entryAdd, loanPage, wealthPage, taxCenter, taxEngine, appData, reports, backup] = await Promise.all([
+const [migration, chfMigration, chfRules, service, ledgerService, entryAdd, loanPage, wealthPage, taxCenter, taxEngine, appData, reports, backup] = await Promise.all([
   readFile(new URL("../supabase/migrations/20260831193000_monthly_loan_rate_plans.sql", import.meta.url), "utf8"),
+  readFile(new URL("../supabase/migrations/20260911113000_apply_confirmed_chf_loan_split_rules.sql", import.meta.url), "utf8"),
+  readFile(new URL("../src/lib/chfLoanSplit.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/services/loanRatePlanService.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/services/propertyLoanLedgerService.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/EntryAdd.tsx", import.meta.url), "utf8"),
@@ -56,9 +58,14 @@ assert.match(appData, /loadCanonicalPropertyLoanSnapshots/, "Immobilienvermögen
 assert.doesNotMatch(wealthPage, /parseAmount\(card\.draft\.remainingDebt\)/, "Lokale Vermögenswerte dürfen keine Restschuldquelle sein");
 assert.match(wealthPage, /Restschuld-Hauptquelle[\s\S]*Darlehen · property_loan_ledger/, "Immobilienvermögen muss die Restschuld-Hauptquelle sichtbar nennen");
 assert.match(entryAdd, /isCreditRate/, "Zins- und Tilgungsfelder dürfen nur bei Kreditraten erscheinen");
-assert.match(entryAdd, /disabled=\{loanPlanLoading \|\| Boolean\(loanRatePlan\)\}/, "Importierte Monatswerte müssen schreibgeschützt sein");
+assert.match(entryAdd, /disabled=\{loanPlanLoading \|\| Boolean\(loanRatePlan\) \|\| Boolean\(chfLoanRule\)\}/, "Importierte Monatswerte und bestätigte CHF-Aufteilungen müssen schreibgeschützt sein");
 assert.match(entryAdd, /loanRatePlan \? `csv:/, "Manuelle und importierte Aufteilungen müssen unterscheidbar sein");
 assert.match(entryAdd, /Math\.abs\(effectiveAmountNumber - \(loanInterestNumber \+ loanPrincipalNumber\)\)/, "Gesamtrate muss gegen Zins plus Tilgung validiert werden");
+assert.match(chfRules, /Lilienthaler Str\. 54[\s\S]*fixedPrincipalEur: 1100[\s\S]*Elsasser Str\. 52[\s\S]*fixedPrincipalEur: 300/, "CHF-Darlehen müssen die bestätigten festen Tilgungsanteile zentral verwenden");
+assert.match(chfRules, /interestEur: roundCurrency\(payment - rule\.fixedPrincipalEur\)/, "Der wechselkursabhängige Zins muss aus tatsächlicher EUR-Rate minus fester Tilgung entstehen");
+assert.match(entryAdd, /chfLoanRule[\s\S]*CHF-Darlehen: Tilgung fest[\s\S]*Boolean\(chfLoanRule\)/, "Die Buchungsmaske muss CHF-Aufteilungen automatisch berechnen und sperren");
+assert.match(service, /calculateChfLoanSplit\(Number\(selected\.amount[\s\S]*chfSplit\?\.interestEur[\s\S]*chfSplit\?\.principalEur/, "Ein erneuter Planimport darf die bestätigte CHF-Buchungsregel nicht überschreiben");
+assert.match(chfMigration, /abs\(f\.amount\) - rule\.principal_amount[\s\S]*loan_split_source = rule\.split_source[\s\S]*tax_relevant = false/, "Bestandsbuchungen müssen ohne Änderung der Gesamtrate auf die CHF-Regel umgestellt werden");
 
 for (const source of [taxCenter, appData, reports]) {
   assert.match(source, /loan_interest_amount/, "Steuer- und Berichtsdaten müssen den gebuchten Zinsanteil lesen");
@@ -71,4 +78,4 @@ assert.match(taxEngine, /wurden nicht ohne Beleg auf P250, P253 und P254 verteil
 assert.match(reports, /bookedSplits/, "Berichte & Exporte muss gebuchte Monatsaufteilungen priorisieren");
 assert.match(backup, /property_loan_rate_plan/, "Die neue Hauptquelle muss im App-Backup enthalten sein");
 
-console.log("44 Stressfälle für Tilgungsplan-Import, zentrale Restschuld, kompakte Jahresübersicht, Buchungsaufteilung, Steuerberichte und Sicherheit bestanden.");
+console.log("49 Stressfälle für Tilgungsplan-Import, CHF-Regeln, zentrale Restschuld, kompakte Jahresübersicht, Buchungsaufteilung, Steuerberichte und Sicherheit bestanden.");

@@ -20,6 +20,7 @@
     "stress:security": "node scripts/stress-security-baseline.mjs",
     "stress:loan-rate-plans": "node scripts/stress-loan-rate-plans.mjs",
     "audit:tax-reports": "node --env-file=.env.local scripts/run-tax-report-audit.mjs",
+    "audit:chf-loans": "node --env-file=.env.local scripts/audit-chf-loan-splits.mjs",
     "stress:branding": "node scripts/stress-branding.mjs",
     "verify": "node scripts/verify-project.mjs",
     "preview": "vite preview",
