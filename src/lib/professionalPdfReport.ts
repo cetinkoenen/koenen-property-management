@@ -74,7 +74,7 @@ function tableHtml(table: PdfReportTable) {
   const paymentStatusClass = (status: string): string => {
     const normalized = status.toLocaleLowerCase("de-DE");
     if (normalized.includes("bezahlt") || normalized.includes("guthaben")) return "payment-paid";
-    if (normalized.includes("offen") || normalized.includes("nachzahlung")) return "payment-open";
+    if (normalized.includes("offen") || normalized.includes("nachzahlung") || normalized.includes("teilweise") || normalized.includes("fehlt")) return "payment-open";
     return "payment-neutral";
   };
   const columnWeight = (header: string): number => {

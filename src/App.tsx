@@ -2902,7 +2902,9 @@ function ReportsExportsPage() {
           const taxReport = taxAdvisorDashboard.AnlageVReports.find((report) => report.profile.key === profile.key);
           return rentRow.months
             .filter((month) => month.open > 0)
-            .map((month) => ({
+            .map((month) => {
+              const paymentState = month.paid > 0 ? "Teilweise bezahlt" : "Zahlung fehlt";
+              return {
               recordType: "Offene Miete" as const,
               taxYear: selectedYear,
               objectId: profile.taxObjectId,
@@ -2911,13 +2913,14 @@ function ReportsExportsPage() {
               bookingDate: "",
               categoryName: "Kaltmiete",
               officialFormLine: profile.usage === "rented_parking" ? "Anlage V Zeilen 16-18 (andere Räume)" : "Anlage V Zeilen 13-15 (Wohnraum)",
-              bookingText: `${month.monthLabel} ${selectedYear} | Soll ${formatCurrency(month.expected)} | offen ${formatCurrency(month.open)} | ${rentRow.tenantName}`,
+              bookingText: `${month.monthLabel} ${selectedYear} | ${paymentState} | Ist ${formatCurrency(month.paid)} | Soll ${formatCurrency(month.expected)} | offen ${formatCurrency(month.open)} | ${rentRow.tenantName}`,
               incomeAmount: 0,
               expenseAmount: 0,
               apportionableStatus: "Nicht anwendbar" as const,
               paymentStatus: "Offen" as const,
               reviewStatus: "Exportiert" as const,
-            }));
+              };
+            });
         })
       : [];
 

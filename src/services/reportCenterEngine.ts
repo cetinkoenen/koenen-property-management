@@ -41,6 +41,14 @@ const isParkingText = (value: unknown) => /garage|parking|stellplatz|tiefgarage|
 const isOwnerOccupied = (object: AppObject | undefined) => Boolean(object && /hohenloher/i.test(object.label));
 const normalizePerson = (value: unknown) => text(value).toLowerCase().replaceAll('ß','ss').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ae/g,'a').replace(/oe/g,'o').replace(/ue/g,'u').replace(/[^a-z0-9]+/g,' ').trim();
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+type RentReportMonth = RentAnnualReportSnapshot['rows'][number]['months'][number];
+const paymentMatrixStatus = (month: RentReportMonth, monthStart: string, today: string): string => {
+  if (monthStart > today) return 'künftig';
+  if (month.status === 'vacant') return 'Leerstand';
+  if (month.status === 'inactive' || month.status === 'none') return 'neutral';
+  if (rentBalancePart(month.expected, month.paid, 'open') === 0) return 'bezahlt';
+  return month.paid > 0 ? 'teilweise' : 'fehlt';
+};
 export function buildReportCenter(input: { objects: AppObject[]; entries: FinanceEntry[]; loans: LoanDashboardRow[]; sources: ReportSources; rent: RentAnnualReportSnapshot | null; from: string; to: string; objectId: string; today?: string }): ReportModule[] {
   const { sources: s, from, to, rent } = input;
   const today = input.today ?? new Date().toLocaleDateString('sv-SE');
@@ -210,7 +218,11 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     const area = isParkingText(c.unit_label) ? 0 : u?.area_sqm ?? u?.living_area_m2 ?? u?.living_area ?? (residentialContracts.length <= 1 ? areaForObject(obj) : undefined);
     return [label(c),str(c.unit_label),name(c),str(c.start_date),str(c.end_date),euro(c.cold_rent),euro(c.operating_costs), c.total_rent != null && c.cold_rent != null && c.operating_costs != null ? euro(n(c.total_rent)-n(c.cold_rent)-n(c.operating_costs)) : 'Nicht gepflegt',euro(c.total_rent),str(area),n(area)>0 && c.cold_rent != null ? euro(n(c.cold_rent)/n(area)) : '—',euro(c.deposit_amount)];
   });
-  const matrix = table('Zahlungsmatrix · Ist / Soll',['Objekt','Einheit','Mieter',...Array.from({length:12},(_,i) => new Date(2025,i,1).toLocaleDateString('de-DE',{month:'short'}))],rentRows.map(r => [r.objectLabel,r.unitLabel,r.tenantName,...r.months.map(m => m.month < firstMonth || m.month > lastMonth ? '—' : `${euro(m.paid)} / ${euro(m.expected)}${`${from.slice(0,4)}-${String(m.month).padStart(2,'0')}-01` > today ? ' · künftig' : m.status === 'inactive' || m.status === 'vacant' || m.status === 'none' ? ' · neutral' : m.paid + 0.005 >= m.expected ? ' · bezahlt' : ' · offen'}`)]));
+  const matrix = table('Zahlungsmatrix · Ist / Soll',['Objekt','Einheit','Mieter',...Array.from({length:12},(_,i) => new Date(2025,i,1).toLocaleDateString('de-DE',{month:'short'}))],rentRows.map(r => [r.objectLabel,r.unitLabel,r.tenantName,...r.months.map(m => {
+    if (m.month < firstMonth || m.month > lastMonth) return '—';
+    const monthStart = `${from.slice(0,4)}-${String(m.month).padStart(2,'0')}-01`;
+    return `${euro(m.paid)} / ${euro(m.expected)} · ${paymentMatrixStatus(m, monthStart, today)}`;
+  })]));
   const tenants = module('tenants',[table('Vertragsdaten',['Objekt','Einheit','Mieter','Von','Bis','Kaltmiete','NK','Sonstiges','Gesamtmiete','Fläche m²','€/m²','Kaution (vereinbart)'],contractRows),matrix],[rentNote,'Kaution bezeichnet den gespeicherten Vertragsbetrag; ein Zahlungseingang wird daraus nicht abgeleitet.']);
   if (billingPeriods.length) tenants.tables?.splice(1,0,table('Vermietungszeiträume aus gespeicherten Abrechnungen',['Objekt','Einheit','Mieter','Von','Bis','Fläche m²','NK-Vorauszahlungen','Monate','Quelle'],billingPeriods.map(p=>[p.object?.label ?? 'Nicht zugeordnet',p.unit,p.tenant,p.from,p.to,str(p.area),euro(p.advancePayments),p.occupancyMonths ?? '—',p.source])));
   let balance = 0;

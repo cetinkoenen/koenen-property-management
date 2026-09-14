@@ -44,6 +44,7 @@ assert.match(app, /entry\.nk_relevant === true/, "Nebenkostenberichte müssen da
 assert.match(app, /"Objekt_ID"[\s\S]*"Wohnflaeche_qm"[\s\S]*"Amtliche_Formularzeile"/, "Der Anlage-V-Export muss die Pflichtfelder enthalten");
 assert.match(app, /"Umlagefaehig_Status"[\s\S]*"Zahlungsstatus"[\s\S]*"Pruefstatus"/, "Der Anlage-V-Export muss Umlage-, Zahlungs- und Prüfstatus enthalten");
 assert.match(app, /recordType: "Offene Miete"/, "Offene Mieten müssen als Zusatzdatensätze exportiert werden");
+assert.match(app, /Teilweise bezahlt[\s\S]*Zahlung fehlt[\s\S]*Ist \$\{formatCurrency\(month\.paid\)\}/, "Teilweise und vollständig fehlende Mieten müssen im Steuerexport eindeutig unterschieden werden");
 assert.match(app, /recordType: "Leerstand"/, "Leerstände müssen als Zusatzdatensätze exportiert werden");
 assert.match(taxEngine, /key: "rosenstein-p250"[\s\S]*key: "rosenstein-p253"[\s\S]*key: "rosenstein-p254"/, "Die drei Rosenstein-Stellplätze müssen getrennte Steuerobjekte sein");
 assert.match(taxEngine, /entryYear\(entry\) === year/, "Buchungen müssen strikt nach tatsächlichem Zahlungsjahr gefiltert werden");
@@ -130,4 +131,4 @@ assert.match(app, /Neue Inserat-Nachweise \(z\.B\. Immobilienscout24-PDF\)/, "Di
 assert.match(app, /category: "expose"[\s\S]*Leerstand_Nachweise/, "Inserat-Nachweise müssen zentral gespeichert und dem Objektordner im ZIP zugeordnet werden");
 assert.match(app, /Bodenrichtwert \(€\/m²\)[\s\S]*Primärenergiebedarf \(kWh\/\(m²a\)\)[\s\S]*Primärenergieverbrauch \(kWh\/\(m²a\)\)/, "Immobilien-PDFs müssen die geforderten Wert- und Energieeinheiten ausweisen");
 
-console.log("100 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("101 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
