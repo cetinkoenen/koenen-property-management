@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [rlsMigration, storageMigration, aliasMigration, invokerViewMigration, garageBillingPage] = await Promise.all([
+const [rlsMigration, storageMigration, aliasMigration, invokerViewMigration, garageBillingPage, supabaseClient, vercelConfig] = await Promise.all([
   readFile(new URL("../supabase/migrations/20260826090000_lock_down_public_tables_without_rls.sql", import.meta.url), "utf8"),
   readFile(new URL("../supabase/migrations/20260827153000_private_exposes_storage.sql", import.meta.url), "utf8"),
   readFile(new URL("../supabase/migrations/20260827163000_property_id_aliases.sql", import.meta.url), "utf8"),
   readFile(new URL("../supabase/migrations/20260901143500_secure_object_bridge_view.sql", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/NebenkostenTiefgarage.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/lib/supabase.ts", import.meta.url), "utf8"),
+  readFile(new URL("../vercel.json", import.meta.url), "utf8"),
 ]);
 
 assert.match(rlsMigration, /relation\.relrowsecurity = false/, "Die Sicherheitsmigration muss alle öffentlichen Tabellen ohne RLS finden");
@@ -29,5 +31,10 @@ assert.match(garageBillingPage, /function escapeHtml[\s\S]*\.replace\(\/&\/g, "&
 for (const field of ["propertyLabel", "unitLabel", "landlordName", "tenantName", "footerNote"]) {
   assert.match(garageBillingPage, new RegExp(`escapeHtml\\(record\\.${field}`), `${field} darf nicht unmaskiert in die TG-Druckausgabe gelangen`);
 }
+assert.match(supabaseClient, /fetch: resilientSupabaseFetch/, "Der Supabase-Client muss den resilienten Netzwerkzugriff verwenden");
+assert.match(supabaseClient, /window\.location\.origin}\/supabase\//, "Fehlgeschlagene direkte Zugriffe müssen über dieselbe App-Domain wiederholt werden");
+assert.match(supabaseClient, /new Request\(proxyUrl, request\)/, "Der Fallback muss Methode, Body und Auth-Header unverändert übernehmen");
+const parsedVercel = JSON.parse(vercelConfig);
+assert.deepEqual(parsedVercel.rewrites[0], { source: "/supabase/:path*", destination: "https://ufqfrotpefxtwczuqrxf.supabase.co/:path*" }, "Der Supabase-Proxy muss vor dem SPA-Fallback ausgewertet werden");
 
-console.log("21 Stressfaelle fuer RLS-, Rollen-, View-, Storage- und HTML-Export-Grundschutz bestanden.");
+console.log("25 Stressfaelle fuer RLS-, Rollen-, View-, Storage-, Netzwerk- und HTML-Export-Grundschutz bestanden.");
