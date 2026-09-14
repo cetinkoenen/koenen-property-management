@@ -290,37 +290,48 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const loanMonths = (s.property_loan_rate_plan ?? [])
     .filter(r => scoped(r) && dateIn(r.plan_date,from,to))
     .sort((a,b) => label(a).localeCompare(label(b),'de') || text(a.plan_date).localeCompare(text(b.plan_date)));
-  const selectedYear = Number(from.slice(0,4));
-  const chartYears = Array.from(new Set(loanYears.map(r=>Number(r.year)))).sort((a,b)=>a-b);
-  const chartInterest = chartYears.map(year=>roundMoney(loanYears.filter(r=>Number(r.year)===year).reduce((sum,r)=>sum+n(r.interest),0)));
-  const chartPrincipal = chartYears.map(year=>roundMoney(loanYears.filter(r=>Number(r.year)===year).reduce((sum,r)=>sum+n(r.principal),0)));
-  const selectedYearRows = loanYears.filter(r=>Number(r.year)===selectedYear);
-  const isFullYear = from===`${selectedYear}-01-01` && to===`${selectedYear}-12-31`;
-  const periodValue = (monthlyField: string, yearlyField: string) => objects.reduce((sum,o)=>{
-    const objectMonths=loanMonths.filter(r=>objectFor(r)?.id===o.id);
-    if(objectMonths.length) return sum+objectMonths.reduce((value,r)=>value+n(r[monthlyField]),0);
-    if(!isFullYear) return sum;
-    return sum+selectedYearRows.filter(r=>objectFor(r)?.id===o.id).reduce((value,r)=>value+n(r[yearlyField]),0);
-  },0);
-  const periodInterest = periodValue('interest_amount','interest');
-  const periodPrincipal = periodValue('principal_amount','principal');
+  const allLoanEntries = input.entries
+    .filter(e=>scoped(e) && e.entry_type==='expense' && /kreditrate|darlehensrate/i.test(text(e.category)))
+    .sort((a,b)=>text(a.booking_date).localeCompare(text(b.booking_date)) || text(a.id).localeCompare(text(b.id)));
+  const loanEntries = allLoanEntries.filter(e=>dateIn(e.booking_date,from,to));
+  const loanMonthKey = (row: ReportRecord) => `${objectFor(row)?.id ?? label(row)}:${text(row.booking_date || row.plan_date).slice(0,7)}`;
+  const bookedMonthKeys = new Set(loanEntries.map(loanMonthKey));
+  const plannedFallback = loanMonths.filter(row=>!bookedMonthKeys.has(loanMonthKey(row)));
+  const planForEntry = (entry: FinanceEntry) => loanMonths.find(plan=>loanMonthKey(plan)===loanMonthKey(entry));
+  const actualByObjectYear = new Map<string,{object:string;year:number;interest:number;principal:number;rates:number;count:number}>();
+  for(const entry of allLoanEntries){
+    const object=objectFor(entry);if(!object)continue;const year=Number(text(entry.booking_date).slice(0,4));if(!Number.isFinite(year))continue;
+    const key=`${object.id}:${year}`;const current=actualByObjectYear.get(key)??{object:object.label,year,interest:0,principal:0,rates:0,count:0};
+    current.interest+=n(entry.loan_interest_amount);current.principal+=n(entry.loan_principal_amount);current.rates+=Math.abs(n(entry.amount));current.count+=1;actualByObjectYear.set(key,current);
+  }
+  const bookedYears=Array.from(actualByObjectYear.values()).map(row=>({...row,interest:roundMoney(row.interest),principal:roundMoney(row.principal),rates:roundMoney(row.rates)})).sort((a,b)=>a.object.localeCompare(b.object,'de')||a.year-b.year);
+  const chartYears = Array.from(new Set(bookedYears.map(r=>r.year))).sort((a,b)=>a-b);
+  const chartInterest = chartYears.map(year=>roundMoney(bookedYears.filter(r=>r.year===year).reduce((sum,r)=>sum+r.interest,0)));
+  const chartPrincipal = chartYears.map(year=>roundMoney(bookedYears.filter(r=>r.year===year).reduce((sum,r)=>sum+r.principal,0)));
+  const periodInterest = loanEntries.reduce((sum,r)=>sum+n(r.loan_interest_amount),0);
+  const periodPrincipal = loanEntries.reduce((sum,r)=>sum+n(r.loan_principal_amount),0);
+  const periodRates = loanEntries.reduce((sum,r)=>sum+Math.abs(n(r.amount)),0);
   const latestYearRows = objects.flatMap(o=>{
     const rows=loanYears.filter(r=>objectFor(r)?.id===o.id);
     return rows.length?[rows.at(-1)!]:[];
   });
   const loanInterest = module('loan-interest',[
-    table('Jahresübersicht je Immobilie',['Immobilie','Jahr','Zinsen','Tilgung','Kapitaldienst','Restschuld Jahresende','Quelle'],loanYears.map(r=>[label(r),Number(r.year),euro(r.interest),euro(r.principal),euro(n(r.interest)+n(r.principal)),euro(r.balance),str(r.source)]),'Nach Immobilie und innerhalb der Immobilie chronologisch nach Jahr sortiert.'),
-    table(`Monatsdetails · ${from} bis ${to}`,['Immobilie','Monat','Kreditrate','Zinsen','Tilgung','Gebühren','Restschuld','Quelle'],loanMonths.map(r=>[label(r),text(r.plan_date).slice(0,7),euro(r.payment_amount),euro(r.interest_amount),euro(r.principal_amount),euro(r.fee_amount),euro(r.closing_balance),str(r.source_file)]),'Die Datumsauswahl kann auf ein vollständiges Jahr, einen Monat oder einen individuellen Zeitraum begrenzt werden.'),
-  ],['Single Source of Truth: Jahreswerte und Restschuld stammen aus Darlehen/property_loan_ledger. Die Monatsaufschlüsselung stammt aus dem zugehörigen importierten property_loan_rate_plan; im Report werden keine Darlehenswerte separat gespeichert oder neu erfunden.']);
+    table('Jahresübersicht Tilgungsplan je Immobilie',['Immobilie','Jahr','Zinsen Plan','Tilgung Plan','Kapitaldienst Plan','Restschuld Jahresende','Quelle'],loanYears.map(r=>[label(r),Number(r.year),euro(r.interest),euro(r.principal),euro(n(r.interest)+n(r.principal)),euro(r.balance),str(r.source)]),'Nach Immobilie und innerhalb der Immobilie chronologisch nach Jahr sortiert.'),
+    table('Gebuchte Tilgung & Zinsen je Jahr',['Immobilie','Jahr','Gebuchte Raten','Zinsen Ist','Tilgung Ist','Buchungen'],bookedYears.map(r=>[r.object,r.year,euro(r.rates),euro(r.interest),euro(r.principal),r.count]),'Direkt aus den tatsächlichen Kreditraten-Buchungen aggregiert.'),
+    table(`Monatsdetails · ${from} bis ${to}`,['Immobilie','Buchungsmonat','Status','Kreditrate','Zinsen','Tilgung','Gebühren','Restschuld','Quelle'],[
+      ...loanEntries.map(entry=>{const plan=planForEntry(entry);const interest=entry.loan_interest_amount;const principal=entry.loan_principal_amount;const fee=interest==null||principal==null?null:Math.max(0,roundMoney(Math.abs(n(entry.amount))-n(interest)-n(principal)));return[label(entry),text(entry.booking_date).slice(0,7),'Gebucht',euro(Math.abs(n(entry.amount))),euro(interest),euro(principal),euro(fee),plan?.closing_balance==null?'—':euro(plan.closing_balance),str(entry.loan_split_source||'Buchungen / finance_entry')];}),
+      ...plannedFallback.map(plan=>[label(plan),text(plan.plan_date).slice(0,7),text(plan.plan_date).slice(0,10)<=today?'Plan · nicht gebucht':'Plan',euro(plan.payment_amount),euro(plan.interest_amount),euro(plan.principal_amount),euro(plan.fee_amount),euro(plan.closing_balance),str(plan.source_file)]),
+    ].sort((a,b)=>String(a[0]).localeCompare(String(b[0]),'de')||String(a[1]).localeCompare(String(b[1]))),'Ist-Buchungen haben Vorrang. Ein importierter Monatsplan erscheint nur, wenn für dieselbe Immobilie und denselben Monat keine Kreditrate gebucht wurde.'),
+  ],['Single Source of Truth: Tatsächliche Raten, Zinsen und Tilgung stammen aus Buchungen/finance_entry. Jahresplan und Restschuld stammen aus Darlehen/property_loan_ledger. property_loan_rate_plan ergänzt ausschließlich Monate ohne Ist-Buchung; im Report werden keine Darlehenswerte separat gespeichert oder doppelt gezählt.']);
   loanInterest.metrics=[
-    {label:'Zinsen im Detailzeitraum',value:euro(periodInterest)},
-    {label:'Tilgung im Detailzeitraum',value:euro(periodPrincipal)},
-    {label:'Kapitaldienst',value:euro(periodInterest+periodPrincipal)},
+    {label:'Gebuchte Zinsen',value:euro(periodInterest)},
+    {label:'Gebuchte Tilgung',value:euro(periodPrincipal)},
+    {label:'Gebuchte Kreditraten',value:euro(periodRates)},
     {label:'Letzte Restschuld',value:latestYearRows.length?euro(latestYearRows.reduce((sum,r)=>sum+n(r.balance),0)):'Nicht gepflegt',hint:input.objectId?'Gewählte Immobilie':'Summe der gewählten Immobilien'},
   ];
   loanInterest.charts=chartYears.length?[{
-    title:'Laufzeit-Diagramm · Zinsen und Tilgung',
-    subtitle:input.objectId?(objects[0]?.label??'Gewählte Immobilie'):'Alle Immobilien · Jahressummen',
+    title:'Laufzeit-Diagramm · gebuchte Zinsen und Tilgung',
+    subtitle:`${input.objectId?(objects[0]?.label??'Gewählte Immobilie'):'Alle Immobilien'} · Ist-Werte aus Kreditraten-Buchungen`,
     labels:chartYears.map(String),
     series:[
       {label:'Zinsen',values:chartInterest,color:'#0f766e'},
