@@ -2,11 +2,18 @@ import type { ReportModule } from '../services/reportCenterEngine';
 const xml = (v: unknown) => Array.from(String(v ?? '')).filter(c => c.charCodeAt(0) >= 32 || ['\t','\n','\r'].includes(c)).join('').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 export function reportCsv(modules: ReportModule[]): string {
   const cell = (v: unknown) => { const s=String(v??'');return `"${(/^[=+@-]/.test(s)?"'":'')+s.replace(/"/g,'""')}"`; };
-  return '\uFEFF'+modules.flatMap(m=>[[m.title],...(m.paragraphs??[]).map(p=>[p]),...(m.tables??[]).flatMap(t=>[[t.title],t.headers,...t.rows,[]])]).map(r=>r.map(cell).join(';')).join('\r\n');
+  return '\uFEFF'+modules.flatMap(m=>[[m.title],...(m.paragraphs??[]).map(p=>[p]),...(m.charts??[]).flatMap(c=>[[c.title],['Zeitraum',...c.series.map(s=>s.label)],...c.labels.map((label,index)=>[label,...c.series.map(s=>s.values[index]??0)]),[]]),...(m.tables??[]).flatMap(t=>[[t.title],t.headers,...t.rows,[]])]).map(r=>r.map(cell).join(';')).join('\r\n');
 }
 // Minimal, uncompressed Open XML workbook. Text is stored as inline strings, never formulas.
 export function reportWorkbook(modules: ReportModule[]): Uint8Array {
-  const sheets=modules.flatMap(m=>(m.tables??[]).map(t=>({title:t.title,rows:[[m.title],...(m.paragraphs??[]).map(p=>[p]),t.headers,...t.rows]})));
+  const sheets=modules.flatMap(m=>{
+    const chartSheets=(m.charts??[]).map(c=>({
+      title:c.title,
+      rows:[[m.title],...(m.paragraphs??[]).map(p=>[p]),['Zeitraum',...c.series.map(s=>s.label)],...c.labels.map((label,index)=>[label,...c.series.map(s=>s.values[index]??0)])],
+    }));
+    const tableSheets=(m.tables??[]).map(t=>({title:t.title,rows:[[m.title],...(m.paragraphs??[]).map(p=>[p]),t.headers,...t.rows]}));
+    return [...chartSheets,...tableSheets];
+  });
   const col=(index:number):string=>index<26?String.fromCharCode(65+index):col(Math.floor(index/26)-1)+col(index%26);
   const files: Record<string,string>={
     '[Content_Types].xml':`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheets.map((_,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`,

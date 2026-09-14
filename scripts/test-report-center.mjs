@@ -13,12 +13,12 @@ assert.equal(rentBalancePart(1562.07,1562,'open'),0,'7-Cent-Differenzen sind tec
 assert.equal(rentBalancePart(1590,1588,'open'),2,'Echte Rückstände bleiben erhalten');
 assert.equal(rentBalancePart(1590,0,'open'),1590,'Fehlende Monatsmiete bleibt vollständig offen');
 const objects=[{id:'core-1',code:'A',label:'Testobjekt',livingAreaM2:50,aliases:['portfolio-1']},{id:'core-2',code:'B',label:'Zweites Objekt'}];
-const sources={portfolio_properties:[{id:'portfolio-1',core_property_id:'core-1'}],portfolio_units:[{id:'u1',property_id:'portfolio-1',name:'Wohnung 1',unit_type:'apartment',area_sqm:50,is_active:true}],tenant_profiles:[{id:'t1',first_name:'Ada',last_name:'Test'}],tenant_contracts:[{id:'c1',tenant_id:'t1',property_id:'core-1',unit_label:'Wohnung 1',start_date:'2025-01-01',end_date:null,status:'active',cold_rent:800,operating_costs:200,total_rent:1000,deposit_amount:2400}],property_extra:[{property_id:'core-1',wealth_profile:{buildingPurchasePrice:'100000',landPurchasePrice:'30000'}}],rent_adjustments:[]};
+const sources={portfolio_properties:[{id:'portfolio-1',core_property_id:'core-1'}],portfolio_units:[{id:'u1',property_id:'portfolio-1',name:'Wohnung 1',unit_type:'apartment',area_sqm:50,is_active:true}],tenant_profiles:[{id:'t1',first_name:'Ada',last_name:'Test'}],tenant_contracts:[{id:'c1',tenant_id:'t1',property_id:'core-1',unit_label:'Wohnung 1',start_date:'2025-01-01',end_date:null,status:'active',cold_rent:800,operating_costs:200,total_rent:1000,deposit_amount:2400}],property_extra:[{property_id:'core-1',wealth_profile:{buildingPurchasePrice:'100000',landPurchasePrice:'30000'}}],rent_adjustments:[],property_loan_ledger:[{property_id:'core-1',year:2025,interest:1200,principal:3600,balance:96400,source:'Tilgungsplan'},{property_id:'core-1',year:2026,interest:1100,principal:3700,balance:92700,source:'Tilgungsplan'}],property_loan_rate_plan:[{property_id:'core-1',property_name:'Testobjekt',plan_date:'2026-01-31',payment_amount:400,interest_amount:95,principal_amount:305,fee_amount:0,closing_balance:96095,source_file:'test.xlsx'},{property_id:'core-1',property_name:'Testobjekt',plan_date:'2026-02-28',payment_amount:400,interest_amount:90,principal_amount:310,fee_amount:0,closing_balance:95785,source_file:'test.xlsx'}]};
 const entry=(id,category,amount,type='expense',extra={})=>({id,object_id:'core-1',booking_date:'2026-02-03',entry_type:type,category,amount,note:null,...extra});
 const entries=[entry('1','Kaltmiete',800,'income'),entry('2','Nebenkosten',200,'income'),entry('3','Kaution',2400,'income'),entry('4','Wasser',100,'expense',{nk_relevant:true}),entry('5','Verwaltungskosten',50,'expense',{nk_relevant:true}),entry('6','Kreditrate',500,'expense',{loan_interest_amount:200,loan_principal_amount:300}),entry('7','Kaltmiete',777,'income',{booking_date:'2025-12-31'}),entry('8','Kaltmiete',999,'income',{object_id:'core-2'})];
 const rent={year:2026,objectFilter:'core-1',rows:[{key:'u1',objectId:'core-1',objectLabel:'Testobjekt',unitLabel:'Wohnung 1',tenantName:'Ada Test',months:Array.from({length:12},(_,i)=>({month:i+1,expected:1000,paid:i===1?900:1000,open:i===1?100:0,status:i===1?'partial':'paid'}))}],totals:{},propertyTotals:[],kpis:{}};
 const input={objects,entries,loans:[],sources,rent,from:'2026-01-01',to:'2026-12-31',objectId:'core-1',today:'2026-09-06'};
-const modules=buildReportCenter(input);assert.equal(modules.length,15);
+const modules=buildReportCenter(input);assert.equal(modules.length,16);
 const module=id=>modules.find(m=>m.id===id);
 const row=(id,label)=>module(id).tables[0].rows.find(r=>r[0]===label);
 assert.equal(row('cover','Alle Geldbewegungen: Einnahmen')[1],'3.400,00 €');
@@ -33,6 +33,14 @@ assert.equal(row('cover','Einheiten mit Soll-Miete / Mietkonto-Zeilen')[1],'1/1'
 assert.match(module('tenants').tables[1].rows[0][4],/teilweise$/);
 assert.match(module('tenants').tables[1].rows[0][14],/künftig$/);
 assert.equal(module('arrears').tables[0].rows[0][3],'100,00 €');
+assert.deepEqual(module('loan-interest').charts[0].labels,['2025','2026']);
+assert.deepEqual(module('loan-interest').charts[0].series[0].values,[1200,1100]);
+assert.equal(module('loan-interest').tables[0].rows.length,2,'Jahresübersicht enthält die vollständige Laufzeit');
+assert.equal(module('loan-interest').tables[1].rows.length,2,'Jahresfilter enthält die Monatsdetails des gewählten Zeitraums');
+assert.equal(module('loan-interest').metrics[0].value,'185,00 €');
+const januaryLoanReport=buildReportCenter({...input,from:'2026-01-01',to:'2026-01-31'}).find(m=>m.id==='loan-interest');
+assert.equal(januaryLoanReport.tables[1].rows.length,1,'Monatsfilter muss die Monatsdetails begrenzen');
+assert.equal(januaryLoanReport.metrics[0].value,'95,00 €');
 const roundingRent={...rent,year:2025,rows:[{...rent.rows[0],months:Array.from({length:12},(_,i)=>({month:i+1,expected:1562.07,paid:[5,6,7].includes(i)?1562:1562.07,open:[5,6,7].includes(i)?0.07:0,status:[5,6,7].includes(i)?'partial':'paid'}))}]};
 const roundingReport=buildReportCenter({...input,rent:roundingRent,from:'2025-01-01',to:'2025-12-31',today:'2026-09-07'});
 assert.equal(roundingReport.find(m=>m.id==='arrears').tables[0].rows[0][3],'0,00 €','Drei 7-Cent-Rundungsabweichungen dürfen keinen Scheinrückstand von 0,21 € erzeugen');
@@ -78,7 +86,7 @@ assert.match(String(colModule('utilities').tables[4].rows[0][8]),/^Nachzahlung �
 const aliasReport=buildReportCenter({...input,sources:{...sources,portfolio_properties:[{id:'portfolio-shadow',core_property_id:'legacy-1',name:'Testobjekt Core Shadow'}],property_id_aliases:[{legacy_property_id:'legacy-1',object_id:'core-1'}],portfolio_units:[{id:'u-shadow',property_id:'portfolio-shadow',name:'Wohnung 1',unit_type:'apartment',is_active:true}]}});
 assert.equal(aliasReport.find(m=>m.id==='objects').tables[3].rows[0][0],'Testobjekt');
 assert.equal(aliasReport.find(m=>m.id==='objects').tables[3].rows[0][3],'50','Wohnfläche muss aus Immobilienvermögen übernommen werden');
-const empty=buildReportCenter({...input,entries:[],sources:{},rent:null});assert.equal(empty.length,15);assert.equal(empty.find(m=>m.id==='journal').tables[0].rows.length,0);
+const empty=buildReportCenter({...input,entries:[],sources:{},rent:null});assert.equal(empty.length,16);assert.equal(empty.find(m=>m.id==='journal').tables[0].rows.length,0);
 const hostile=[{id:'test',title:'=HYPERLINK("bad")',tables:[{title:'Test / Sheet',headers:['Text'],rows:[['=1+1'],['<script>'],['Müller; Name'],['line\nwrap']]}]}];
 assert.match(reportCsv(hostile),/"'=1\+1"/);
 await writeFile(join(dir,'report.xlsx'),reportWorkbook([...modules,...hostile]));
@@ -101,6 +109,7 @@ assert.match(pdfSource, /class="payment-amount"/, 'Payment matrix values must re
 assert.match(pdfSource, /normalized\.includes\("teilweise"\)[\s\S]*normalized\.includes\("fehlt"\)/, 'Teilzahlungen und fehlende Mieten müssen im PDF als echte offene Positionen eingefärbt bleiben');
 assert.match(pdfSource, /<colgroup>/, 'PDF tables need weighted column widths');
 assert.match(pdfSource, /\.hero \{ break-after: page; \}/, 'The cover page must end before the first report section');
+assert.match(pdfSource, /class="report-chart"/, 'Tilgung-und-Zins-Diagramme müssen im PDF als echte Grafik ausgegeben werden');
 const ast = ts.createSourceFile('ReportCenter.tsx', pageSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const loaderSource = ast.statements.filter(statement =>
   ts.isFunctionDeclaration(statement) && statement.name?.text === 'loadSources'
@@ -133,7 +142,7 @@ for (const readonly of [false, true]) {
   const loaded = await runInNewContext(`${loaderJs}\nloadSources()`, { supabase, isReadonlyApprovalEmail: () => readonly });
   assert.equal(loaded.property_documents.length, 501, 'Documents must load across pages without a user_id filter');
   assert.equal(queries.filter(q => q.table === 'property_documents').length, 2);
-  for (const request of queries.filter(q => !['property_documents','apartment_billing_workspaces','property_id_aliases','v_koenen_object_bridge'].includes(q.table))) {
+  for (const request of queries.filter(q => !['property_documents','apartment_billing_workspaces','property_id_aliases','v_koenen_object_bridge','property_loan_ledger'].includes(q.table))) {
     assert.equal(request.filters.some(([column, value]) => column === 'user_id' && value === 'test-user'), !readonly, 'Keep existing owner filters on owner-scoped tables');
   }
 }

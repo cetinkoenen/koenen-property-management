@@ -13,12 +13,24 @@ export type PdfReportTable = {
   rows: Array<Array<string | number | null | undefined>>;
 };
 
+export type PdfReportChart = {
+  title: string;
+  subtitle?: string;
+  labels: string[];
+  series: Array<{
+    label: string;
+    values: number[];
+    color?: string;
+  }>;
+};
+
 export type PdfReportSection = {
   title: string;
   subtitle?: string;
   metrics?: PdfReportMetric[];
   tables?: PdfReportTable[];
   paragraphs?: string[];
+  charts?: PdfReportChart[];
 };
 
 export type PdfReportOptions = {
@@ -131,6 +143,47 @@ function tableHtml(table: PdfReportTable) {
   `;
 }
 
+function chartHtml(chart: PdfReportChart) {
+  const width = 920;
+  const height = 310;
+  const left = 62;
+  const top = 24;
+  const right = 18;
+  const bottom = 54;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const allValues = chart.series.flatMap((series) => series.values).filter(Number.isFinite);
+  const maximum = Math.max(1, ...allValues);
+  const groups = Math.max(1, chart.labels.length);
+  const groupWidth = plotWidth / groups;
+  const seriesCount = Math.max(1, chart.series.length);
+  const barWidth = Math.min(34, Math.max(7, (groupWidth * 0.68) / seriesCount));
+  const defaultColors = ["#0f766e", "#c9972b", "#2563eb", "#7c3aed"];
+  const grid = Array.from({ length: 5 }, (_, index) => {
+    const ratio = index / 4;
+    const y = top + plotHeight * ratio;
+    const value = maximum * (1 - ratio);
+    return `<line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="#dbe3ea" stroke-width="1"/><text x="${left - 8}" y="${y + 4}" text-anchor="end" class="chart-axis">${escapeHtml(new Intl.NumberFormat("de-DE", { notation: "compact", maximumFractionDigits: 1 }).format(value))}</text>`;
+  }).join("");
+  const bars = chart.labels.flatMap((label, labelIndex) => chart.series.map((series, seriesIndex) => {
+    const value = Number(series.values[labelIndex] ?? 0);
+    const barHeight = Math.max(0, value / maximum * plotHeight);
+    const groupStart = left + labelIndex * groupWidth;
+    const barsWidth = barWidth * seriesCount;
+    const x = groupStart + (groupWidth - barsWidth) / 2 + seriesIndex * barWidth;
+    const y = top + plotHeight - barHeight;
+    const color = series.color ?? defaultColors[seriesIndex % defaultColors.length];
+    return `<rect x="${x + 1}" y="${y}" width="${Math.max(2, barWidth - 2)}" height="${barHeight}" rx="3" fill="${escapeHtml(color)}"><title>${escapeHtml(`${label} · ${series.label}: ${euroChart(value)}`)}</title></rect>`;
+  })).join("");
+  const labels = chart.labels.map((label, index) => `<text x="${left + index * groupWidth + groupWidth / 2}" y="${height - 29}" text-anchor="middle" class="chart-label">${escapeHtml(label)}</text>`).join("");
+  const legend = chart.series.map((series, index) => `<span><i style="background:${escapeHtml(series.color ?? defaultColors[index % defaultColors.length])}"></i>${escapeHtml(series.label)}</span>`).join("");
+  return `<div class="chart-block"><div class="table-title">${escapeHtml(chart.title)}</div>${chart.subtitle ? `<div class="table-subtitle">${escapeHtml(chart.subtitle)}</div>` : ""}<svg class="report-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(chart.title)}">${grid}${bars}${labels}</svg><div class="chart-legend">${legend}</div></div>`;
+}
+
+function euroChart(value: number): string {
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(value);
+}
+
 function sectionHtml(section: PdfReportSection) {
   return `
     <section class="section">
@@ -140,6 +193,7 @@ function sectionHtml(section: PdfReportSection) {
       </div>
       ${metricHtml(section.metrics)}
       ${(section.paragraphs ?? []).map((text) => `<p class="body-text">${escapeHtml(text)}</p>`).join("")}
+      ${(section.charts ?? []).map(chartHtml).join("")}
       ${(section.tables ?? []).map(tableHtml).join("")}
     </section>
   `;
@@ -313,6 +367,20 @@ export function openProfessionalPdfReport(options: PdfReportOptions) {
       font-weight: 650;
     }
     .table-block { margin-top: 14px; }
+    .chart-block {
+      margin-top: 16px;
+      padding: 14px;
+      border: 1px solid #dbe3ea;
+      border-radius: 16px;
+      background: linear-gradient(180deg, #ffffff, #f8fafc);
+      break-inside: avoid;
+    }
+    .report-chart { display: block; width: 100%; height: 255px; margin-top: 8px; }
+    .chart-axis { fill: #64748b; font-size: 9px; font-weight: 700; }
+    .chart-label { fill: #334155; font-size: 10px; font-weight: 850; }
+    .chart-legend { display: flex; justify-content: center; gap: 18px; color: #475569; font-size: 10px; font-weight: 850; }
+    .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .chart-legend i { width: 10px; height: 10px; border-radius: 3px; }
     .table-title {
       color: #334155;
       font-size: 12px;

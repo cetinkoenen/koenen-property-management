@@ -28,11 +28,12 @@ export default function ReportsHome() {
         <Link to="/berichte/portfolio" className="report-home-card">
           <BarChart3 size={32} aria-hidden="true" />
           <h2>Immobilien- & Portfolio-Analysen</h2>
-          <p>Fünf eigenständige Berichte für Ihren Immobilienbestand und die Finanzplanung.</p>
+          <p>Sechs eigenständige Berichte für Ihren Immobilienbestand und die Finanzplanung.</p>
           <ul>
             <li>Stammdaten, Anschaffungskosten und AfA-Basis</li>
             <li>Eigenschaften und Darlehen</li>
             <li>Offene Zahlungen und Vermögen-Cashflow</li>
+            <li>Tilgung & Zins mit Laufzeit-Diagramm und Monatsdetails</li>
           </ul>
           <span className="report-home-action">Portfolio-Analysen öffnen <ArrowRight size={18} /></span>
         </Link>

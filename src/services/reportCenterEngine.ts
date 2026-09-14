@@ -25,6 +25,7 @@ export const reportNames = [
   ['loans', 'Immobilien-Eigenschaften & Darlehen'],
   ['arrears', 'Mietkonto-Check & Offene Zahlungen'],
   ['cashflow', 'Vermögen Cashflow Report'],
+  ['loan-interest', 'Tilgung & Zins · Laufzeit- und Monatsreport'],
 ] as const;
 export const euro = (v: unknown) => v == null || v === '' ? 'Nicht gepflegt' : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(parseLocaleNumber(v, 0));
 const percent = (v: number, digits = 1) => `${new Intl.NumberFormat('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v)} %`;
@@ -283,5 +284,48 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const loans = module('loans',[table('Eigenschaften und Finanzierung',['Objekt','Nutzung','Baujahr','Bank','IBAN / BIC','Darlehensnummer','Ursprungsdarlehen','Monatsrate','Zins %','Zinsbindung','Restschuld (letzter Stand)'],objects.map(o=>{const p=profiles(o);const loan=input.loans.find(l=>aliases(o).has(l.property_id));return[o.label,str(p.usageType),str(p.equipmentYear),str(p.lender),str(p.ibanBic),str(p.loanNumber),euro(p.originalLoanAmount),euro(p.currentMonthlyRate),str(p.interestRate),str(p.interestBinding),euro(loan?.last_balance??p.remainingDebt)];}))]);
   const cashflow = module('cashflow',[table('Gebuchter Netto-Cashflow',['Objekt','Einnahmen','Kosten ohne Kreditraten','Gebuchte Kreditraten','Netto-Cashflow'],[...objects.map(o=>({label:o.label,rows:entries.filter(e=>objectFor(e)?.id===o.id)})),...(!input.objectId?[{label:'Portfolio / nicht zugeordnet',rows:entries.filter(e=>!objectFor(e))}]:[])].map(group=>{
     const inc=total(group.rows.filter(e=>e.entry_type==='income')); const out=group.rows.filter(e=>e.entry_type==='expense');const rates=total(out.filter(e=>/kreditrate|darlehensrate/i.test(text(e.category))));const costs=total(out)-rates;return[group.label,euro(inc),euro(costs),euro(rates),euro(inc-costs-rates)];}))],['Zahlungsbasierter Cashflow: gebuchte Darlehensraten werden genau einmal abgezogen. Nicht gebuchte Raten werden nicht als tatsächliche Zahlung angenommen.']);
-  return [cover,eur,tenants,journal,objectModule,changeModule,mileage,vacancy,utilities,proofs,register,acquisition,loans,module('arrears',[table('Offene Zahlungen',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears),matrix],[rentNote]),cashflow];
+  const loanYears = (s.property_loan_ledger ?? [])
+    .filter(r => scoped(r) && Number.isFinite(Number(r.year)))
+    .sort((a,b) => label(a).localeCompare(label(b),'de') || Number(a.year)-Number(b.year));
+  const loanMonths = (s.property_loan_rate_plan ?? [])
+    .filter(r => scoped(r) && dateIn(r.plan_date,from,to))
+    .sort((a,b) => label(a).localeCompare(label(b),'de') || text(a.plan_date).localeCompare(text(b.plan_date)));
+  const selectedYear = Number(from.slice(0,4));
+  const chartYears = Array.from(new Set(loanYears.map(r=>Number(r.year)))).sort((a,b)=>a-b);
+  const chartInterest = chartYears.map(year=>roundMoney(loanYears.filter(r=>Number(r.year)===year).reduce((sum,r)=>sum+n(r.interest),0)));
+  const chartPrincipal = chartYears.map(year=>roundMoney(loanYears.filter(r=>Number(r.year)===year).reduce((sum,r)=>sum+n(r.principal),0)));
+  const selectedYearRows = loanYears.filter(r=>Number(r.year)===selectedYear);
+  const isFullYear = from===`${selectedYear}-01-01` && to===`${selectedYear}-12-31`;
+  const periodValue = (monthlyField: string, yearlyField: string) => objects.reduce((sum,o)=>{
+    const objectMonths=loanMonths.filter(r=>objectFor(r)?.id===o.id);
+    if(objectMonths.length) return sum+objectMonths.reduce((value,r)=>value+n(r[monthlyField]),0);
+    if(!isFullYear) return sum;
+    return sum+selectedYearRows.filter(r=>objectFor(r)?.id===o.id).reduce((value,r)=>value+n(r[yearlyField]),0);
+  },0);
+  const periodInterest = periodValue('interest_amount','interest');
+  const periodPrincipal = periodValue('principal_amount','principal');
+  const latestYearRows = objects.flatMap(o=>{
+    const rows=loanYears.filter(r=>objectFor(r)?.id===o.id);
+    return rows.length?[rows.at(-1)!]:[];
+  });
+  const loanInterest = module('loan-interest',[
+    table('Jahresübersicht je Immobilie',['Immobilie','Jahr','Zinsen','Tilgung','Kapitaldienst','Restschuld Jahresende','Quelle'],loanYears.map(r=>[label(r),Number(r.year),euro(r.interest),euro(r.principal),euro(n(r.interest)+n(r.principal)),euro(r.balance),str(r.source)]),'Nach Immobilie und innerhalb der Immobilie chronologisch nach Jahr sortiert.'),
+    table(`Monatsdetails · ${from} bis ${to}`,['Immobilie','Monat','Kreditrate','Zinsen','Tilgung','Gebühren','Restschuld','Quelle'],loanMonths.map(r=>[label(r),text(r.plan_date).slice(0,7),euro(r.payment_amount),euro(r.interest_amount),euro(r.principal_amount),euro(r.fee_amount),euro(r.closing_balance),str(r.source_file)]),'Die Datumsauswahl kann auf ein vollständiges Jahr, einen Monat oder einen individuellen Zeitraum begrenzt werden.'),
+  ],['Single Source of Truth: Jahreswerte und Restschuld stammen aus Darlehen/property_loan_ledger. Die Monatsaufschlüsselung stammt aus dem zugehörigen importierten property_loan_rate_plan; im Report werden keine Darlehenswerte separat gespeichert oder neu erfunden.']);
+  loanInterest.metrics=[
+    {label:'Zinsen im Detailzeitraum',value:euro(periodInterest)},
+    {label:'Tilgung im Detailzeitraum',value:euro(periodPrincipal)},
+    {label:'Kapitaldienst',value:euro(periodInterest+periodPrincipal)},
+    {label:'Letzte Restschuld',value:latestYearRows.length?euro(latestYearRows.reduce((sum,r)=>sum+n(r.balance),0)):'Nicht gepflegt',hint:input.objectId?'Gewählte Immobilie':'Summe der gewählten Immobilien'},
+  ];
+  loanInterest.charts=chartYears.length?[{
+    title:'Laufzeit-Diagramm · Zinsen und Tilgung',
+    subtitle:input.objectId?(objects[0]?.label??'Gewählte Immobilie'):'Alle Immobilien · Jahressummen',
+    labels:chartYears.map(String),
+    series:[
+      {label:'Zinsen',values:chartInterest,color:'#0f766e'},
+      {label:'Tilgung',values:chartPrincipal,color:'#c9972b'},
+    ],
+  }]:[];
+  return [cover,eur,tenants,journal,objectModule,changeModule,mileage,vacancy,utilities,proofs,register,acquisition,loans,module('arrears',[table('Offene Zahlungen',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears),matrix],[rentNote]),cashflow,loanInterest];
 }
