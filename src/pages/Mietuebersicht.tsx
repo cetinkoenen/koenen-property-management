@@ -990,6 +990,10 @@ function isLilienthalerObject(objectLabel: string): boolean {
   return normalizeReferenceText(objectLabel).includes("lilienthaler");
 }
 
+function isRosensteinObject(objectLabel: string): boolean {
+  return normalizeReferenceText(objectLabel).includes("rosenstein");
+}
+
 function isLilienthalerRentBookingForObject(
   booking: FinanceEntry,
   object: { id: string; code: string | null; label: string },
@@ -1638,10 +1642,26 @@ export default function Mietuebersicht({
               .map((candidate) => dateKeyFromValue(candidate.start_date))
               .filter((value): value is string => Boolean(value))
               .sort();
+            const objectRentalStartDates = portfolioRentals
+              .filter((candidate) => objectCandidateIds.includes(String(candidate.property_id)))
+              .map((candidate) => dateKeyFromValue(candidate.start_date))
+              .filter((value): value is string => Boolean(value))
+              .sort();
             // Dieselbe Quellenpriorität wie für die Sollmiete: Mietanpassung ist
             // fachlich führend, Vertrag ist Fallback, Portfolio-Zeitraum nur dann,
             // wenn die beiden zentralen Mietquellen keinen Beginn liefern.
-            const sourceRentStartDate = adjustmentStartDates[0] ?? contractStartDates[0] ?? rentalStartDates[0] ?? null;
+            // Rosenstein besteht aus drei Stellplätzen. Die historischen Verträge
+            // wurden erst später einzeln angelegt; für die gemeinsame Vorperiode
+            // ist deshalb der früheste zentrale Objekt-Vermietungszeitraum führend.
+            const rosensteinStartDates = [
+              ...adjustmentStartDates,
+              ...contractStartDates,
+              ...rentalStartDates,
+              ...objectRentalStartDates,
+            ].sort();
+            const sourceRentStartDate = isRosensteinObject(object.label)
+              ? rosensteinStartDates[0] ?? null
+              : adjustmentStartDates[0] ?? contractStartDates[0] ?? rentalStartDates[0] ?? null;
             const inactive = !vacancy && bookingAmount <= 0 && !periodContract && Boolean(sourceRentStartDate && period.end < sourceRentStartDate);
             const expectedAmount = vacancy || inactive ? null : expectedAmountBeforeVacancy;
             const expectedSource = vacancy

@@ -54,6 +54,7 @@ for (const [source, label] of [[rentOverview, "Mieteingang"], [rentDevelopment, 
 assert.doesNotMatch(rentOverview, /if \(normalized\.includes\("hohenloher"\)\) return "2025-04-01"/, "Der Hohenloher-Mietbeginn darf nicht parallel im Frontend fest codiert sein");
 assert.match(rentOverview, /Mietbeginn laut zentraler Stammdatenquelle/, "Monate vor Vertragsbeginn müssen aus den zentralen Stammdaten neutralisiert werden");
 assert.match(rentOverview, /adjustmentStartDates\[0\] \?\? contractStartDates\[0\] \?\? rentalStartDates\[0\]/, "Ein veralteter Vermietungszeitraum darf Mietanpassung oder Mietvertrag beim Mietbeginn nicht übersteuern");
+assert.match(rentOverview, /isRosensteinObject\(object\.label\)[\s\S]*rosensteinStartDates\[0\]/, "Rosenstein muss die Vorperiode aus dem frühesten zentralen Objekt-Vermietungsbeginn neutralisieren");
 assert.match(cockpit, /text\.includes\("mietbestandteil"\)/, "Das Cockpit muss separat gebuchte Mietbestandteile in der Gesamtmiete berücksichtigen");
 assert.match(hohenloherMigration, /v_koenen_object_bridge/, "Die Backend-Mietmonatsquelle muss die zentrale Objekt-Bridge verwenden");
 assert.match(hohenloherMigration, /mietbestandteil\[- _\]\?nk/, "Die Backend-Mietmonatsquelle muss den Mietbestandteil-NK summieren");
