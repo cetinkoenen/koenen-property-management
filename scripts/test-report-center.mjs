@@ -49,6 +49,11 @@ assert.equal(elsLoan.tables[2].rows[0][3],'430,49 €','Elsasser Ist-Kreditrate
 assert.equal(elsLoan.tables[2].rows[0][4],'130,49 €');
 assert.equal(elsLoan.tables[2].rows[0][5],'300,00 €');
 assert.equal(elsLoan.tables[0].rows[0][0],'Elsasser Str. 52','Historische Ledger-ID muss über Objektaliase aufgelöst werden');
+const planFallbackReport=buildReportCenter({...input,entries:[{id:'missing-split',object_id:'core-1',booking_date:'2026-01-15',entry_type:'expense',category:'Kreditrate',amount:400,note:'Rate laut Darlehensplan'}]});
+const fallbackLoanRow=planFallbackReport.find(m=>m.id==='loan-interest').tables[2].rows.find(r=>r[1]==='2026-01');
+assert.equal(fallbackLoanRow[4],'95,00 €','Fehlender Buchungs-Zins muss exakt aus dem passenden Monatsplan kommen');
+assert.equal(fallbackLoanRow[5],'305,00 €','Fehlende Buchungs-Tilgung muss exakt aus dem passenden Monatsplan kommen');
+assert.equal(fallbackLoanRow[8],'test.xlsx','Der verwendete Monatsplan muss als eindeutige Quelle ausgewiesen werden');
 const roundingRent={...rent,year:2025,rows:[{...rent.rows[0],months:Array.from({length:12},(_,i)=>({month:i+1,expected:1562.07,paid:[5,6,7].includes(i)?1562:1562.07,open:[5,6,7].includes(i)?0.07:0,status:[5,6,7].includes(i)?'partial':'paid'}))}]};
 const roundingReport=buildReportCenter({...input,rent:roundingRent,from:'2025-01-01',to:'2025-12-31',today:'2026-09-07'});
 assert.equal(roundingReport.find(m=>m.id==='arrears').tables[0].rows[0][3],'0,00 €','Drei 7-Cent-Rundungsabweichungen dürfen keinen Scheinrückstand von 0,21 € erzeugen');
@@ -89,12 +94,17 @@ assert.equal(colModule('eur').tables[1].rows.find(r=>r[3]==='Kaution'&&r[5]==='9
 assert.equal(colModule('journal').tables[0].rows.find(r=>r[0]==='2025-01-03')?.[2],'Cansu Kurt');
 assert.equal(colModule('adjustments').tables[0].rows[0][1],'Cansu Kurt');
 assert.equal(colModule('utilities').tables[1].rows.reduce((sum,r)=>sum+Number(String(r[4]).replace(/[^0-9,]/g,'').replace(',','.')),0).toFixed(2),'336.36');
-assert.match(String(colModule('utilities').tables[2].rows[0][8]),/^Guthaben ·/);
-assert.match(String(colModule('utilities').tables[4].rows[0][8]),/^Nachzahlung ·/);
+assert.match(colModule('utilities').tables[2].title,/Nebenkostenabrechnung für Cansu Kurt \(2025-01-01 bis 2025-07-31\)/);
+assert.match(colModule('utilities').tables[4].title,/Nebenkostenabrechnung für Nicholas Kraeft-Wendte \(2025-08-01 bis 2025-12-31\)/);
+assert.match(String(colModule('utilities').tables[2].rows[0][9]),/^Guthaben ·/);
+assert.match(String(colModule('utilities').tables[4].rows[0][9]),/^Nachzahlung ·/);
 const aliasReport=buildReportCenter({...input,sources:{...sources,portfolio_properties:[{id:'portfolio-shadow',core_property_id:'legacy-1',name:'Testobjekt Core Shadow'}],property_id_aliases:[{legacy_property_id:'legacy-1',object_id:'core-1'}],portfolio_units:[{id:'u-shadow',property_id:'portfolio-shadow',name:'Wohnung 1',unit_type:'apartment',is_active:true}]}});
 assert.equal(aliasReport.find(m=>m.id==='objects').tables[3].rows[0][0],'Testobjekt');
 assert.equal(aliasReport.find(m=>m.id==='objects').tables[3].rows[0][3],'50','Wohnfläche muss aus Immobilienvermögen übernommen werden');
 const empty=buildReportCenter({...input,entries:[],sources:{},rent:null});assert.equal(empty.length,16);assert.equal(empty.find(m=>m.id==='journal').tables[0].rows.length,0);
+assert.equal(empty.find(m=>m.id==='objects').tables[2].rows[0][8],'Nicht gepflegt','Fehlende Kaltmiete darf nicht als scheinbarer Nullwert erscheinen');
+assert.equal(empty.find(m=>m.id==='objects').tables[2].rows[0][9],'Nicht gepflegt','Fehlende Nebenkosten dürfen nicht als scheinbarer Nullwert erscheinen');
+assert.equal(empty.find(m=>m.id==='objects').tables[2].rows[0][10],'Nicht gepflegt','Fehlende Gesamtmiete darf nicht als scheinbarer Nullwert erscheinen');
 const hostile=[{id:'test',title:'=HYPERLINK("bad")',tables:[{title:'Test / Sheet',headers:['Text'],rows:[['=1+1'],['<script>'],['Müller; Name'],['line\nwrap']]}]}];
 assert.match(reportCsv(hostile),/"'=1\+1"/);
 await writeFile(join(dir,'report.xlsx'),reportWorkbook([...modules,...hostile]));
@@ -107,6 +117,8 @@ const ts = await import('typescript');
 const { runInNewContext } = await import('node:vm');
 const pageSource = await readFile('src/pages/ReportCenter.tsx', 'utf8');
 const pdfSource = await readFile('src/lib/professionalPdfReport.ts', 'utf8');
+const mileageSource = await readFile('src/services/mileageTripService.ts', 'utf8');
+const taxAdvisorMigration = await readFile('supabase/migrations/20260915114500_tax_advisor_report_requirements.sql', 'utf8');
 assert.match(pageSource, /const maxColumnsPerTable = repeatedColumns \+ columnsPerPart;/, 'PDF tables need a bounded column count');
 assert.match(pageSource, /sections:pdfSections\(chosen\)/, 'Every selected report module must use the PDF table splitter');
 assert.match(pdfSource, /size: \$\{options\.landscape \? "A4 landscape" : "A4"\}/, 'Landscape must be declared in the top-level @page rule');
@@ -118,6 +130,13 @@ assert.match(pdfSource, /normalized\.includes\("teilweise"\)[\s\S]*normalized\.i
 assert.match(pdfSource, /<colgroup>/, 'PDF tables need weighted column widths');
 assert.match(pdfSource, /\.hero \{ break-after: page; \}/, 'The cover page must end before the first report section');
 assert.match(pdfSource, /class="report-chart"/, 'Tilgung-und-Zins-Diagramme müssen im PDF als echte Grafik ausgegeben werden');
+assert.match(pdfSource, /class="\$\{isSummaryRow\(row\) \? "summary-row" : ""\}"/, 'Summen- und Ergebniszeilen müssen im PDF eigens markiert werden');
+assert.match(pdfSource, /tr\.summary-row td[\s\S]*font-weight: 950;[\s\S]*border-bottom: 4px double/, 'Summenzeilen müssen fett und mit doppelter Abschlusslinie formatiert sein');
+assert.match(pageSource, /taxAdvisorReportIds\.filter\(id=>selected\.includes\(id\)\)/, 'Der Steuerberaterbericht muss die fachlich definierte Modulreihenfolge verwenden');
+assert.match(pageSource, /id==='objects'\|\|id==='loan-interest'/, 'Objektübersicht und Finanzierungsabschluss müssen verbindlich bleiben');
+assert.match(mileageSource, /"Immobilienmakler"[\s\S]*"Besichtigungstermin"/, 'Beide neuen Fahrtgründe müssen aus der zentralen Optionsliste kommen');
+assert.match(taxAdvisorMigration, /property_mileage_trips_grund_check[\s\S]*'Immobilienmakler'[\s\S]*'Besichtigungstermin'/, 'Die Datenbank muss dieselben Fahrtgründe akzeptieren');
+assert.match(taxAdvisorMigration, /tenant_profiles[\s\S]*'wolfgang'[\s\S]*'stange'[\s\S]*tenant_contracts/, 'Die Fürther Garage muss mit dem vorhandenen Mieter Wolfgang Stange verknüpft werden');
 const ast = ts.createSourceFile('ReportCenter.tsx', pageSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 const loaderSource = ast.statements.filter(statement =>
   ts.isFunctionDeclaration(statement) && statement.name?.text === 'loadSources'

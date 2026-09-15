@@ -27,6 +27,20 @@ export const reportNames = [
   ['cashflow', 'Vermögen Cashflow Report'],
   ['loan-interest', 'Tilgung & Zins · Laufzeit- und Monatsreport'],
 ] as const;
+export const taxAdvisorReportIds = [
+  'objects',
+  'tenants',
+  'adjustments',
+  'cover',
+  'eur',
+  'journal',
+  'mileage',
+  'vacancy',
+  'utilities',
+  'proofs',
+  'loan-interest',
+] as const;
+export const portfolioReportIds = ['register', 'acquisition', 'loans', 'arrears', 'cashflow', 'loan-interest'] as const;
 export const euro = (v: unknown) => v == null || v === '' ? 'Nicht gepflegt' : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(parseLocaleNumber(v, 0));
 const percent = (v: number, digits = 1) => `${new Intl.NumberFormat('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v)} %`;
 const n = (v: unknown) => parseLocaleNumber(v, 0);
@@ -89,7 +103,9 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const name = (c: ReportRecord) => tenantName(people.find(p => p.id === c.tenant_id));
   const referenceDate = to < today ? to : today;
   const active = contracts.filter(c => overlaps(c, referenceDate, referenceDate) && c.status !== 'planned');
-  const entries = input.entries.filter(e => dateIn(e.booking_date, from, to) && scoped(e));
+  const entries = input.entries
+    .filter(e => dateIn(e.booking_date, from, to) && scoped(e))
+    .sort((a,b) => text(a.booking_date).localeCompare(text(b.booking_date)) || text(a.id).localeCompare(text(b.id)));
   const incomes = entries.filter(e => e.entry_type === 'income');
   const expenses = entries.filter(e => e.entry_type === 'expense');
   const adjustments = (s.rent_adjustments ?? []).filter(scoped).sort((a,b) => text(b.effective_date).localeCompare(text(a.effective_date)));
@@ -211,7 +227,10 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const cover = module('cover', [table('Kennzahlen', ['Kennzahl','Summe'], [
     ['Alle Geldbewegungen: Einnahmen',euro(total(incomes))],['Alle Geldbewegungen: Ausgaben',euro(total(expenses))],['Alle Geldbewegungen: Saldo',euro(total(incomes)-total(expenses))],['Steuerlich vorbereitete Einnahmen (EÜR)',euro(revenue)],['Steuerlich vorbereitete Ausgaben (EÜR)',euro(deductible)],['Steuerlich vorbereitetes Ergebnis (EÜR)',euro(revenue-deductible)],['Soll-Mieten', rent ? euro(expected) : 'Wird geladen'],['Ist-Mieten',rent ? euro(paid) : 'Wird geladen'],['Zahlungsquote', expected ? percent(paid/expected*100, 2) : '—'],['Einheiten mit Soll-Miete / Mietkonto-Zeilen', rent ? `${rented}/${reportingUnits.length}` : 'Wird geladen'],
   ])], [rentNote, 'Alle Geldbewegungen stimmen mit dem Buchungsjournal überein. Die EÜR schließt Kautionen, Tilgung, Anschaffungskosten, als nicht steuerrelevant markierte Buchungen und die eigengenutzte Hohenloher Str. 78 aus.']);
-  const eur = module('eur',[table('Einnahmen und Ausgaben',['Kategorie','Netto','Steuer','Brutto'],eurRows),table('Separat abzugrenzende Geldbewegungen',['Datum','Objekt','Mieter / Bezug','Kategorie','Beschreibung','Brutto'],excluded.map(e => [e.booking_date,label(e),tenantForEntry(e),e.category,e.note,euro(e.amount)]))],['Regelmäßige Warmmieten werden anhand des gespeicherten Abrechnungszeitraums in Kaltmiete und Nebenkostenvorauszahlung aufgeteilt. Nicht belegbar aufteilbare Nachzahlungen bleiben gesondert ausgewiesen. AfA ist in diesem zahlungsbasierten Ergebnis nicht enthalten.']);
+  const eur = module('eur',[table('Einnahmen und Ausgaben',['Kategorie','Netto','Steuer','Brutto'],eurRows),table('Separat abzugrenzende Geldbewegungen',['Datum','Objekt','Mieter / Bezug','Kategorie','Beschreibung','Brutto'],excluded
+    .slice()
+    .sort((a,b) => text(a.booking_date).localeCompare(text(b.booking_date)) || text(a.id).localeCompare(text(b.id)))
+    .map(e => [e.booking_date,label(e),tenantForEntry(e),e.category,e.note,euro(e.amount)]))],['Regelmäßige Warmmieten werden anhand des gespeicherten Abrechnungszeitraums in Kaltmiete und Nebenkostenvorauszahlung aufgeteilt. Nicht belegbar aufteilbare Nachzahlungen bleiben gesondert ausgewiesen. AfA ist in diesem zahlungsbasierten Ergebnis nicht enthalten.']);
   const contractRows = contracts.filter(c => overlaps(c,from,to)).map(c => {
     const u = units.find(u => objectFor(u)?.id === objectFor(c)?.id && (u.name === c.unit_label || u.id === c.unit_label));
     const obj = objectFor(c);
@@ -238,9 +257,17 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     const residential = rus.length-parking-commercial;
     const area = o.livingAreaM2 ?? profiles(o).livingArea ?? profiles(o).totalArea;
     const usefulArea = profiles(o).usableArea ?? profiles(o).commercialArea;
-    const cold = cs.reduce((v,c) => v+n(currentRent(c,'cold_rent')),0);
+    const completeRentSum = (field: string): number | null => cs.length && cs.every(c => currentRent(c,field) != null)
+      ? roundMoney(cs.reduce((v,c) => v+n(currentRent(c,field)),0))
+      : null;
+    const cold = completeRentSum('cold_rent');
+    const operatingCosts = completeRentSum('operating_costs');
+    const referenceMonth = Number(referenceDate.slice(5,7));
+    const totalRentFromMietkonto = rent
+      ? roundMoney(rus.reduce((sum,{row}) => sum + (row.months.find(month => month.month === referenceMonth)?.expected ?? 0),0))
+      : null;
     const occupied = rus.filter(({row}) => row.months.some(m => m.month >= firstMonth && m.month <= lastMonth && m.expected > 0)).length;
-    return [o.label,rus.length,residential,commercial,parking,0,/rosenstein/i.test(o.label)?'0':str(area),usefulArea == null ? 'Nicht erforderlich / nicht gepflegt' : str(usefulArea),euro(cold),euro(cs.reduce((v,c)=>v+n(currentRent(c,'operating_costs')),0)),euro(cs.reduce((v,c)=>v+n(currentRent(c,'total_rent')),0)),n(area)>0?euro(cold/n(area)):'—',rus.length?percent(occupied/rus.length*100):'—'];
+    return [o.label,rus.length,residential,commercial,parking,0,/rosenstein/i.test(o.label)?'0':str(area),usefulArea == null ? 'Nicht erforderlich / nicht gepflegt' : str(usefulArea),euro(cold),euro(operatingCosts),euro(totalRentFromMietkonto),cold != null&&n(area)>0?euro(cold/n(area)):'—',rus.length?percent(occupied/rus.length*100):'—'];
   });
   const portfolioStats = table('Gesamtbestand · aktueller Stand', ['Kennzahl', 'Wert'], [
     ['Mietkonto-Zeilen gesamt', reportingUnits.length],
@@ -250,7 +277,8 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     ['Garagen / Stellplätze', reportingUnits.filter(u => isParkingText(u.row.unitLabel)).length],
     ['Wohnfläche gesamt m²', objects.filter(o => !/rosenstein/i.test(o.label)).every(o => o.livingAreaM2 != null || profiles(o).livingArea || profiles(o).totalArea) ? objects.reduce((v,o) => v+n(o.livingAreaM2 ?? profiles(o).livingArea ?? profiles(o).totalArea),0) : 'Nicht vollständig gepflegt'],
     ['Nutzfläche gesamt m²', objects.some(o => profiles(o).usableArea != null || profiles(o).commercialArea != null) ? objects.reduce((v,o) => v+n(profiles(o).usableArea ?? profiles(o).commercialArea),0) : 'Nicht erforderlich / nicht gepflegt'],
-    ...['cold_rent','operating_costs','total_rent'].map((key,i) => [ ['Kaltmiete monatlich','Nebenkosten monatlich','Gesamtmiete monatlich'][i],active.every(c => currentRent(c,key) != null) ? euro(active.reduce((v,c) => v+n(currentRent(c,key)),0)) : 'Nicht vollständig gepflegt']),
+    ...['cold_rent','operating_costs'].map((key,i) => [ ['Kaltmiete monatlich','Nebenkosten monatlich'][i],active.length > 0 && active.every(c => currentRent(c,key) != null) ? euro(active.reduce((v,c) => v+n(currentRent(c,key)),0)) : 'Nicht vollständig gepflegt']),
+    ['Gesamtmiete monatlich', rent ? euro(reportingUnits.reduce((sum,{row}) => sum + (row.months.find(month => month.month === Number(referenceDate.slice(5,7)))?.expected ?? 0),0)) : 'Nicht vollständig gepflegt'],
     ['Vermietungsquote im Zeitraum', reportingUnits.length ? percent(rented/reportingUnits.length*100) : '—'],
   ]);
   const areaStatus = objects.map(o => { const area=o.livingAreaM2 ?? profiles(o).livingArea ?? profiles(o).totalArea; const parkingOnly=/rosenstein/i.test(o.label); return [o.label,parkingOnly?'0 m² Wohnfläche (3 Stellplätze)':str(area),parkingOnly?'Nicht anwendbar':area?'Vollständig':'Fehlt',parkingOnly?'Mietkonto/Objektart':'Immobilienvermögen · property_extra_info']; });
@@ -266,7 +294,13 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const utilities = module('utilities',[docTable(docs.filter(r=>r.category==='nk_abrechnung')),table('Gebuchte umlagefähige Kosten',['Datum','Objekt','Kategorie','Beschreibung','Brutto','Prüfgrundlage'],expenses.filter(isReportNkRelevant).map(e=>[e.booking_date,label(e),e.category,e.note,euro(e.amount),e.nk_relevant===true?'Gespeichertes NK-Kennzeichen':nkRuleFor(e).reason]))],['Archivnachweis vorhandener Jahresabrechnungen; eindeutige umlagefähige Betriebskosten werden anhand der zentralen NK-Klassifizierung auch dann berücksichtigt, wenn bei einer historischen Buchung das Kennzeichen noch fehlt.']);
   for (const {billing,ws,meta} of savedBillingWorkspaces) {
       if (Number(meta.billingYear ?? billing.year) !== Number(from.slice(0,4)) || !scoped({object_code:meta.propertyCode ?? billing.object_id})) continue;
-      utilities.tables?.push(table(`Gespeicherte Abrechnung · ${str(meta.propertyLabel)}`, ['Einheit','Mieter','Von','Bis','Fläche m²','Monate','Vorauszahlungen','Umlagefähige Kosten','Abrechnungsergebnis','Buchungs-/Quellenhinweis'], records(ws.apartments).filter(a=>a.active!==false).map(a=>{const result=billingResult(ws,a); const monthly=n(a.occupancyMonths)>0?roundMoney(n(a.advancePayments)/n(a.occupancyMonths)):0; return [str(a.label),str(a.tenantName),str(meta.periodFrom),str(meta.periodTo),n(a.area),n(a.occupancyMonths),euro(a.advancePayments),euro(result.tenantCosts),result.result,n(a.occupancyMonths)>0?`NK-Vorauszahlung aus Warmmiete: ${n(a.occupancyMonths)} × ${euro(monthly)} = ${euro(a.advancePayments)}`:'Vorauszahlungen gemäß gespeicherter Abrechnung'];})));
+      for (const apartment of records(ws.apartments).filter(a=>a.active!==false)) {
+        const result=billingResult(ws,apartment);
+        const monthly=n(apartment.occupancyMonths)>0?roundMoney(n(apartment.advancePayments)/n(apartment.occupancyMonths)):0;
+        const periodFrom=str(meta.periodFrom);
+        const periodTo=str(meta.periodTo);
+        utilities.tables?.push(table(`Nebenkostenabrechnung für ${str(apartment.tenantName)} (${periodFrom} bis ${periodTo})`, ['Objekt','Einheit','Mieter','Von','Bis','Fläche m²','Monate','Vorauszahlungen','Umlagefähige Kosten','Abrechnungsergebnis','Buchungs-/Quellenhinweis'], [[str(meta.propertyLabel),str(apartment.label),str(apartment.tenantName),periodFrom,periodTo,n(apartment.area),n(apartment.occupancyMonths),euro(apartment.advancePayments),euro(result.tenantCosts),result.result,n(apartment.occupancyMonths)>0?`NK-Vorauszahlung aus Warmmiete: ${n(apartment.occupancyMonths)} × ${euro(monthly)} = ${euro(apartment.advancePayments)}`:'Vorauszahlungen gemäß gespeicherter Abrechnung']]));
+      }
       utilities.tables?.push(table('Kosten und gespeicherte Verteilerschlüssel',['Kategorie','Gesamtkosten','Verteilung','Gesamtschlüssel','Einheitenschlüssel','Direktbetrag'],records(ws.costs).map(c=>[str(c.label),euro(c.amount),str(c.allocation),n(c.totalKey),n(c.apartmentKey),euro(c.directAmount)])));
   }
   for (const billing of s.billing_workspaces ?? []) {
@@ -274,7 +308,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     for (const garage of records(payload.records)) {
       const object = objects.find(o => o.label === garage.propertyLabel || aliases(o).has(text(billing.object_id)));
       if (Number(garage.year) !== Number(from.slice(0,4)) || (input.objectId && object?.id !== input.objectId)) continue;
-      utilities.tables?.push(table(`Gespeicherte Garagenabrechnung · ${str(garage.propertyLabel)}`,['Einheit','Mieter','Von','Bis','Vorauszahlungen','Freigegeben'],[[str(garage.unitLabel),str(garage.tenantName),str(garage.periodFrom),str(garage.periodTo),euro(garage.tenantPrepayments),garage.finalized?'Ja':'Nein']]));
+      utilities.tables?.push(table(`Nebenkostenabrechnung für ${str(garage.tenantName)} (${str(garage.periodFrom)} bis ${str(garage.periodTo)})`,['Objekt','Einheit','Mieter','Von','Bis','Vorauszahlungen','Freigegeben'],[[str(garage.propertyLabel),str(garage.unitLabel),str(garage.tenantName),str(garage.periodFrom),str(garage.periodTo),euro(garage.tenantPrepayments),garage.finalized?'Ja':'Nein']]));
       utilities.tables?.push(table('Kosten und gespeicherte Verteilerschlüssel',['Kategorie','Gesamtkosten','Verteilung','Gesamteinheiten','Eigene Einheiten'],records(garage.apportionableRows).map(c=>[str(c.label),euro(c.totalCost),str(c.key),n(c.totalUnits),n(c.yourUnits)])));
     }
   }
@@ -287,9 +321,10 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const loanYears = (s.property_loan_ledger ?? [])
     .filter(r => scoped(r) && Number.isFinite(Number(r.year)))
     .sort((a,b) => label(a).localeCompare(label(b),'de') || Number(a.year)-Number(b.year));
-  const loanMonths = (s.property_loan_rate_plan ?? [])
-    .filter(r => scoped(r) && dateIn(r.plan_date,from,to))
+  const allLoanMonths = (s.property_loan_rate_plan ?? [])
+    .filter(scoped)
     .sort((a,b) => label(a).localeCompare(label(b),'de') || text(a.plan_date).localeCompare(text(b.plan_date)));
+  const loanMonths = allLoanMonths.filter(r => dateIn(r.plan_date,from,to));
   const allLoanEntries = input.entries
     .filter(e=>scoped(e) && e.entry_type==='expense' && /kreditrate|darlehensrate/i.test(text(e.category)))
     .sort((a,b)=>text(a.booking_date).localeCompare(text(b.booking_date)) || text(a.id).localeCompare(text(b.id)));
@@ -297,32 +332,43 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const loanMonthKey = (row: ReportRecord) => `${objectFor(row)?.id ?? label(row)}:${text(row.booking_date || row.plan_date).slice(0,7)}`;
   const bookedMonthKeys = new Set(loanEntries.map(loanMonthKey));
   const plannedFallback = loanMonths.filter(row=>!bookedMonthKeys.has(loanMonthKey(row)));
-  const planForEntry = (entry: FinanceEntry) => loanMonths.find(plan=>loanMonthKey(plan)===loanMonthKey(entry));
+  const planForEntry = (entry: FinanceEntry) => allLoanMonths.find(plan=>loanMonthKey(plan)===loanMonthKey(entry));
+  const splitForEntry = (entry: FinanceEntry) => {
+    const hasBookedSplit = entry.loan_interest_amount != null && entry.loan_principal_amount != null;
+    const plan = planForEntry(entry);
+    return {
+      interest: hasBookedSplit ? n(entry.loan_interest_amount) : plan ? n(plan.interest_amount) : null,
+      principal: hasBookedSplit ? n(entry.loan_principal_amount) : plan ? n(plan.principal_amount) : null,
+      source: hasBookedSplit ? str(entry.loan_split_source || 'Buchungen / finance_entry') : plan ? str(plan.source_file || 'Darlehen / property_loan_rate_plan') : 'Nicht gepflegt',
+      plan,
+    };
+  };
   const actualByObjectYear = new Map<string,{object:string;year:number;interest:number;principal:number;rates:number;count:number}>();
   for(const entry of allLoanEntries){
     const object=objectFor(entry);if(!object)continue;const year=Number(text(entry.booking_date).slice(0,4));if(!Number.isFinite(year))continue;
+    const split=splitForEntry(entry);
     const key=`${object.id}:${year}`;const current=actualByObjectYear.get(key)??{object:object.label,year,interest:0,principal:0,rates:0,count:0};
-    current.interest+=n(entry.loan_interest_amount);current.principal+=n(entry.loan_principal_amount);current.rates+=Math.abs(n(entry.amount));current.count+=1;actualByObjectYear.set(key,current);
+    current.interest+=split.interest??0;current.principal+=split.principal??0;current.rates+=Math.abs(n(entry.amount));current.count+=1;actualByObjectYear.set(key,current);
   }
   const bookedYears=Array.from(actualByObjectYear.values()).map(row=>({...row,interest:roundMoney(row.interest),principal:roundMoney(row.principal),rates:roundMoney(row.rates)})).sort((a,b)=>a.object.localeCompare(b.object,'de')||a.year-b.year);
   const chartYears = Array.from(new Set(bookedYears.map(r=>r.year))).sort((a,b)=>a-b);
   const chartInterest = chartYears.map(year=>roundMoney(bookedYears.filter(r=>r.year===year).reduce((sum,r)=>sum+r.interest,0)));
   const chartPrincipal = chartYears.map(year=>roundMoney(bookedYears.filter(r=>r.year===year).reduce((sum,r)=>sum+r.principal,0)));
-  const periodInterest = loanEntries.reduce((sum,r)=>sum+n(r.loan_interest_amount),0);
-  const periodPrincipal = loanEntries.reduce((sum,r)=>sum+n(r.loan_principal_amount),0);
+  const periodInterest = loanEntries.reduce((sum,r)=>sum+(splitForEntry(r).interest??0),0);
+  const periodPrincipal = loanEntries.reduce((sum,r)=>sum+(splitForEntry(r).principal??0),0);
   const periodRates = loanEntries.reduce((sum,r)=>sum+Math.abs(n(r.amount)),0);
   const latestYearRows = objects.flatMap(o=>{
     const rows=loanYears.filter(r=>objectFor(r)?.id===o.id);
     return rows.length?[rows.at(-1)!]:[];
   });
   const loanInterest = module('loan-interest',[
-    table('Jahresübersicht Tilgungsplan je Immobilie',['Immobilie','Jahr','Zinsen Plan','Tilgung Plan','Kapitaldienst Plan','Restschuld Jahresende','Quelle'],loanYears.map(r=>[label(r),Number(r.year),euro(r.interest),euro(r.principal),euro(n(r.interest)+n(r.principal)),euro(r.balance),str(r.source)]),'Nach Immobilie und innerhalb der Immobilie chronologisch nach Jahr sortiert.'),
-    table('Gebuchte Tilgung & Zinsen je Jahr',['Immobilie','Jahr','Gebuchte Raten','Zinsen Ist','Tilgung Ist','Buchungen'],bookedYears.map(r=>[r.object,r.year,euro(r.rates),euro(r.interest),euro(r.principal),r.count]),'Direkt aus den tatsächlichen Kreditraten-Buchungen aggregiert.'),
-    table(`Monatsdetails · ${from} bis ${to}`,['Immobilie','Buchungsmonat','Status','Kreditrate','Zinsen','Tilgung','Gebühren','Restschuld','Quelle'],[
-      ...loanEntries.map(entry=>{const plan=planForEntry(entry);const interest=entry.loan_interest_amount;const principal=entry.loan_principal_amount;const fee=interest==null||principal==null?null:Math.max(0,roundMoney(Math.abs(n(entry.amount))-n(interest)-n(principal)));return[label(entry),text(entry.booking_date).slice(0,7),'Gebucht',euro(Math.abs(n(entry.amount))),euro(interest),euro(principal),euro(fee),plan?.closing_balance==null?'—':euro(plan.closing_balance),str(entry.loan_split_source||'Buchungen / finance_entry')];}),
+    table('Jahresübersicht Tilgungsplan je Immobilie',['Immobilie','Jahr','Zinsen (steuerlich relevant / Werbungskosten)','Tilgung (steuerlich nicht relevant)','Kapitaldienst Plan','Restschuld Jahresende','Quelle'],loanYears.map(r=>[label(r),Number(r.year),euro(r.interest),euro(r.principal),euro(n(r.interest)+n(r.principal)),euro(r.balance),str(r.source)]),'Nach Immobilie und innerhalb der Immobilie chronologisch nach Jahr sortiert.'),
+    table('Gebuchte Tilgung & Zinsen je Jahr',['Immobilie','Jahr','Gebuchte Raten','Zinsen Ist (steuerlich relevant / Werbungskosten)','Tilgung Ist (steuerlich nicht relevant)','Buchungen'],bookedYears.map(r=>[r.object,r.year,euro(r.rates),euro(r.interest),euro(r.principal),r.count]),'Ist-Buchungen; bei fehlender Buchungsaufteilung wird ausschließlich der passende Monatswert aus property_loan_rate_plan verwendet.'),
+    table(`Monatsdetails · ${from} bis ${to}`,['Immobilie','Buchungsmonat','Status','Kreditrate','Zinsen (steuerlich relevant / Werbungskosten)','Tilgung (steuerlich nicht relevant)','Gebühren','Restschuld','Quelle'],[
+      ...loanEntries.map(entry=>{const split=splitForEntry(entry);const fee=split.interest==null||split.principal==null?null:Math.max(0,roundMoney(Math.abs(n(entry.amount))-split.interest-split.principal));return[label(entry),text(entry.booking_date).slice(0,7),'Gebucht',euro(Math.abs(n(entry.amount))),euro(split.interest),euro(split.principal),euro(fee),split.plan?.closing_balance==null?'—':euro(split.plan.closing_balance),split.source];}),
       ...plannedFallback.map(plan=>[label(plan),text(plan.plan_date).slice(0,7),text(plan.plan_date).slice(0,10)<=today?'Plan · nicht gebucht':'Plan',euro(plan.payment_amount),euro(plan.interest_amount),euro(plan.principal_amount),euro(plan.fee_amount),euro(plan.closing_balance),str(plan.source_file)]),
     ].sort((a,b)=>String(a[0]).localeCompare(String(b[0]),'de')||String(a[1]).localeCompare(String(b[1]))),'Ist-Buchungen haben Vorrang. Ein importierter Monatsplan erscheint nur, wenn für dieselbe Immobilie und denselben Monat keine Kreditrate gebucht wurde.'),
-  ],['Single Source of Truth: Tatsächliche Raten, Zinsen und Tilgung stammen aus Buchungen/finance_entry. Jahresplan und Restschuld stammen aus Darlehen/property_loan_ledger. property_loan_rate_plan ergänzt ausschließlich Monate ohne Ist-Buchung; im Report werden keine Darlehenswerte separat gespeichert oder doppelt gezählt.']);
+  ],['Steuerliche Trennung: Zinsen sind bei vermieteten Immobilien als Werbungskosten steuerlich relevant. Tilgung ist steuerlich nicht relevant und wird ausschließlich informativ dokumentiert.','Single Source of Truth: Tatsächliche Raten stammen aus Buchungen/finance_entry. Die dort gespeicherte Zins-/Tilgungsaufteilung hat Vorrang; nur bei fehlender Aufteilung wird der exakt passende Immobilienmonat aus Darlehen/property_loan_rate_plan verwendet. Jahresplan und Restschuld stammen aus Darlehen/property_loan_ledger. Im Report werden keine Darlehenswerte separat gespeichert oder doppelt gezählt.']);
   loanInterest.metrics=[
     {label:'Gebuchte Zinsen',value:euro(periodInterest)},
     {label:'Gebuchte Tilgung',value:euro(periodPrincipal)},

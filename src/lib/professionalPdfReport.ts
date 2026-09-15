@@ -120,6 +120,7 @@ function tableHtml(table: PdfReportTable) {
     }
     return `<td class="${columnClass(header, value)}">${escapeHtml(value ?? "")}</td>`;
   };
+  const isSummaryRow = (row: PdfReportTable["rows"][number]): boolean => /^(summe|gesamt(?:summe|betrag|kosten|einnahmen|ausgaben)?|ergebnis|überschuss|saldo)\b/i.test(String(row[0] ?? "").trim());
   return `
     <div class="table-block">
       <div class="table-title">${escapeHtml(table.title)}</div>
@@ -133,7 +134,7 @@ function tableHtml(table: PdfReportTable) {
           ${
             table.rows.length
               ? table.rows
-                  .map((row) => `<tr>${row.map((cell, index) => cellHtml(table.headers[index] ?? "", cell)).join("")}</tr>`)
+                  .map((row) => `<tr class="${isSummaryRow(row) ? "summary-row" : ""}">${row.map((cell, index) => cellHtml(table.headers[index] ?? "", cell)).join("")}</tr>`)
                   .join("")
               : `<tr><td colspan="${table.headers.length}">Keine Daten vorhanden.</td></tr>`
           }
@@ -199,16 +200,9 @@ function sectionHtml(section: PdfReportSection) {
   `;
 }
 
-export function openProfessionalPdfReport(options: PdfReportOptions) {
+export function buildProfessionalPdfReportHtml(options: PdfReportOptions) {
   const printedAt = formatPrintedAt();
-  const win = window.open("", "_blank", "width=1120,height=1400");
-  if (!win) {
-    alert("PDF-Fenster konnte nicht geöffnet werden. Bitte Pop-up-Blocker prüfen.");
-    return;
-  }
-
-  win.document.open();
-  win.document.write(`<!doctype html>
+  return `<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
@@ -216,9 +210,9 @@ export function openProfessionalPdfReport(options: PdfReportOptions) {
   <style>
     @page {
       size: ${options.landscape ? "A4 landscape" : "A4"};
-      margin: 16mm 12mm 18mm;
+      margin: 16mm 16mm 18mm;
       @bottom-left { content: "${escapeHtml(FOOTER_TEXT)}"; }
-      @bottom-right { content: "Seite " counter(page) " / " counter(pages); }
+      @bottom-right { content: "Seite " counter(page); }
     }
 
     * { box-sizing: border-box; }
@@ -424,6 +418,12 @@ export function openProfessionalPdfReport(options: PdfReportOptions) {
       font-weight: 650;
     }
     tr:last-child td { border-bottom: 0; }
+    tr.summary-row td {
+      font-weight: 950;
+      border-bottom: 4px double #64748b;
+      background: #f8fafc;
+    }
+    tr.summary-row:last-child td { border-bottom: 4px double #64748b; }
     .footer {
       margin-top: 18px;
       display: flex;
@@ -499,20 +499,7 @@ export function openProfessionalPdfReport(options: PdfReportOptions) {
       body { background: #ffffff; }
       .page { padding: 0; max-width: none; }
       .hero, .section { box-shadow: none; }
-      .no-print { display: none !important; }
-      .print-footer {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        color: #64748b;
-        font-size: 9px;
-        font-weight: 750;
-        display: flex;
-        justify-content: space-between;
-        border-top: 1px solid #dbe3ea;
-        padding-top: 5px;
-      }
+      .no-print, .footer, .print-footer { display: none !important; }
     }
   </style>
 </head>
@@ -535,10 +522,6 @@ export function openProfessionalPdfReport(options: PdfReportOptions) {
       <span>${escapeHtml(FOOTER_TEXT)}</span>
       <span>${escapeHtml(options.documentName)}</span>
     </div>
-    <div class="print-footer">
-      <span>${escapeHtml(FOOTER_TEXT)}</span>
-      <span>Seite <span class="page-number"></span></span>
-    </div>
   </main>
   <script>
     window.onload = function() {
@@ -546,7 +529,18 @@ export function openProfessionalPdfReport(options: PdfReportOptions) {
     };
   </script>
 </body>
-</html>`);
+</html>`;
+}
+
+export function openProfessionalPdfReport(options: PdfReportOptions) {
+  const win = window.open("", "_blank", "width=1120,height=1400");
+  if (!win) {
+    alert("PDF-Fenster konnte nicht geöffnet werden. Bitte Pop-up-Blocker prüfen.");
+    return;
+  }
+
+  win.document.open();
+  win.document.write(buildProfessionalPdfReportHtml(options));
   win.document.close();
 }
 

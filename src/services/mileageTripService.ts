@@ -6,6 +6,8 @@ export const MILEAGE_TRIP_REASONS = [
   "Handwerkertermin",
   "Eigentümerversammlung",
   "Mieterwechsel/Besichtigung",
+  "Immobilienmakler",
+  "Besichtigungstermin",
   "Kontrollfahrt",
   "Bank-/Notartermin",
 ] as const;
