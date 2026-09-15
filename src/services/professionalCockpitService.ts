@@ -1,5 +1,5 @@
 import { supabase } from "../lib/supabase";
-import { effectiveRentDate } from "../lib/rentMonth";
+import { effectiveRentDate, rentPaymentCutoffDay } from "../lib/rentMonth";
 import {
   effectiveVacancyStartDate,
   isVacancyEffectivelyActiveInRange,
@@ -217,13 +217,13 @@ function expectedRent(contract: ContractRow): number {
   return toMoney(contract.cold_rent) + toMoney(contract.operating_costs);
 }
 
-function bookingEffectiveMonthDate(bookingDate: string | null): string | null {
-  return effectiveRentDate(bookingDate);
+function bookingEffectiveMonthDate(bookingDate: string | null, objectLabel?: string | null): string | null {
+  return effectiveRentDate(bookingDate, rentPaymentCutoffDay(objectLabel));
 }
 
 function isRentPayment(row: FinanceRow): boolean {
   const text = normalize(`${row.category ?? ""} ${row.note ?? ""}`);
-  return text.includes("miete") || text.includes("pacht") || text.includes("garage") || text.includes("stellplatz");
+  return text.includes("miete") || text.includes("mietbestandteil") || text.includes("pacht") || text.includes("garage") || text.includes("stellplatz");
 }
 
 function bookingHasContractObject(row: FinanceRow, contract: ContractRow): boolean {
@@ -534,7 +534,8 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
     .limit(8);
 
   const payments = ((paymentsRes.data ?? []) as FinanceRow[]).filter((row) => {
-    const effectiveDate = bookingEffectiveMonthDate(row.booking_date);
+    const objectLabel = objectLabels[String(row.object_id ?? "")] || objectLabels[String(row.objekt_code ?? "")];
+    const effectiveDate = bookingEffectiveMonthDate(row.booking_date, objectLabel);
     return Boolean(effectiveDate && effectiveDate >= period.start && effectiveDate <= period.end && isRentPayment(row));
   });
   const contractCountByObject = contracts.reduce<Record<string, number>>((result, contract) => {

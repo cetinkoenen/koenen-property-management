@@ -2,12 +2,17 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [app, investment, audit, resolver, rentOverview, cashflow, loanOverview, utilitiesKpi, utilitiesPage, billingService, wealth, migration, vercelConfig] = await Promise.all([
+const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMonth, appData, consistency, cockpit, cashflow, loanOverview, utilitiesKpi, utilitiesPage, billingService, wealth, migration, hohenloherMigration, vercelConfig] = await Promise.all([
   read("src/App.tsx"),
   read("src/pages/InvestmentBericht.tsx"),
   read("src/services/auditLogService.ts"),
   read("src/services/property/resolvePropertyContext.ts"),
   read("src/pages/Mietuebersicht.tsx"),
+  read("src/pages/Mietentwicklung.tsx"),
+  read("src/lib/rentMonth.ts"),
+  read("src/state/AppDataContext.tsx"),
+  read("src/services/financeConsistencyEngine.ts"),
+  read("src/services/professionalCockpitService.ts"),
   read("src/pages/WealthCashflowDashboard.tsx"),
   read("src/pages/Darlehensuebersicht.tsx"),
   read("src/components/PropertyUtilitiesKpiDashboard.tsx"),
@@ -15,6 +20,7 @@ const [app, investment, audit, resolver, rentOverview, cashflow, loanOverview, u
   read("src/services/billingWorkspaceService.ts"),
   read("src/pages/ImmobilienVermoegen.tsx"),
   read("supabase/migrations/20260827163000_property_id_aliases.sql"),
+  read("supabase/migrations/20260915133500_include_rent_component_in_monthly_view.sql"),
   read("vercel.json"),
 ]);
 
@@ -41,6 +47,16 @@ assert.match(rentOverview, /disabled=\{reportDataLoading\}/, "PDF-Export muss bi
 assert.match(rentOverview, /Buchungen, Mietverträge, Mietanpassungen und Leerstände werden geladen/, "Die Oberfläche muss den gemeinsamen Ladezustand verständlich anzeigen");
 assert.match(rentOverview, /if \(adjustmentLabel\) \{[\s\S]{0,500}?enoughAddressOverlap\(adjustmentLabel, objectLabel\)/, "Mieteingang muss bei Mietanpassungen die konkrete Objektbezeichnung vor historischen Alias-IDs priorisieren");
 assert.match(rentOverview, /if \(propertyId\) return propertyId === object\.id \|\| candidateIds\.includes\(propertyId\);/, "Eine abweichende Objekt-ID darf nicht über eine unscharfe Notizsuche auf ein anderes Objekt fallen");
+assert.match(rentMonth, /normalized\.includes\("hohenloher"\) \? 21 : 25/, "Die zentrale Mietmonatsregel muss Hohenloher-Zahlungen ab dem 21. dem Folgemonat zuordnen");
+for (const [source, label] of [[rentOverview, "Mieteingang"], [rentDevelopment, "Mietentwicklung"], [appData, "App-Datenquelle"], [consistency, "Konsistenzprüfung"], [cockpit, "Cockpit"]]) {
+  assert.match(source, /rentPaymentCutoffDay/, `${label} muss die zentrale Mietmonatsregel verwenden`);
+}
+assert.doesNotMatch(rentOverview, /if \(normalized\.includes\("hohenloher"\)\) return "2025-04-01"/, "Der Hohenloher-Mietbeginn darf nicht parallel im Frontend fest codiert sein");
+assert.match(rentOverview, /Mietbeginn laut zentraler Stammdatenquelle/, "Monate vor Vertragsbeginn müssen aus den zentralen Stammdaten neutralisiert werden");
+assert.match(cockpit, /text\.includes\("mietbestandteil"\)/, "Das Cockpit muss separat gebuchte Mietbestandteile in der Gesamtmiete berücksichtigen");
+assert.match(hohenloherMigration, /v_koenen_object_bridge/, "Die Backend-Mietmonatsquelle muss die zentrale Objekt-Bridge verwenden");
+assert.match(hohenloherMigration, /mietbestandteil\[- _\]\?nk/, "Die Backend-Mietmonatsquelle muss den Mietbestandteil-NK summieren");
+assert.match(hohenloherMigration, /with \(security_invoker = true\)/, "Die korrigierte Monatsview muss RLS mit den Rechten des aufrufenden Benutzers anwenden");
 assert.match(wealth, /const CentralRentOverview = lazy\(\(\) => import\("\.\/Mietuebersicht"\)\)/, "Der Lilienthaler-Pilot muss die zentrale Mieteingang-Auswertung wiederverwenden");
 assert.match(wealth, /<CentralRentOverview[\s\S]{0,350}?embeddedAnnualReport[\s\S]{0,350}?reportObjectId=\{rentObjectId\}/, "Der Pilot muss nach der zentral aufgelösten Objekt-ID filtern");
 assert.match(wealth, /const \[amountMode, setAmountMode\] = useState\(false\)/, "Die Symbolansicht muss in jeder Immobilienakte standardmäßig aktiv sein");

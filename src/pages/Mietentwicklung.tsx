@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, BarChart3, Building2, CalendarDays, Download, FileText, Pencil, Plus, Save, TrendingUp, WalletCards, X } from "lucide-react";
 import { MIETBESTANDTEIL_NK_CATEGORY, isPureRentBackPayment } from "../lib/financeEntryLabels";
+import { rentPaymentCutoffDay } from "../lib/rentMonth";
 import { supabase } from "../lib/supabase";
 import { useAppData, type AppObject, type FinanceEntry } from "../state/AppDataContext";
 
@@ -294,12 +295,12 @@ function isExcludedIncome(entry: FinanceEntry): boolean {
   );
 }
 
-function effectiveRentMonth(entry: FinanceEntry) {
+function effectiveRentMonth(entry: FinanceEntry, cutoffDay = 25) {
   if (!entry.booking_date) return null;
   const day = bookingDay(entry.booking_date);
   const date = new Date(`${entry.booking_date}T00:00:00`);
   if (Number.isNaN(date.getTime())) return null;
-  if (day !== null && day >= 25 && isStrictRentText(bookingReference(entry))) {
+  if (day !== null && day >= cutoffDay && isStrictRentText(bookingReference(entry))) {
     const shifted = addMonths(date.getFullYear(), date.getMonth() + 1, 1);
     return shifted;
   }
@@ -313,7 +314,7 @@ function effectiveRentMonthForObject(entry: FinanceEntry, object: AppObject) {
     if (Number.isNaN(date.getTime())) return null;
     return { year: date.getFullYear(), month: date.getMonth() + 1 };
   }
-  return effectiveRentMonth(entry);
+  return effectiveRentMonth(entry, rentPaymentCutoffDay(object.label));
 }
 
 function entryMatchesObject(entry: FinanceEntry, object: AppObject, candidateIds: Set<string>) {

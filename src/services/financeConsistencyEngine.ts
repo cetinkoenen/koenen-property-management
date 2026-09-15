@@ -4,6 +4,7 @@ import { isAllocatablePortfolioExpenseEntry, isPortfolioExpenseCategory, isPortf
 import { classifyTaxRelevance } from "@/lib/taxClassification";
 import { classifyNkRelevance } from "@/lib/nkClassification";
 import { resolveChfLoanSplitRule } from "@/lib/chfLoanSplit";
+import { rentPaymentCutoffDay } from "@/lib/rentMonth";
 import { isAnlageVEligible, isRosensteinSharedExpense, isSection35aProfile, resolveEntryTaxProfile, TAX_OBJECT_PROFILES, type TaxReportObjectOption } from "@/services/taxReportEngine";
 
 export type ConsistencySeverity = "ok" | "warning" | "critical";
@@ -129,7 +130,7 @@ function explicitRentMonthFromNote(entry: FinanceEntry): { year: number; month: 
   return null;
 }
 
-function effectiveRentMonth(entry: FinanceEntry): { year: number; month: number } | null {
+function effectiveRentMonth(entry: FinanceEntry, objectLabel?: string | null): { year: number; month: number } | null {
   // Explicit labels such as "April 2026" or "Mai 2026" are more reliable
   // than a pure booking-date rule. This prevents payments booked after the 25th
   // but clearly labelled for the current month from being moved into the next month.
@@ -138,7 +139,7 @@ function effectiveRentMonth(entry: FinanceEntry): { year: number; month: number 
 
   const parsed = entryMonth(entry.booking_date);
   if (!parsed) return null;
-  if (parsed.day < 25) return { year: parsed.year, month: parsed.month };
+  if (parsed.day < rentPaymentCutoffDay(objectLabel)) return { year: parsed.year, month: parsed.month };
   return parsed.month === 12 ? { year: parsed.year + 1, month: 1 } : { year: parsed.year, month: parsed.month + 1 };
 }
 
@@ -664,7 +665,7 @@ export function buildFinanceConsistencySummary(input: ConsistencyInput): Consist
     }
 
     if (isRentEntry(entry)) {
-      const rentMonth = effectiveRentMonth(entry);
+      const rentMonth = effectiveRentMonth(entry, names[id] ?? entry.objekt_code);
       if (rentMonth) {
         const rentKey = `${id}|${rentMonth.year}|${rentMonth.month}`;
         rentByPropertyMonth.set(rentKey, (rentByPropertyMonth.get(rentKey) ?? 0) + money(entry.amount));
@@ -699,7 +700,7 @@ export function buildFinanceConsistencySummary(input: ConsistencyInput): Consist
   const propertiesWithCurrentRent = new Set<string>();
   for (const entry of input.entries) {
     if (!entry.object_id || !isRentEntry(entry)) continue;
-    const rentMonth = effectiveRentMonth(entry);
+    const rentMonth = effectiveRentMonth(entry, names[String(entry.object_id)] ?? entry.objekt_code);
     if (rentMonth?.year === input.year) propertiesWithCurrentRent.add(String(entry.object_id));
   }
 

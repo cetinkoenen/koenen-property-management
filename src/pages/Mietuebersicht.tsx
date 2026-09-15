@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import brandLogo from "../assets/koenen-brand-logo.webp";
 import { supabase } from "../lib/supabase";
 import { MIETBESTANDTEIL_NK_CATEGORY, isPureRentBackPayment } from "../lib/financeEntryLabels";
-import { shiftIsoDateByMonthsClamped } from "../lib/rentMonth";
+import { rentPaymentCutoffDay, shiftIsoDateByMonthsClamped } from "../lib/rentMonth";
 import { rentBalancePart } from "../lib/rentPaymentBalance";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
 import {
@@ -303,18 +303,6 @@ function buildDisplayedPeriods(year: number, month: number, mode: PeriodMode) {
   const currentYear = now.getFullYear();
   const maxMonth = year === currentYear ? now.getMonth() + 1 : 12;
   return Array.from({ length: maxMonth }, (_, index) => monthRangeFromYearMonth(year, index + 1));
-}
-
-function rentStartDateForObject(objectLabel: string): string | null {
-  const normalized = normalizeReferenceText(objectLabel);
-  if (normalized.includes("hohenloher")) return "2025-04-01";
-  if (normalized.includes("rosenstein")) return "2025-11-01";
-  return null;
-}
-
-function isInactiveForRentMonth(objectLabel: string, monthStart: string): boolean {
-  const startDate = rentStartDateForObject(objectLabel);
-  return Boolean(startDate && monthStart < startDate);
 }
 
 function resolveRentStatus(paidAmount: number, expectedAmount: number | null, inactive: boolean): RentStatus {
@@ -870,11 +858,11 @@ function directObjectMatch(booking: FinanceEntry, objectId: string, objectCode: 
   return exactIdMatch || exactCodeMatch;
 }
 
-function isStrictRentBookingForObject(booking: FinanceEntry, objectId: string, objectCode: string | null | undefined, start: string, end: string): boolean {
+function isStrictRentBookingForObject(booking: FinanceEntry, objectId: string, objectCode: string | null | undefined, objectLabel: string, start: string, end: string): boolean {
   const exactIdMatch = String(booking.object_id ?? "") === String(objectId);
   const exactCodeMatch = Boolean(objectCode) && normalizeReferenceText(booking.objekt_code) === normalizeReferenceText(objectCode);
   const isIncome = booking.entry_type === "income";
-  const effectiveDate = attributedRentDateForUnit(booking, "", "");
+  const effectiveDate = attributedRentDateForUnit(booking, objectLabel, "hauptmiete");
   const inMonth = isDateInRange(effectiveDate, start, end);
 
   return (exactIdMatch || exactCodeMatch) && isIncome && hasStrictRentText(booking) && inMonth;
@@ -1081,6 +1069,7 @@ function attributedRentDateForUnit(booking: FinanceEntry, objectLabel: string, u
   // zählt dieser Eingang automatisch als Miete für den Folgemonat.
   // Beispiel: 672,33 € am 30.04. mit Referenz "Miete" zählt als Mai-Miete.
   const day = bookingDayOfMonth(booking.booking_date);
+  const cutoffDay = rentPaymentCutoffDay(objectLabel);
   const isHohenloherNkComponent =
     normalizeReferenceText(objectLabel).includes("hohenloher") &&
     isServiceChargeRentComponent(booking);
@@ -1088,7 +1077,7 @@ function attributedRentDateForUnit(booking: FinanceEntry, objectLabel: string, u
 
   if (
     day !== null &&
-    (((day >= 25 && hasStrictRentText(booking)) && !keepSameMonthForLilienthaler) || (day >= 24 && isHohenloherNkComponent))
+    (((day >= cutoffDay && hasStrictRentText(booking)) && !keepSameMonthForLilienthaler) || (day >= cutoffDay && isHohenloherNkComponent))
   ) {
     return shiftIsoDateByMonthsClamped(booking.booking_date, 1);
   }
@@ -1332,7 +1321,6 @@ export default function Mietuebersicht({
   const appData = useAppData();
   const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
   const [tenantInfo, setTenantInfo] = useState<Record<string, TenantInfo>>({});
-  const [tenantContracts, setTenantContracts] = useState<Record<string, TenantContractInfo>>({});
   const [tenantContractRows, setTenantContractRows] = useState<TenantContractProfileRow[]>([]);
   const [portfolioRentalsLoading, setPortfolioRentalsLoading] = useState(true);
   const [vacanciesLoading, setVacanciesLoading] = useState(true);
@@ -1463,7 +1451,6 @@ export default function Mietuebersicht({
         );
         const currentContracts = rangeContracts.filter((contract) => isContractInMonth(contract, month.start, month.end));
         const nextTenantInfo: Record<string, TenantInfo> = {};
-        const nextTenantContracts: Record<string, TenantContractInfo> = {};
 
         for (const object of sourceObjects) {
           const units = getUnitDefinitions(object.label);
@@ -1471,22 +1458,17 @@ export default function Mietuebersicht({
             const tenantKey = units.length > 1 ? `${object.id}::${unit.ref}` : object.id;
             const contract = currentContracts.find((candidate) => contractMatchesUnit(candidate, object, unit));
             nextTenantInfo[tenantKey] = tenantInfoFromContract(contract);
-            const contractInfo = tenantContractInfoFromContract(contract);
-            if (contractInfo) nextTenantContracts[tenantKey] = contractInfo;
             if (units.length === 1) nextTenantInfo[object.id] = nextTenantInfo[tenantKey];
-            if (units.length === 1 && contractInfo) nextTenantContracts[object.id] = contractInfo;
           }
         }
 
         setTenantInfo(nextTenantInfo);
-        setTenantContracts(nextTenantContracts);
         setTenantContractRows(rangeContracts);
         setStatus((prev) => ({ ...prev, __global: "Mieterdaten aus tenant_profiles/tenant_contracts geladen." }));
       } catch (error) {
         if (cancelled) return;
         setReportSourceErrors(old => ({ ...old, contracts: "Mietverträge konnten nicht geladen werden." }));
         setTenantInfo({});
-        setTenantContracts({});
         setTenantContractRows([]);
         setStatus((prev) => ({
           ...prev,
@@ -1565,7 +1547,7 @@ export default function Mietuebersicht({
             isBookingRelevantForDisplayedMonth(booking, object.label, "hauptmiete", period.start, period.end)
           );
           const strictRentBookings = monthlyKnownBookings.filter((booking) =>
-            isStrictRentBookingForObject(booking, object.id, object.code, period.start, period.end)
+            isStrictRentBookingForObject(booking, object.id, object.code, object.label, period.start, period.end)
           );
           const monthlyIncomeBookings = monthlyKnownBookings.filter((booking) =>
             isPositiveIncomeInMonthForObject(booking, object.id, object.code, object.label, period.start, period.end)
@@ -1588,7 +1570,7 @@ export default function Mietuebersicht({
             );
             const periodTenant = tenantInfoFromContract(periodContract);
             const tenantForMatch = tenantHasAnyValue(periodTenant) ? periodTenant : tenantInfo[tenantKey] ?? tenantInfo[object.id] ?? emptyTenant;
-            const tenantContract = periodContract ? tenantContractInfoFromContract(periodContract) : tenantContracts[tenantKey] ?? tenantContracts[object.id] ?? null;
+            const tenantContract = periodContract ? tenantContractInfoFromContract(periodContract) : null;
             const vacancy = vacancies.find((candidate) => vacancyMatchesUnit(candidate, object, unit) && isVacancyInRange(candidate, period.start, period.end));
             let unitBookings = relevantBookings.filter(unit.matcher);
 
@@ -1639,11 +1621,26 @@ export default function Mietuebersicht({
               : contractExpectedAmount !== null
                 ? "Mieterregister > Mietvertrag"
                 : rentalReference.source;
-            const expectedAmount = vacancy ? null : expectedAmountBeforeVacancy;
-            const expectedSource = vacancy ? "Leerstand > Leerstandszeitraum" : expectedSourceBeforeVacancy;
-            const lilienthalerAllocation = lilienthalerBookingAllocation(allKnownBookings, object, unit, period, expectedAmount);
+            const lilienthalerAllocation = lilienthalerBookingAllocation(allKnownBookings, object, unit, period, vacancy ? null : expectedAmountBeforeVacancy);
             const bookingAmount = lilienthalerAllocation?.paidAmount ?? unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
-            const inactive = !vacancy && bookingAmount <= 0 && !tenantContract && isInactiveForRentMonth(object.label, period.start);
+            const sourceRentStartDate = [
+              ...tenantContractRows
+                .filter((candidate) => contractMatchesUnit(candidate, object, unit))
+                .map((candidate) => dateKeyFromValue(candidate.start_date)),
+              ...rentAdjustments
+                .filter((candidate) => rentAdjustmentMatchesUnit(candidate, object, objectCandidateIds, unit))
+                .map(rentAdjustmentStartDate),
+              ...portfolioRentals
+                .filter((candidate) => objectCandidateIds.includes(String(candidate.property_id)) && rentalMatchesUnit(candidate, unit))
+                .map((candidate) => dateKeyFromValue(candidate.start_date)),
+            ].filter((value): value is string => Boolean(value)).sort()[0] ?? null;
+            const inactive = !vacancy && bookingAmount <= 0 && !periodContract && Boolean(sourceRentStartDate && period.end < sourceRentStartDate);
+            const expectedAmount = vacancy || inactive ? null : expectedAmountBeforeVacancy;
+            const expectedSource = vacancy
+              ? "Leerstand > Leerstandszeitraum"
+              : inactive
+                ? `Mietbeginn laut zentraler Stammdatenquelle: ${sourceRentStartDate}`
+                : expectedSourceBeforeVacancy;
             const paidAmount = vacancy ? 0 : bookingAmount;
             const sortedDates = unitBookings.map((booking) => booking.booking_date).filter(Boolean).sort() as string[];
             const lastBookingDate = lilienthalerAllocation?.lastBookingDate ?? (sortedDates.length ? sortedDates[sortedDates.length - 1] : null);
@@ -1670,7 +1667,7 @@ export default function Mietuebersicht({
           });
         });
       }),
-    [sourceObjects, appData, portfolioProperties, displayedPeriods, tenantInfo, tenantContracts, tenantContractRows, vacancies, portfolioRentals, rentAdjustments]
+    [sourceObjects, appData, portfolioProperties, displayedPeriods, tenantInfo, tenantContractRows, vacancies, portfolioRentals, rentAdjustments]
   );
 
   const filteredRows = useMemo(() => {

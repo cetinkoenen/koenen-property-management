@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { supabase } from "../lib/supabase";
 import { APP_DATA_CACHE_KEY } from "../lib/appCache";
 import { isPureRentBackPayment } from "../lib/financeCategories";
-import { effectiveRentYearMonth } from "../lib/rentMonth";
+import { effectiveRentYearMonth, rentPaymentCutoffDay } from "../lib/rentMonth";
 import { loadCanonicalPropertyLoanSnapshots } from "@/services/propertyLoanLedgerService";
 
 export type AppObject = {
@@ -388,16 +388,17 @@ function getEntryYearMonth(value: string | null): { year: number; month: number 
   return { year, month };
 }
 
-function isEffectiveRentMonth(entry: FinanceEntry, year: number, month: number): boolean {
-  const ym = effectiveRentYearMonth(entry.booking_date);
+function isEffectiveRentMonth(entry: FinanceEntry, year: number, month: number, objectLabel?: string | null): boolean {
+  const ym = effectiveRentYearMonth(entry.booking_date, rentPaymentCutoffDay(objectLabel));
   return ym?.year === year && ym.month === month;
 }
 
-function buildMonthlyRentSummariesFromEntries(entries: FinanceEntry[]): MonthlyRentSummaryRow[] {
+function buildMonthlyRentSummariesFromEntries(entries: FinanceEntry[], objectLabels: Record<string, string>): MonthlyRentSummaryRow[] {
   const map = new Map<string, MonthlyRentSummaryRow>();
   for (const entry of entries) {
     if (!entry.object_id || !isRentEntry(entry)) continue;
-    const ym = effectiveRentYearMonth(entry.booking_date);
+    const objectLabel = objectLabels[String(entry.object_id)] ?? objectLabels[String(entry.objekt_code ?? "")];
+    const ym = effectiveRentYearMonth(entry.booking_date, rentPaymentCutoffDay(objectLabel));
     if (!ym) continue;
     const key = `${entry.object_id}|${entry.objekt_code ?? ""}|${ym.year}|${ym.month}`;
     const existing = map.get(key) ?? {
@@ -414,7 +415,7 @@ function buildMonthlyRentSummariesFromEntries(entries: FinanceEntry[]): MonthlyR
   return Array.from(map.values());
 }
 
-function buildYearlyFinanceSummariesFromEntries(entries: FinanceEntry[]): YearlyFinanceSummaryRow[] {
+function buildYearlyFinanceSummariesFromEntries(entries: FinanceEntry[], objectLabels: Record<string, string>): YearlyFinanceSummaryRow[] {
   const map = new Map<string, YearlyFinanceSummaryRow>();
   for (const entry of entries) {
     if (!entry.object_id) continue;
@@ -433,7 +434,8 @@ function buildYearlyFinanceSummariesFromEntries(entries: FinanceEntry[]): Yearly
     if (entry.entry_type === "income") existing.einnahmen += entry.amount;
     if (entry.entry_type === "expense") existing.ausgaben += entry.amount;
     if (isRentEntry(entry)) {
-      const rentYm = effectiveRentYearMonth(entry.booking_date);
+      const objectLabel = objectLabels[String(entry.object_id)] ?? objectLabels[String(entry.objekt_code ?? "")];
+      const rentYm = effectiveRentYearMonth(entry.booking_date, rentPaymentCutoffDay(objectLabel));
       if (rentYm?.year === ym.year) existing.mieteingaenge += entry.amount;
     }
     map.set(key, existing);
@@ -590,13 +592,16 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         loan_split_source: row.loan_split_source ?? null,
       }));
 
-      // Monatsmieten werden absichtlich aus finance_entry berechnet, damit die 25.-des-Monats-Regel überall gleich gilt.
+      // Monatsmieten werden absichtlich aus finance_entry berechnet, damit die zentrale Mietmonatsregel überall gleich gilt.
 
       // Single Source of Truth im Frontend: Mietmonate werden immer nach der Hausverwaltungs-Regel berechnet.
-      // Zahlungen ab dem 25. eines Monats zählen als Mieteingang für den Folgemonat.
-      // Die DB-View bleibt als Backend-Quelle verfügbar, wird hier aber nicht bevorzugt, weil ältere Views diese Regel nicht kennen.
-      const mappedMonthlyRentSummaries = buildMonthlyRentSummariesFromEntries(mappedEntries);
-      const mappedYearlyFinanceSummaries = buildYearlyFinanceSummariesFromEntries(mappedEntries);
+      // Der objektspezifische Stichtag lebt ausschließlich in lib/rentMonth und wird auch von der DB-View gespiegelt.
+      const mappedObjectLabels = mappedObjects.reduce<Record<string, string>>((result, object) => {
+        for (const key of [object.id, object.code, ...(object.aliases ?? [])]) if (key) result[String(key)] = object.label;
+        return result;
+      }, {});
+      const mappedMonthlyRentSummaries = buildMonthlyRentSummariesFromEntries(mappedEntries, mappedObjectLabels);
+      const mappedYearlyFinanceSummaries = buildYearlyFinanceSummariesFromEntries(mappedEntries, mappedObjectLabels);
 
       let mappedPortfolio: PortfolioLoanRow[] = ((portfolioRes.error ? [] : portfolioRes.data ?? []) as PortfolioLoanSourceRow[])
         .filter((row) => row.property_id)
@@ -762,7 +767,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       const id = String(propertyId);
       const row = monthlyRentSummaries.find((summary) => sameProperty({ object_id: summary.object_id, objekt_code: summary.objekt_code, entry_type: null, booking_date: null, amount: 0, category: null, note: null }, id, propertyNameById, aliasesById) && summary.jahr === year && summary.monat === month);
       if (row) return row.mieteingang_summe;
-      const total = getEntriesForProperty(id).filter((entry) => isRentEntry(entry) && isEffectiveRentMonth(entry, year, month)).reduce((sum, entry) => sum + entry.amount, 0);
+      const total = getEntriesForProperty(id).filter((entry) => isRentEntry(entry) && isEffectiveRentMonth(entry, year, month, propertyNameById[id])).reduce((sum, entry) => sum + entry.amount, 0);
       return total > 0 ? total : null;
     };
     const getMonthlyRentSummaryByObjectCode = (objectCode: string | null | undefined, year: number, month: number) => {
@@ -772,7 +777,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       if (row) return row.mieteingang_summe;
       const total = entries
         .filter((entry) => normalizeMatchText(entry.objekt_code) === code && isRentEntry(entry))
-        .filter((entry) => isEffectiveRentMonth(entry, year, month))
+        .filter((entry) => isEffectiveRentMonth(entry, year, month, propertyNameById[String(entry.object_id ?? "")] ?? entry.objekt_code))
         .reduce((sum, entry) => sum + entry.amount, 0);
       return total > 0 ? total : null;
     };

@@ -1,5 +1,19 @@
 export type RentYearMonth = { year: number; month: number };
 
+/**
+ * Zentrale Zuordnung des Zahlungstags zum Mietmonat.
+ * Hohenloher wird nach dem belegten Zahlungsrhythmus bereits ab dem 21. Tag
+ * dem Folgemonat zugeordnet; für die übrigen Objekte gilt der 25. Tag.
+ */
+export function rentPaymentCutoffDay(objectLabel: string | null | undefined): number {
+  const normalized = String(objectLabel ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replaceAll("ß", "ss");
+  return normalized.includes("hohenloher") ? 21 : 25;
+}
+
 function parseIsoDate(value: string | null | undefined): { year: number; month: number; day: number } | null {
   if (!value || value.length < 10) return null;
   const year = Number(value.slice(0, 4));
