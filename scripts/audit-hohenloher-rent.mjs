@@ -64,13 +64,20 @@ const codes = new Set(hohenloherObjects.map((row) => row.objekt_code).filter(Boo
 const { data: coreProperties, error: corePropertyError } = await supabase.from("properties").select("id,name").in("id", [...ids]);
 if (corePropertyError) throw corePropertyError;
 
-const [{ data: entries, error: entryError }, { data: contracts, error: contractError }, { data: rentals, error: rentalError }, { data: adjustments, error: adjustmentError }] = await Promise.all([
+const [{ data: entries, error: entryError }, { data: contracts, error: contractError }, { data: rentals, error: rentalError }, { data: adjustments, error: adjustmentError }, { data: portfolioProperties, error: portfolioPropertyError }] = await Promise.all([
   supabase.from("finance_entry").select("id,object_id,objekt_code,booking_date,entry_type,category,amount,note,is_deleted").gte("booking_date", FROM).lte("booking_date", TO).order("booking_date"),
   supabase.from("tenant_contracts").select("id,tenant_id,property_id,object_code,unit_label,start_date,end_date,status,cold_rent,operating_costs,total_rent,is_deleted,tenant_profiles(first_name,last_name,company_name)").order("start_date"),
   supabase.from("portfolio_property_rentals").select("id,property_id,unit_id,rent_type,rent_monthly,start_date,end_date,created_at,updated_at").order("start_date"),
   supabase.from("rent_adjustments").select("id,property_id,object_label,tenant_name,effective_date,effective_end_date,old_total_rent,new_total_rent,note,is_deleted").order("effective_date"),
+  supabase.from("portfolio_properties").select("id,name,core_property_id,is_test"),
 ]);
-for (const error of [entryError, contractError, rentalError, adjustmentError]) if (error) throw error;
+for (const error of [entryError, contractError, rentalError, adjustmentError, portfolioPropertyError]) if (error) throw error;
+
+const hohenloherPortfolioProperties = (portfolioProperties ?? []).filter((row) => normalize(row.name).includes("hohenloher"));
+for (const row of hohenloherPortfolioProperties) {
+  ids.add(String(row.id));
+  if (row.core_property_id) ids.add(String(row.core_property_id));
+}
 
 const matches = (row) => ids.has(String(row.object_id ?? row.property_id ?? "")) || codes.has(String(row.objekt_code ?? row.object_code ?? "")) || normalize(`${row.object_label ?? ""} ${row.note ?? ""}`).includes("hohenloher");
 const hohenloherEntries = (entries ?? []).filter(matches);
@@ -80,6 +87,8 @@ console.log("HOHENLOHER-QUELLEN");
 table(hohenloherObjects);
 console.log("\nPROPERTIES");
 table(coreProperties ?? []);
+console.log("\nPORTFOLIO_PROPERTIES");
+table(hohenloherPortfolioProperties);
 console.log("\nMIETVERTRAEGE");
 table((contracts ?? []).filter(matches));
 console.log("\nVERMIETUNGSZEITRAEUME");

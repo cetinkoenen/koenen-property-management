@@ -1623,17 +1623,25 @@ export default function Mietuebersicht({
                 : rentalReference.source;
             const lilienthalerAllocation = lilienthalerBookingAllocation(allKnownBookings, object, unit, period, vacancy ? null : expectedAmountBeforeVacancy);
             const bookingAmount = lilienthalerAllocation?.paidAmount ?? unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
-            const sourceRentStartDate = [
-              ...tenantContractRows
-                .filter((candidate) => contractMatchesUnit(candidate, object, unit))
-                .map((candidate) => dateKeyFromValue(candidate.start_date)),
-              ...rentAdjustments
-                .filter((candidate) => rentAdjustmentMatchesUnit(candidate, object, objectCandidateIds, unit))
-                .map(rentAdjustmentStartDate),
-              ...portfolioRentals
-                .filter((candidate) => objectCandidateIds.includes(String(candidate.property_id)) && rentalMatchesUnit(candidate, unit))
-                .map((candidate) => dateKeyFromValue(candidate.start_date)),
-            ].filter((value): value is string => Boolean(value)).sort()[0] ?? null;
+            const adjustmentStartDates = rentAdjustments
+              .filter((candidate) => rentAdjustmentMatchesUnit(candidate, object, objectCandidateIds, unit))
+              .map(rentAdjustmentStartDate)
+              .filter((value): value is string => Boolean(value))
+              .sort();
+            const contractStartDates = tenantContractRows
+              .filter((candidate) => contractMatchesUnit(candidate, object, unit))
+              .map((candidate) => dateKeyFromValue(candidate.start_date))
+              .filter((value): value is string => Boolean(value))
+              .sort();
+            const rentalStartDates = portfolioRentals
+              .filter((candidate) => objectCandidateIds.includes(String(candidate.property_id)) && rentalMatchesUnit(candidate, unit))
+              .map((candidate) => dateKeyFromValue(candidate.start_date))
+              .filter((value): value is string => Boolean(value))
+              .sort();
+            // Dieselbe Quellenpriorität wie für die Sollmiete: Mietanpassung ist
+            // fachlich führend, Vertrag ist Fallback, Portfolio-Zeitraum nur dann,
+            // wenn die beiden zentralen Mietquellen keinen Beginn liefern.
+            const sourceRentStartDate = adjustmentStartDates[0] ?? contractStartDates[0] ?? rentalStartDates[0] ?? null;
             const inactive = !vacancy && bookingAmount <= 0 && !periodContract && Boolean(sourceRentStartDate && period.end < sourceRentStartDate);
             const expectedAmount = vacancy || inactive ? null : expectedAmountBeforeVacancy;
             const expectedSource = vacancy
