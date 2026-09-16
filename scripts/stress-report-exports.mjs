@@ -22,6 +22,7 @@ const parkingBillingMigration = await readFile(new URL("../supabase/migrations/2
 const tgAttachmentMigration = await readFile(new URL("../supabase/migrations/20260916151000_add_tg_attachment_notes.sql", import.meta.url), "utf8");
 const tgWegOffsetsMigration = await readFile(new URL("../supabase/migrations/20260916173000_detail_p250_weg_offsets.sql", import.meta.url), "utf8");
 const tgWorkflowMigration = await readFile(new URL("../supabase/migrations/20260916181500_add_tg_workflow_status.sql", import.meta.url), "utf8");
+const p253CreditMigration = await readFile(new URL("../supabase/migrations/20260916211500_import_p253_2025_weg_credit.sql", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -170,5 +171,9 @@ assert.match(tgWegOffsetsMigration, /'wegNonApportionableOffset', 11\.99[\s\S]*'
 assert.match(tgBilling, /currentStatus === "Offen"[\s\S]*nextStatus = "In Arbeit"/, "Die erste Bearbeitung einer offenen TG-Abrechnung muss automatisch den Status In Arbeit setzen");
 assert.match(tgBilling, /currentStatus === "Freigegeben"[\s\S]*nextStatus = "Korrigiert"/, "Änderungen an einer freigegebenen TG-Abrechnung müssen automatisch als korrigiert gekennzeichnet werden");
 assert.match(tgWorkflowMigration, /'workflowStatus'[\s\S]*then 'Freigegeben'[\s\S]*then 'In Arbeit'[\s\S]*else 'Offen'/, "Bestehende TG-Abrechnungen müssen zentral und nachvollziehbar in den Statusablauf migriert werden");
+assert.match(tgBilling, /wegApportionableOffset[\s\S]*wegNonApportionableOffset[\s\S]*wegReserveOffset/, "Die TG-Eigentümerabrechnung muss alle drei Verrechnungsarten getrennt speichern");
+assert.match(tgBilling, /wegOpenSettlement < 0[\s\S]*Guthaben:[\s\S]*Math\.abs\(wegOpenSettlement\)/, "Ein negativer WEG-Saldo muss sichtbar als positives Guthaben dargestellt werden");
+assert.match(tgBilling, /wegCalculatedSettlement >= 0 \? "Verbleibende WEG-Nachforderung" : "Verbleibendes WEG-Guthaben"/, "Die WEG-Kalkulation muss zwischen Nachforderung und Guthaben unterscheiden");
+assert.match(p253CreditMigration, /'wegApportionableOffset', 9\.40[\s\S]*'wegOwnerPrepayments', 28\.25[\s\S]*'wegOwnerSettlement', -3\.69/, "P253/2025 muss die bestätigte umlagefähige Vorverrechnung und das Guthaben centgenau zentral speichern");
 
-console.log("132 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("136 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");

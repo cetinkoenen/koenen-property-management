@@ -42,6 +42,7 @@ type BillingYearData = {
   wegStatementPeriodTo?: string;
   wegStatementTotal?: number;
   wegOwnerPrepayments?: number;
+  wegApportionableOffset?: number;
   wegNonApportionableOffset?: number;
   wegReserveOffset?: number;
   wegOwnerSettlement?: number;
@@ -502,6 +503,7 @@ function buildDefaultYear(year: number, requestedUnitCode = "P250"): BillingYear
     wegStatementPeriodTo: "",
     wegStatementTotal: 0,
     wegOwnerPrepayments: 0,
+    wegApportionableOffset: 0,
     wegNonApportionableOffset: 0,
     wegReserveOffset: 0,
     wegOwnerSettlement: 0,
@@ -904,7 +906,9 @@ export default function NebenkostenTiefgarage() {
   const settlementBalance = roundMoney(apportionableTotal - activeRecord.tenantPrepayments);
   const wegOpenSettlement = activeRecord.wegOwnerSettlementStatus === "paid" ? 0 : toNumber(activeRecord.wegOwnerSettlement);
   const wegOffsetBreakdownTotal = roundMoney(
-    toNumber(activeRecord.wegNonApportionableOffset) + toNumber(activeRecord.wegReserveOffset),
+    toNumber(activeRecord.wegApportionableOffset)
+      + toNumber(activeRecord.wegNonApportionableOffset)
+      + toNumber(activeRecord.wegReserveOffset),
   );
   const wegEffectiveOffsets = wegOffsetBreakdownTotal > 0
     ? wegOffsetBreakdownTotal
@@ -1239,7 +1243,11 @@ export default function NebenkostenTiefgarage() {
             </div>
           </div>
           <div style={{ fontWeight: 900, color: wegOpenSettlement > 0 ? "#b91c1c" : "#166534" }}>
-            {wegOpenSettlement > 0 ? `Offen: ${formatCurrency(wegOpenSettlement)}` : "Kein offener WEG-Saldo"}
+            {wegOpenSettlement > 0
+              ? `Nachforderung: ${formatCurrency(wegOpenSettlement)}`
+              : wegOpenSettlement < 0
+                ? `Guthaben: ${formatCurrency(Math.abs(wegOpenSettlement))}`
+                : "Kein offener WEG-Saldo"}
           </div>
         </div>
         <div style={pageStyles.sectionBody}>
@@ -1257,7 +1265,7 @@ export default function NebenkostenTiefgarage() {
               ["Nicht umlagefähig laut WEG", "wegNonApportionableTotal"],
               ["Rücklagen laut WEG", "wegReserveTotal"],
               ["Gesamtkosten laut WEG", "wegStatementTotal"],
-              ["WEG-Nachforderung", "wegOwnerSettlement"],
+              ["WEG-Saldo (+ Nachforderung / − Guthaben)", "wegOwnerSettlement"],
               ["§ 35a Arbeitskostenanteil (Info)", "section35aLaborShare"],
             ].map(([label, key]) => (
               <div key={key} style={pageStyles.inputCard}>
@@ -1272,6 +1280,26 @@ export default function NebenkostenTiefgarage() {
               </div>
             ))}
             <div style={pageStyles.inputCard}>
+              <label style={pageStyles.label}>Verrechnung BK umlagefähig</label>
+              <input
+                type="number"
+                step="0.01"
+                style={pageStyles.input}
+                value={toNumber(activeRecord.wegApportionableOffset)}
+                onChange={(event) => {
+                  const nextValue = toNumber(event.target.value);
+                  updateActiveRecord({
+                    wegApportionableOffset: nextValue,
+                    wegOwnerPrepayments: roundMoney(
+                      nextValue
+                        + toNumber(activeRecord.wegNonApportionableOffset)
+                        + toNumber(activeRecord.wegReserveOffset),
+                    ),
+                  });
+                }}
+              />
+            </div>
+            <div style={pageStyles.inputCard}>
               <label style={pageStyles.label}>Verrechnung nicht umlagefähige Betriebskosten</label>
               <input
                 type="number"
@@ -1282,7 +1310,11 @@ export default function NebenkostenTiefgarage() {
                   const nextValue = toNumber(event.target.value);
                   updateActiveRecord({
                     wegNonApportionableOffset: nextValue,
-                    wegOwnerPrepayments: roundMoney(nextValue + toNumber(activeRecord.wegReserveOffset)),
+                    wegOwnerPrepayments: roundMoney(
+                      toNumber(activeRecord.wegApportionableOffset)
+                        + nextValue
+                        + toNumber(activeRecord.wegReserveOffset),
+                    ),
                   });
                 }}
               />
@@ -1298,7 +1330,11 @@ export default function NebenkostenTiefgarage() {
                   const nextValue = toNumber(event.target.value);
                   updateActiveRecord({
                     wegReserveOffset: nextValue,
-                    wegOwnerPrepayments: roundMoney(toNumber(activeRecord.wegNonApportionableOffset) + nextValue),
+                    wegOwnerPrepayments: roundMoney(
+                      toNumber(activeRecord.wegApportionableOffset)
+                        + toNumber(activeRecord.wegNonApportionableOffset)
+                        + nextValue,
+                    ),
                   });
                 }}
               />
@@ -1308,10 +1344,10 @@ export default function NebenkostenTiefgarage() {
               <input type="number" step="0.01" style={{ ...pageStyles.input, background: "#f1f5f9" }} value={wegEffectiveOffsets} readOnly />
             </div>
             <div style={pageStyles.inputCard}>
-              <label style={pageStyles.label}>Status WEG-Nachforderung</label>
+              <label style={pageStyles.label}>Status WEG-Saldo</label>
               <select style={pageStyles.input} value={activeRecord.wegOwnerSettlementStatus ?? "open"} onChange={(event) => updateActiveRecord({ wegOwnerSettlementStatus: event.target.value as "open" | "paid" })}>
-                <option value="open">Offen – noch nicht steuerlich gebucht</option>
-                <option value="paid">Bezahlt – Buchungen mit Zahlungsdatum prüfen</option>
+                <option value="open">Offen – noch nicht gebucht/verrechnet</option>
+                <option value="paid">Erledigt – Zahlung/Gutschrift prüfen</option>
               </select>
             </div>
             <div style={pageStyles.inputCard}>
@@ -1320,7 +1356,7 @@ export default function NebenkostenTiefgarage() {
             </div>
           </div>
           <div style={{ marginTop: 16, border: "1px solid #fde68a", background: "#fffbeb", borderRadius: 16, padding: 16, color: "#78350f", lineHeight: 1.65 }}>
-            <strong>Steuerbuchung erst nach tatsächlicher Zahlung:</strong> 1,11 € Grundsteuer (St/NK), 4,33 € Allgemeinstrom (St/NK), 0,23 € Verwaltungskosten (St, nicht NK) und 0,04 € Instandhaltungsrücklage (nicht St, nicht NK). Der §-35a-Anteil von 0,77 € ist nur eine Zusatzinformation und keine weitere Ausgabe.
+            <strong>{wegCalculatedSettlement < 0 ? "Steuerliche Erfassung erst nach tatsächlicher Gutschrift oder Verrechnung:" : "Steuerbuchung erst nach tatsächlicher Zahlung:"}</strong> 1,11 € Grundsteuer (St/NK), 4,33 € Allgemeinstrom (St/NK), 0,23 € Verwaltungskosten (St, nicht NK) und 0,04 € Instandhaltungsrücklage (nicht St, nicht NK). Der §-35a-Anteil von 0,77 € ist nur eine Zusatzinformation und keine weitere Ausgabe.
           </div>
           <div style={{ marginTop: 16, border: "1px solid #cbd5e1", background: "#f8fafc", borderRadius: 16, padding: 16 }}>
             <div style={{ fontWeight: 900, color: "#0f172a", marginBottom: 12 }}>Nachvollziehbare WEG-Verrechnung</div>
@@ -1329,10 +1365,15 @@ export default function NebenkostenTiefgarage() {
               <span>Nicht umlagefähige Kosten</span><strong style={pageStyles.amountCell}>{formatCurrency(toNumber(activeRecord.wegNonApportionableTotal))}</strong>
               <span>Zuführung Rücklagen</span><strong style={pageStyles.amountCell}>{formatCurrency(toNumber(activeRecord.wegReserveTotal))}</strong>
               <span style={{ borderTop: "1px solid #cbd5e1", paddingTop: 8 }}>Gesamtsumme der Kosten</span><strong style={{ ...pageStyles.amountCell, borderTop: "1px solid #cbd5e1", paddingTop: 8 }}>{formatCurrency(toNumber(activeRecord.wegStatementTotal))}</strong>
+              <span>Abzüglich Verrechnung BK umlagefähig</span><strong style={pageStyles.amountCell}>− {formatCurrency(toNumber(activeRecord.wegApportionableOffset))}</strong>
               <span>Abzüglich Verrechnung Betriebskosten</span><strong style={pageStyles.amountCell}>− {formatCurrency(toNumber(activeRecord.wegNonApportionableOffset))}</strong>
               <span>Abzüglich Verrechnung Rücklage</span><strong style={pageStyles.amountCell}>− {formatCurrency(toNumber(activeRecord.wegReserveOffset))}</strong>
-              <span style={{ borderTop: "1px solid #cbd5e1", paddingTop: 8, fontWeight: 900, color: "#0f172a" }}>Verbleibende WEG-Nachforderung</span>
-              <strong style={{ ...pageStyles.amountCell, borderTop: "1px solid #cbd5e1", paddingTop: 8, color: wegCalculatedSettlement > 0 ? "#b91c1c" : "#166534" }}>{formatCurrency(wegCalculatedSettlement)}</strong>
+              <span style={{ borderTop: "1px solid #cbd5e1", paddingTop: 8, fontWeight: 900, color: "#0f172a" }}>
+                {wegCalculatedSettlement >= 0 ? "Verbleibende WEG-Nachforderung" : "Verbleibendes WEG-Guthaben"}
+              </span>
+              <strong style={{ ...pageStyles.amountCell, borderTop: "1px solid #cbd5e1", paddingTop: 8, color: wegCalculatedSettlement > 0 ? "#b91c1c" : "#166534" }}>
+                {formatCurrency(Math.abs(wegCalculatedSettlement))}
+              </strong>
             </div>
             {Math.abs(wegCalculatedSettlement - toNumber(activeRecord.wegOwnerSettlement)) > 0.009 ? (
               <div style={{ marginTop: 12, borderRadius: 12, background: "#fff1f2", color: "#9f1239", padding: 12, fontWeight: 800 }}>
