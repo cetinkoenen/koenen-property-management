@@ -20,6 +20,7 @@ const rosensteinParkingStartMigration = await readFile(new URL("../supabase/migr
 const p250RentAmountMigration = await readFile(new URL("../supabase/migrations/20260916124500_fix_p250_2025_rent_amount.sql", import.meta.url), "utf8");
 const parkingBillingMigration = await readFile(new URL("../supabase/migrations/20260916143000_prepare_p253_p254_utility_billing.sql", import.meta.url), "utf8");
 const tgAttachmentMigration = await readFile(new URL("../supabase/migrations/20260916151000_add_tg_attachment_notes.sql", import.meta.url), "utf8");
+const tgWegOffsetsMigration = await readFile(new URL("../supabase/migrations/20260916173000_detail_p250_weg_offsets.sql", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -162,5 +163,8 @@ assert.match(tgAttachmentMigration, /record \? 'attachmentNotes'[\s\S]*jsonb_bui
 assert.match(tgBilling, /aria-pressed=\{props\.active\}/, "Die aktive TG-Abrechnung muss auch für assistive Technologien eindeutig erkennbar sein");
 assert.match(tgBilling, /Vorhandene Abrechnungen[\s\S]*Neue Abrechnung anlegen[\s\S]*Aktive Abrechnung/, "Die TG-Abrechnungsverwaltung muss Auswahl, Neuanlage und aktive Abrechnung klar trennen");
 assert.match(tgBilling, /Status: \{activeRecord\.finalized \? "Abgeschlossen" : "Entwurf"\}/, "Der Bearbeitungsstatus der aktiven TG-Abrechnung muss sichtbar sein");
+assert.match(tgBilling, /wegNonApportionableOffset[\s\S]*wegReserveOffset[\s\S]*wegCalculatedSettlement/, "WEG-Verrechnungen müssen aus Betriebskosten- und Rücklagenanteil nachvollziehbar berechnet werden");
+assert.match(tgBilling, /Nachvollziehbare WEG-Verrechnung[\s\S]*Abzüglich Verrechnung Betriebskosten[\s\S]*Abzüglich Verrechnung Rücklage/, "Die Eigentümerabrechnung muss die zwei Verrechnungsbestandteile sichtbar ausweisen");
+assert.match(tgWegOffsetsMigration, /'wegNonApportionableOffset', 11\.99[\s\S]*'wegReserveOffset', 6\.86[\s\S]*'wegOwnerSettlement', 5\.71/, "P250/2025 muss die bestätigte WEG-Verrechnung centgenau zentral speichern");
 
-console.log("126 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("129 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
