@@ -21,6 +21,7 @@ const p250RentAmountMigration = await readFile(new URL("../supabase/migrations/2
 const parkingBillingMigration = await readFile(new URL("../supabase/migrations/20260916143000_prepare_p253_p254_utility_billing.sql", import.meta.url), "utf8");
 const tgAttachmentMigration = await readFile(new URL("../supabase/migrations/20260916151000_add_tg_attachment_notes.sql", import.meta.url), "utf8");
 const tgWegOffsetsMigration = await readFile(new URL("../supabase/migrations/20260916173000_detail_p250_weg_offsets.sql", import.meta.url), "utf8");
+const tgWorkflowMigration = await readFile(new URL("../supabase/migrations/20260916181500_add_tg_workflow_status.sql", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -162,9 +163,12 @@ assert.match(tgBilling, /activeRecord\.attachmentNotes\.trim\(\)/, "Die Onepager
 assert.match(tgAttachmentMigration, /record \? 'attachmentNotes'[\s\S]*jsonb_build_object\('attachmentNotes', ''\)/, "Auch vorhandene TG-Abrechnungen müssen das optionale Anlagenfeld zentral erhalten");
 assert.match(tgBilling, /aria-pressed=\{props\.active\}/, "Die aktive TG-Abrechnung muss auch für assistive Technologien eindeutig erkennbar sein");
 assert.match(tgBilling, /Vorhandene Abrechnungen[\s\S]*Neue Abrechnung anlegen[\s\S]*Aktive Abrechnung/, "Die TG-Abrechnungsverwaltung muss Auswahl, Neuanlage und aktive Abrechnung klar trennen");
-assert.match(tgBilling, /Status: \{activeRecord\.finalized \? "Abgeschlossen" : "Entwurf"\}/, "Der Bearbeitungsstatus der aktiven TG-Abrechnung muss sichtbar sein");
+assert.match(tgBilling, /TG_WORKFLOW_STATUSES[\s\S]*"Offen"[\s\S]*"In Arbeit"[\s\S]*"In Prüfung"[\s\S]*"Freigegeben"[\s\S]*"Korrigiert"/, "Die TG-Abrechnung muss denselben vollständigen Statusablauf wie die Wohnungsabrechnung anbieten");
 assert.match(tgBilling, /wegNonApportionableOffset[\s\S]*wegReserveOffset[\s\S]*wegCalculatedSettlement/, "WEG-Verrechnungen müssen aus Betriebskosten- und Rücklagenanteil nachvollziehbar berechnet werden");
 assert.match(tgBilling, /Nachvollziehbare WEG-Verrechnung[\s\S]*Abzüglich Verrechnung Betriebskosten[\s\S]*Abzüglich Verrechnung Rücklage/, "Die Eigentümerabrechnung muss die zwei Verrechnungsbestandteile sichtbar ausweisen");
 assert.match(tgWegOffsetsMigration, /'wegNonApportionableOffset', 11\.99[\s\S]*'wegReserveOffset', 6\.86[\s\S]*'wegOwnerSettlement', 5\.71/, "P250/2025 muss die bestätigte WEG-Verrechnung centgenau zentral speichern");
+assert.match(tgBilling, /currentStatus === "Offen"[\s\S]*nextStatus = "In Arbeit"/, "Die erste Bearbeitung einer offenen TG-Abrechnung muss automatisch den Status In Arbeit setzen");
+assert.match(tgBilling, /currentStatus === "Freigegeben"[\s\S]*nextStatus = "Korrigiert"/, "Änderungen an einer freigegebenen TG-Abrechnung müssen automatisch als korrigiert gekennzeichnet werden");
+assert.match(tgWorkflowMigration, /'workflowStatus'[\s\S]*then 'Freigegeben'[\s\S]*then 'In Arbeit'[\s\S]*else 'Offen'/, "Bestehende TG-Abrechnungen müssen zentral und nachvollziehbar in den Statusablauf migriert werden");
 
-console.log("129 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("132 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");

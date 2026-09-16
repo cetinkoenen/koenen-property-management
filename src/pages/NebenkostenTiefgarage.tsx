@@ -4,6 +4,7 @@ import { listNkRelevantEntries, type NkRelevantEntry } from "../services/nkRelev
 import { supabase } from "../lib/supabase";
 
 type AllocationKey = "Einheiten" | "Verbrauch/Direkt" | "Direktbetrag";
+type TgWorkflowStatus = "Offen" | "In Arbeit" | "In Prüfung" | "Freigegeben" | "Korrigiert";
 
 type CostRow = {
   id: string;
@@ -22,6 +23,7 @@ type BillingYearData = {
   year: number;
   finalized?: boolean;
   finalizedAt?: string;
+  workflowStatus: TgWorkflowStatus;
   propertyLabel: string;
   unitLabel: string;
   periodFrom: string;
@@ -61,6 +63,25 @@ const STORAGE_KEY = "koenen:tiefgarage-nebenkosten:v1";
 const BILLING_TABLE = "apartment_billing_workspaces";
 const BILLING_OBJECT_ID = "rosenstein-str-25-tiefgarage";
 const BILLING_SCOPE = "all";
+
+const TG_WORKFLOW_STATUSES: TgWorkflowStatus[] = ["Offen", "In Arbeit", "In Prüfung", "Freigegeben", "Korrigiert"];
+
+function normalizeWorkflowStatus(value: unknown, finalized = false): TgWorkflowStatus {
+  const normalized = String(value ?? "").trim().toLocaleLowerCase("de-DE");
+  if (normalized === "in arbeit") return "In Arbeit";
+  if (normalized === "in prüfung" || normalized === "in pruefung") return "In Prüfung";
+  if (normalized === "freigegeben") return "Freigegeben";
+  if (normalized === "korrigiert") return "Korrigiert";
+  return finalized ? "Freigegeben" : "Offen";
+}
+
+function workflowStatusTheme(status: TgWorkflowStatus) {
+  if (status === "In Arbeit") return { background: "#dbeafe", color: "#1d4ed8", border: "#93c5fd" };
+  if (status === "In Prüfung") return { background: "#fef3c7", color: "#92400e", border: "#fcd34d" };
+  if (status === "Freigegeben") return { background: "#dcfce7", color: "#166534", border: "#86efac" };
+  if (status === "Korrigiert") return { background: "#f3e8ff", color: "#7e22ce", border: "#d8b4fe" };
+  return { background: "#f1f5f9", color: "#475569", border: "#cbd5e1" };
+}
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -461,6 +482,7 @@ function buildDefaultYear(year: number, requestedUnitCode = "P250"): BillingYear
     year,
     finalized: false,
     finalizedAt: "",
+    workflowStatus: "Offen",
     propertyLabel: `Rosenstein Str. 25 · ${unitCode}${reference ? ` · ${reference}` : ""}`,
     unitLabel: `Tiefgaragenstellplatz ${unitCode}`,
     periodFrom: year === 2025 ? `${year}-11-14` : `${year}-01-01`,
@@ -579,6 +601,7 @@ function normalizeBillingRecords(records: Array<Partial<BillingYearData>>): Bill
         ...record,
         recordId: String(record.recordId ?? `${unitCode.toLowerCase()}-${year}`),
         unitCode,
+        workflowStatus: normalizeWorkflowStatus(record.workflowStatus, Boolean(record.finalized)),
       };
     })
     .sort((a, b) => a.year - b.year || a.unitCode.localeCompare(b.unitCode));
@@ -611,7 +634,8 @@ function BillingRecordButton(props: {
   record: BillingYearData;
   onClick: () => void;
 }) {
-  const statusText = props.record.finalized ? "Abgeschlossen" : "Entwurf";
+  const statusText = normalizeWorkflowStatus(props.record.workflowStatus, Boolean(props.record.finalized));
+  const statusTheme = workflowStatusTheme(statusText);
 
   return (
     <button
@@ -631,8 +655,9 @@ function BillingRecordButton(props: {
         <span
           style={{
             ...pageStyles.statusBadge,
-            background: props.record.finalized ? "#dcfce7" : "#fef3c7",
-            color: props.record.finalized ? "#166534" : "#92400e",
+            background: statusTheme.background,
+            color: statusTheme.color,
+            border: `1px solid ${statusTheme.border}`,
           }}
         >
           {statusText}
@@ -888,8 +913,33 @@ export default function NebenkostenTiefgarage() {
 
   function updateActiveRecord(patch: Partial<BillingYearData>) {
     setRecords((current) =>
-      current.map((record) => (record.recordId === activeRecord.recordId ? { ...record, ...patch } : record)),
+      current.map((record) => {
+        if (record.recordId !== activeRecord.recordId) return record;
+
+        const currentStatus = normalizeWorkflowStatus(record.workflowStatus, Boolean(record.finalized));
+        let nextStatus = patch.workflowStatus ?? currentStatus;
+        if (!patch.workflowStatus && currentStatus === "Offen") nextStatus = "In Arbeit";
+        if (!patch.workflowStatus && currentStatus === "Freigegeben") nextStatus = "Korrigiert";
+        const isReleased = nextStatus === "Freigegeben" || nextStatus === "Korrigiert";
+
+        return {
+          ...record,
+          ...patch,
+          workflowStatus: nextStatus,
+          finalized: patch.finalized ?? isReleased,
+          finalizedAt: patch.finalizedAt ?? (isReleased ? record.finalizedAt || new Date().toISOString() : ""),
+        };
+      }),
     );
+  }
+
+  function updateWorkflowStatus(workflowStatus: TgWorkflowStatus) {
+    const isReleased = workflowStatus === "Freigegeben" || workflowStatus === "Korrigiert";
+    updateActiveRecord({
+      workflowStatus,
+      finalized: isReleased,
+      finalizedAt: isReleased ? activeRecord.finalizedAt || new Date().toISOString() : "",
+    });
   }
 
   function updateRow(section: "apportionableRows" | "nonApportionableRows", rowId: string, nextRow: CostRow) {
@@ -956,7 +1006,7 @@ export default function NebenkostenTiefgarage() {
       return;
     }
 
-    const nextRecord = buildDefaultYear(nextYear, targetUnitCode);
+    const nextRecord = { ...buildDefaultYear(nextYear, targetUnitCode), workflowStatus: "In Arbeit" as TgWorkflowStatus };
     const nextRecords = [...records, nextRecord].sort((a, b) => a.year - b.year || a.unitCode.localeCompare(b.unitCode));
     setRecords(nextRecords);
     setActiveRecordId(nextRecord.recordId);
@@ -985,7 +1035,7 @@ export default function NebenkostenTiefgarage() {
     const attachmentsSection = safeAttachmentNotes
       ? `<section class="attachments"><div class="label">Anlagen und Nachweise</div><div class="attachments-text">${safeAttachmentNotes}</div></section>`
       : "";
-    return `<!doctype html><html><head><meta charset="utf-8"/><title>NK-Tiefgarage ${escapeHtml(record.year)}</title><style>body{font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:32px;color:#0f172a}table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1px solid #e5e7eb;text-align:left}.print-card{max-width:820px;margin:0 auto;background:#fff;border:1px solid #dbe3f0;border-radius:24px;padding:32px}.brand-logo{display:block;width:240px;height:auto;max-height:96px;object-fit:contain;object-position:left center;margin:0 0 18px}.status{display:inline-block;border-radius:999px;background:#dcfce7;color:#166534;padding:6px 12px;font-weight:800;font-size:12px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:22px 0}.box{border:1px solid #e5e7eb;border-radius:16px;background:#f8fafc;padding:14px}.label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:800}.value{font-weight:900;font-size:22px;margin-top:6px}.attachments{margin-top:24px;border:1px solid #dbe3f0;border-radius:16px;background:#f8fafc;padding:16px;break-inside:avoid}.attachments-text{margin-top:8px;color:#334155;line-height:1.6;white-space:normal}@media print{body{background:#fff;padding:0}.print-card{border:none;padding:0}}</style></head><body><div class="print-card"><img class="brand-logo" src="${brandLogo}" alt="Koenen Property Management Logo" /><div class="status">${record.finalized ? "Freigegeben / abgeschlossen" : "Entwurf"}</div><h1>Nebenkostenabrechnung Tiefgaragenstellplatz ${escapeHtml(record.year)}</h1><p>${escapeHtml(record.propertyLabel)} · ${escapeHtml(record.unitLabel)} · ${escapeHtml(formatDate(record.periodFrom))} bis ${escapeHtml(formatDate(record.periodTo))}</p><div class="meta"><div class="box"><div class="label">Vermieter</div><strong>${escapeHtml(record.landlordName || "—")}</strong><br/>${safeLandlordAddress}</div><div class="box"><div class="label">Mieter</div><strong>${escapeHtml(record.tenantName || "—")}</strong><br/>${safeTenantAddress}</div></div><div class="meta"><div class="box"><div class="label">Hausgeld Jahr</div><div class="value">${escapeHtml(formatCurrency(annual))}</div></div><div class="box"><div class="label">Umlagefähig</div><div class="value">${escapeHtml(formatCurrency(apportionable))}</div></div><div class="box"><div class="label">Vorauszahlungen</div><div class="value">${escapeHtml(formatCurrency(record.tenantPrepayments))}</div></div><div class="box"><div class="label">${balance >= 0 ? "Nachzahlung" : "Guthaben"}</div><div class="value">${escapeHtml(formatCurrency(Math.abs(balance)))}</div></div></div><table><thead><tr><th>Kostenart</th><th style="text-align:right">Ihr Anteil</th></tr></thead><tbody>${rows}<tr><td><strong>Summe umlagefähige Kosten</strong></td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(apportionable))}</td></tr><tr><td>Abzüglich geleistete Vorauszahlungen</td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(record.tenantPrepayments))}</td></tr><tr><td><strong>${balance >= 0 ? "Nachzahlung" : "Guthaben"}</strong></td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(Math.abs(balance)))}</td></tr></tbody></table>${attachmentsSection}<p style="margin-top:24px;color:#475569">${escapeHtml(record.footerNote || "")}</p></div></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"/><title>NK-Tiefgarage ${escapeHtml(record.year)}</title><style>body{font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:32px;color:#0f172a}table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1px solid #e5e7eb;text-align:left}.print-card{max-width:820px;margin:0 auto;background:#fff;border:1px solid #dbe3f0;border-radius:24px;padding:32px}.brand-logo{display:block;width:240px;height:auto;max-height:96px;object-fit:contain;object-position:left center;margin:0 0 18px}.status{display:inline-block;border-radius:999px;background:#eef2ff;color:#3730a3;padding:6px 12px;font-weight:800;font-size:12px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:22px 0}.box{border:1px solid #e5e7eb;border-radius:16px;background:#f8fafc;padding:14px}.label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:800}.value{font-weight:900;font-size:22px;margin-top:6px}.attachments{margin-top:24px;border:1px solid #dbe3f0;border-radius:16px;background:#f8fafc;padding:16px;break-inside:avoid}.attachments-text{margin-top:8px;color:#334155;line-height:1.6;white-space:normal}@media print{body{background:#fff;padding:0}.print-card{border:none;padding:0}}</style></head><body><div class="print-card"><img class="brand-logo" src="${brandLogo}" alt="Koenen Property Management Logo" /><div class="status">Status: ${escapeHtml(normalizeWorkflowStatus(record.workflowStatus, Boolean(record.finalized)))}</div><h1>Nebenkostenabrechnung Tiefgaragenstellplatz ${escapeHtml(record.year)}</h1><p>${escapeHtml(record.propertyLabel)} · ${escapeHtml(record.unitLabel)} · ${escapeHtml(formatDate(record.periodFrom))} bis ${escapeHtml(formatDate(record.periodTo))}</p><div class="meta"><div class="box"><div class="label">Vermieter</div><strong>${escapeHtml(record.landlordName || "—")}</strong><br/>${safeLandlordAddress}</div><div class="box"><div class="label">Mieter</div><strong>${escapeHtml(record.tenantName || "—")}</strong><br/>${safeTenantAddress}</div></div><div class="meta"><div class="box"><div class="label">Hausgeld Jahr</div><div class="value">${escapeHtml(formatCurrency(annual))}</div></div><div class="box"><div class="label">Umlagefähig</div><div class="value">${escapeHtml(formatCurrency(apportionable))}</div></div><div class="box"><div class="label">Vorauszahlungen</div><div class="value">${escapeHtml(formatCurrency(record.tenantPrepayments))}</div></div><div class="box"><div class="label">${balance >= 0 ? "Nachzahlung" : "Guthaben"}</div><div class="value">${escapeHtml(formatCurrency(Math.abs(balance)))}</div></div></div><table><thead><tr><th>Kostenart</th><th style="text-align:right">Ihr Anteil</th></tr></thead><tbody>${rows}<tr><td><strong>Summe umlagefähige Kosten</strong></td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(apportionable))}</td></tr><tr><td>Abzüglich geleistete Vorauszahlungen</td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(record.tenantPrepayments))}</td></tr><tr><td><strong>${balance >= 0 ? "Nachzahlung" : "Guthaben"}</strong></td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(Math.abs(balance)))}</td></tr></tbody></table>${attachmentsSection}<p style="margin-top:24px;color:#475569">${escapeHtml(record.footerNote || "")}</p></div></body></html>`;
   }
 
   function openTgRecordPdf(record: BillingYearData) {
@@ -1013,7 +1063,11 @@ export default function NebenkostenTiefgarage() {
   function finalizeActiveRecord() {
     const ok = window.confirm("Diese TG-Nebenkostenabrechnung abschließen und ins Archiv übernehmen?");
     if (!ok) return;
-    updateActiveRecord({ finalized: true, finalizedAt: new Date().toISOString() });
+    updateActiveRecord({
+      workflowStatus: "Freigegeben",
+      finalized: true,
+      finalizedAt: new Date().toISOString(),
+    });
   }
 
   return (
@@ -1124,8 +1178,25 @@ export default function NebenkostenTiefgarage() {
                 {activeRecord.unitCode} · {activeRecord.year}
               </div>
               <div style={{ ...pageStyles.mutedText, marginTop: 4 }}>
-                Status: {activeRecord.finalized ? "Abgeschlossen" : "Entwurf"}. Das Zurücksetzen betrifft ausschließlich diese Abrechnung.
+                Status und Bearbeitungsstand gelten ausschließlich für diesen Stellplatz und dieses Abrechnungsjahr.
               </div>
+              <label style={{ ...pageStyles.label, display: "block", marginTop: 14 }} htmlFor="tg-workflow-status">Bearbeitungsstatus</label>
+              <select
+                id="tg-workflow-status"
+                aria-label="Bearbeitungsstatus der aktiven Tiefgaragenabrechnung"
+                style={{
+                  ...pageStyles.input,
+                  marginTop: 6,
+                  fontWeight: 900,
+                  background: workflowStatusTheme(activeRecord.workflowStatus).background,
+                  color: workflowStatusTheme(activeRecord.workflowStatus).color,
+                  borderColor: workflowStatusTheme(activeRecord.workflowStatus).border,
+                }}
+                value={activeRecord.workflowStatus}
+                onChange={(event) => updateWorkflowStatus(event.target.value as TgWorkflowStatus)}
+              >
+                {TG_WORKFLOW_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
+              </select>
               <button type="button" style={{ ...pageStyles.accentButton, width: "100%", marginTop: 18 }} onClick={resetActiveYear}>
                 Aktive Abrechnung zurücksetzen
               </button>
@@ -1292,7 +1363,7 @@ export default function NebenkostenTiefgarage() {
         <div style={pageStyles.sectionHeader}>
           <div>
             <h2 style={pageStyles.sectionTitle}>Archiv abgeschlossener TG-Abrechnungen</h2>
-            <div style={pageStyles.mutedText}>Freigegebene Tiefgaragenabrechnungen werden hier nach Jahr archiviert und können erneut als PDF geöffnet werden.</div>
+            <div style={pageStyles.mutedText}>Freigegebene oder korrigierte Tiefgaragenabrechnungen werden hier nach Jahr archiviert und können erneut als PDF geöffnet werden.</div>
           </div>
           <button type="button" style={pageStyles.primaryButton} onClick={finalizeActiveRecord}>
             Aktive Abrechnung abschließen
