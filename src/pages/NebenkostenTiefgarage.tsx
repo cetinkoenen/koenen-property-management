@@ -232,26 +232,74 @@ const pageStyles: Record<string, CSSProperties> = {
     fontSize: 14,
     fontWeight: 800,
   },
-  yearBar: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
+  recordGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: 12,
   },
-  yearButton: {
-    border: "1px solid #cbd5e1",
-    borderRadius: 999,
-    padding: "8px 14px",
+  recordButton: {
+    minWidth: 0,
+    border: "1px solid #dbe3ec",
+    borderRadius: 16,
+    padding: 16,
     background: "#ffffff",
     color: "#0f172a",
     cursor: "pointer",
-    fontSize: 13,
-    fontWeight: 800,
+    textAlign: "left",
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
   },
-  activeYearButton: {
-    border: "1px solid #c7d2fe",
-    background: "#eef2ff",
-    color: "#3730a3",
+  activeRecordButton: {
+    border: "2px solid #4f46e5",
+    padding: 15,
+    background: "linear-gradient(145deg, #eef2ff 0%, #ffffff 72%)",
+    boxShadow: "0 8px 20px rgba(79, 70, 229, 0.10)",
+  },
+  recordButtonTop: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 12,
+  },
+  recordUnit: {
+    fontSize: 17,
+    lineHeight: 1.2,
+    fontWeight: 900,
+  },
+  recordYear: {
+    marginTop: 4,
+    fontSize: 13,
+    color: "#64748b",
+    fontWeight: 700,
+  },
+  statusBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    borderRadius: 999,
+    padding: "5px 8px",
+    fontSize: 10,
+    lineHeight: 1,
+    fontWeight: 900,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    whiteSpace: "nowrap",
+  },
+  managementGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+    gap: 16,
+  },
+  managementPanel: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 16,
+    padding: 18,
+    background: "#f8fafc",
+  },
+  managementFields: {
+    display: "grid",
+    gridTemplateColumns: "minmax(105px, 0.7fr) minmax(120px, 1fr)",
+    gap: 10,
+    marginTop: 14,
   },
   tableWrap: {
     overflowX: "auto",
@@ -554,22 +602,45 @@ function deriveRowShare(row: CostRow, yearData: BillingYearData) {
   return roundMoney((totalCost / totalUnits) * yourUnits);
 }
 
-function YearButton(props: {
+function BillingRecordButton(props: {
   active: boolean;
-  year: number;
-  unitCode: string;
+  record: BillingYearData;
   onClick: () => void;
 }) {
+  const statusText = props.record.finalized ? "Abgeschlossen" : "Entwurf";
+
   return (
     <button
       type="button"
       onClick={props.onClick}
+      aria-pressed={props.active}
+      aria-label={`${props.record.unitCode}, Abrechnungsjahr ${props.record.year}, ${statusText}`}
       style={{
-        ...pageStyles.yearButton,
-        ...(props.active ? pageStyles.activeYearButton : null),
+        ...pageStyles.recordButton,
+        ...(props.active ? pageStyles.activeRecordButton : null),
       }}
     >
-      {props.unitCode} · {props.year}
+      <span style={pageStyles.recordButtonTop}>
+        <span style={{ fontSize: 11, fontWeight: 900, color: props.active ? "#4338ca" : "#64748b", letterSpacing: "0.08em" }}>
+          STELLPLATZ
+        </span>
+        <span
+          style={{
+            ...pageStyles.statusBadge,
+            background: props.record.finalized ? "#dcfce7" : "#fef3c7",
+            color: props.record.finalized ? "#166534" : "#92400e",
+          }}
+        >
+          {statusText}
+        </span>
+      </span>
+      <span style={{ display: "block", ...pageStyles.recordUnit }}>{props.record.unitCode}</span>
+      <span style={{ display: "block", ...pageStyles.recordYear }}>Abrechnungsjahr {props.record.year}</span>
+      {props.active ? (
+        <span style={{ display: "block", marginTop: 12, color: "#4338ca", fontSize: 12, fontWeight: 900 }}>
+          Aktuell ausgewählt
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -976,41 +1047,78 @@ export default function NebenkostenTiefgarage() {
       <section style={pageStyles.section}>
         <div style={pageStyles.sectionHeader}>
           <div>
-            <h2 style={pageStyles.sectionTitle}>Jahre verwalten</h2>
-            <div style={pageStyles.mutedText}>Für jedes Jahr bleibt ein eigener Datensatz mit eigener Abrechnung erhalten.</div>
+            <h2 style={pageStyles.sectionTitle}>Abrechnungen verwalten</h2>
+            <div style={pageStyles.mutedText}>
+              Stellplatz und Jahr eindeutig auswählen, neue Abrechnungen anlegen oder den aktiven Entwurf zurücksetzen.
+            </div>
           </div>
-          <div style={pageStyles.yearBar}>
+          <span style={{ ...pageStyles.statusBadge, background: "#eef2ff", color: "#4338ca" }}>
+            Aktiv: {activeRecord.unitCode} · {activeRecord.year}
+          </span>
+        </div>
+        <div style={pageStyles.sectionBody}>
+          <div style={{ ...pageStyles.label, marginBottom: 10 }}>Vorhandene Abrechnungen</div>
+          <div style={pageStyles.recordGrid}>
             {records.map((record) => (
-              <YearButton
+              <BillingRecordButton
                 key={record.recordId}
-                year={record.year}
-                unitCode={record.unitCode}
+                record={record}
                 active={record.recordId === activeRecord.recordId}
                 onClick={() => setActiveRecordId(record.recordId)}
               />
             ))}
-            <select
-              aria-label="Stellplatz für neue Abrechnung"
-              style={{ ...pageStyles.input, width: 110 }}
-              value={newUnitInput}
-              onChange={(event) => setNewUnitInput(event.target.value)}
-            >
-              <option value="P250">P250</option>
-              <option value="P253">P253</option>
-              <option value="P254">P254</option>
-            </select>
-            <input
-              style={{ ...pageStyles.input, width: 110 }}
-              value={newYearInput}
-              onChange={(event) => setNewYearInput(event.target.value)}
-              placeholder="Jahr"
-            />
-            <button type="button" style={pageStyles.primaryButton} onClick={createNewYear}>
-              Jahr anlegen
-            </button>
-            <button type="button" style={pageStyles.accentButton} onClick={resetActiveYear}>
-              Aktives Jahr zurücksetzen
-            </button>
+          </div>
+
+          <div style={{ ...pageStyles.managementGrid, marginTop: 20 }}>
+            <div style={pageStyles.managementPanel}>
+              <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>Neue Abrechnung anlegen</div>
+              <div style={{ ...pageStyles.mutedText, marginTop: 4 }}>
+                Erzeugt einen getrennten Datensatz für den gewählten Stellplatz und das Abrechnungsjahr.
+              </div>
+              <div style={pageStyles.managementFields}>
+                <div>
+                  <label style={pageStyles.label} htmlFor="tg-new-unit">Stellplatz</label>
+                  <select
+                    id="tg-new-unit"
+                    aria-label="Stellplatz für neue Abrechnung"
+                    style={pageStyles.input}
+                    value={newUnitInput}
+                    onChange={(event) => setNewUnitInput(event.target.value)}
+                  >
+                    <option value="P250">P250</option>
+                    <option value="P253">P253</option>
+                    <option value="P254">P254</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={pageStyles.label} htmlFor="tg-new-year">Abrechnungsjahr</label>
+                  <input
+                    id="tg-new-year"
+                    inputMode="numeric"
+                    style={pageStyles.input}
+                    value={newYearInput}
+                    onChange={(event) => setNewYearInput(event.target.value)}
+                    placeholder="z. B. 2026"
+                  />
+                </div>
+              </div>
+              <button type="button" style={{ ...pageStyles.primaryButton, width: "100%", marginTop: 12 }} onClick={createNewYear}>
+                Neue Abrechnung anlegen
+              </button>
+            </div>
+
+            <div style={pageStyles.managementPanel}>
+              <div style={{ fontSize: 15, fontWeight: 900, color: "#0f172a" }}>Aktive Abrechnung</div>
+              <div style={{ marginTop: 12, fontSize: 22, fontWeight: 950, color: "#0f172a" }}>
+                {activeRecord.unitCode} · {activeRecord.year}
+              </div>
+              <div style={{ ...pageStyles.mutedText, marginTop: 4 }}>
+                Status: {activeRecord.finalized ? "Abgeschlossen" : "Entwurf"}. Das Zurücksetzen betrifft ausschließlich diese Abrechnung.
+              </div>
+              <button type="button" style={{ ...pageStyles.accentButton, width: "100%", marginTop: 18 }} onClick={resetActiveYear}>
+                Aktive Abrechnung zurücksetzen
+              </button>
+            </div>
           </div>
         </div>
       </section>
