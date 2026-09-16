@@ -179,6 +179,8 @@ type PortfolioRentalRow = {
   id: string;
   property_id: string;
   unit_id?: string | null;
+  unit_name?: string | null;
+  unit_type?: string | null;
   rent_type: string | null;
   rent_monthly: number | null;
   start_date: string | null;
@@ -379,8 +381,8 @@ function rentalMatchesUnit(rental: PortfolioRentalRow, unit: UnitDefinition): bo
   if (unit.rentalMatcher) return unit.rentalMatcher(rental);
 
   const unitText = normalizeReferenceText(`${unit.ref} ${unit.title}`);
-  const rentalText = normalizeReferenceText(`${rental.rent_type ?? ""} ${rental.unit_id ?? ""}`);
-  const compactRental = compactReferenceText(`${rental.rent_type ?? ""} ${rental.unit_id ?? ""}`);
+  const rentalText = normalizeReferenceText(`${rental.rent_type ?? ""} ${rental.unit_name ?? ""} ${rental.unit_type ?? ""} ${rental.unit_id ?? ""}`);
+  const compactRental = compactReferenceText(`${rental.rent_type ?? ""} ${rental.unit_name ?? ""} ${rental.unit_type ?? ""} ${rental.unit_id ?? ""}`);
   const compactUnit = compactReferenceText(`${unit.ref} ${unit.title}`);
   const rentalLooksGarage =
     rentalText.includes("garage") ||
@@ -965,7 +967,7 @@ function getUnitDefinitions(objectLabel: string): UnitDefinition[] {
         );
       },
       rentalMatcher: (rental: PortfolioRentalRow) => {
-        const text = compactReferenceText(`${rental.rent_type ?? ""} ${rental.unit_id ?? ""}`);
+        const text = compactReferenceText(`${rental.rent_type ?? ""} ${rental.unit_name ?? ""} ${rental.unit_type ?? ""} ${rental.unit_id ?? ""}`);
         const parkingCode = compactReferenceText(garage.ref.split(" - ")[0] ?? "");
         const unitCode = compactReferenceText(garage.ref.split(" - ")[1] ?? "");
         const title = compactReferenceText(garage.title);
@@ -1349,11 +1351,13 @@ export default function Mietuebersicht({
       setReportSourceErrors(old => ({ ...old, rentals: "" }));
       setPortfolioRentalsLoading(true);
       try {
-        const [propertiesRes, rentalsRes] = await Promise.all([
+        const [propertiesRes, unitsRes, rentalsRes] = await Promise.all([
           supabase.from("portfolio_properties").select("id,name,core_property_id"),
+          supabase.from("portfolio_units").select("id,name,unit_type,property_id"),
           supabase.from("portfolio_property_rentals").select("id,property_id,unit_id,rent_type,rent_monthly,start_date,end_date,created_at,updated_at"),
         ]);
         if (propertiesRes.error) throw propertiesRes.error;
+        if (unitsRes.error) throw unitsRes.error;
         if (rentalsRes.error) throw rentalsRes.error;
         if (cancelled) return;
         setPortfolioProperties(((propertiesRes.data ?? []) as PortfolioPropertyRow[]).map((row) => ({
@@ -1361,17 +1365,25 @@ export default function Mietuebersicht({
           name: row.name ?? null,
           core_property_id: row.core_property_id ? String(row.core_property_id) : null,
         })));
-        setPortfolioRentals(((rentalsRes.data ?? []) as PortfolioRentalRow[]).map((row) => ({
+        const unitsById = new Map(
+          ((unitsRes.data ?? []) as Array<{ id: string; name: string | null; unit_type: string | null }>).map((unit) => [String(unit.id), unit]),
+        );
+        setPortfolioRentals(((rentalsRes.data ?? []) as PortfolioRentalRow[]).map((row) => {
+          const portfolioUnit = row.unit_id ? unitsById.get(String(row.unit_id)) : undefined;
+          return ({
           id: String(row.id),
           property_id: String(row.property_id),
           unit_id: row.unit_id ?? null,
+          unit_name: portfolioUnit?.name ?? null,
+          unit_type: portfolioUnit?.unit_type ?? null,
           rent_type: row.rent_type ?? null,
           rent_monthly: row.rent_monthly == null ? null : Number(row.rent_monthly),
           start_date: row.start_date ?? null,
           end_date: row.end_date ?? null,
           created_at: row.created_at ?? null,
           updated_at: row.updated_at ?? null,
-        })));
+          });
+        }));
       } catch (error) {
         if (cancelled) return;
         setReportSourceErrors(old => ({ ...old, rentals: "Vermietungszeiträume konnten nicht geladen werden." }));
