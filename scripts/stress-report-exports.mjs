@@ -16,6 +16,8 @@ const financeCategories = await readFile(new URL("../src/lib/financeCategories.t
 const steuerCenter = await readFile(new URL("../src/pages/SteuerCenter.tsx", import.meta.url), "utf8");
 const tgBilling = await readFile(new URL("../src/pages/NebenkostenTiefgarage.tsx", import.meta.url), "utf8");
 const p250Migration = await readFile(new URL("../supabase/migrations/20260916110000_import_p250_2025_weg_statement.sql", import.meta.url), "utf8");
+const rosensteinParkingStartMigration = await readFile(new URL("../supabase/migrations/20260916123000_align_rosenstein_parking_rental_start.sql", import.meta.url), "utf8");
+const p250RentAmountMigration = await readFile(new URL("../supabase/migrations/20260916124500_fix_p250_2025_rent_amount.sql", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -137,9 +139,13 @@ assert.match(financeCategories, /Allgemeinstrom/, "Tiefgaragenstrom muss als eig
 assert.match(financeCategories, /Instandhaltungsrücklage/, "Rücklagenzuführungen müssen getrennt von sofort abzugsfähigen Ausgaben erfasst werden können");
 assert.match(tgBilling, /WEG-Eigentümerabrechnung/, "Die Tiefgaragenseite muss Eigentümer- und Mieterabrechnung sichtbar trennen");
 assert.match(tgBilling, /Steuerbuchung erst nach tatsächlicher Zahlung/, "Offene WEG-Forderungen dürfen nicht vor Zahlung als Ausgabe behandelt werden");
-assert.match(p250Migration, /'periodFrom', '2025-11-19'[\s\S]*'periodTo', '2025-12-31'/, "Die P250-Mieterabrechnung muss erst mit dem bestätigten Mietbeginn beginnen");
+assert.match(rosensteinParkingStartMigration, /'periodFrom', '2025-11-14'[\s\S]*'periodTo', '2025-12-31'/, "Die P250-Mieterabrechnung muss mit dem bestätigten Mietbeginn am 14.11.2025 beginnen");
 assert.match(p250Migration, /'wegStatementTotal', 24\.56[\s\S]*'wegOwnerPrepayments', 18\.85[\s\S]*'wegOwnerSettlement', 5\.71/, "Die WEG-Forderung muss centgenau aus Kosten und Vorauszahlungen gespeichert werden");
-assert.match(p250Migration, /Grundsteuer'[\s\S]*'totalCost', 0\.99[\s\S]*Tiefgaragenstrom'[\s\S]*'totalCost', 3\.88/, "Der Mieteranteil muss für 43 von 48 Tagen zeitanteilig berechnet werden");
+assert.match(rosensteinParkingStartMigration, /Grundsteuer'[\s\S]*'totalCost', 1\.11[\s\S]*Tiefgaragenstrom'[\s\S]*'totalCost', 4\.33/, "Der P250-Mieteranteil muss für den vollständigen Zeitraum von 48 Tagen 5,44 EUR betragen");
+assert.match(rosensteinParkingStartMigration, /unit\.name = 'Garage 1'[\s\S]*unit\.name = 'Garage 2'[\s\S]*unit\.name = 'Garage 3'/, "P250, P253 und P254 müssen über ihre drei zentralen TG-Einheiten aufgelöst werden");
+assert.match(rosensteinParkingStartMigration, /rent_monthly[\s\S]*date '2025-11-14'[\s\S]*date '2025-12-31'/, "Der fehlende P250-Vermietungszeitraum 2025 muss zentral ergänzt werden");
+assert.match(p250RentAmountMigration, /kaltmiete_laut_mietvertrag = 75[\s\S]*nebenkosten = 0[\s\S]*rental\.gesamt_mietkosten = 75[\s\S]*rental\.rent_monthly = 75/, "P250 muss in allen zentralen Mietbetragsfeldern konsistent 75 EUR führen");
+assert.match(p250RentAmountMigration, /unique \(property_id, unit_id, start_date, end_date, rent_monthly, rent_type\)/, "Der Vermietungszeitraum-Schlüssel muss die konkrete Einheit berücksichtigen");
 assert.match(p250Migration, /Verwaltergebühr Garage'[\s\S]*10\.33[\s\S]*Laufende Instandhaltung'[\s\S]*1\.66[\s\S]*Administrative Kosten'[\s\S]*0\.23/, "Nicht umlagefähige Eigentümerkosten müssen vollständig gespeichert werden");
 
-console.log("109 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("113 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
