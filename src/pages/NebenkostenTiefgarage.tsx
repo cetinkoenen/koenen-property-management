@@ -35,6 +35,7 @@ type BillingYearData = {
   totalUnits: number;
   yourUnits: number;
   footerNote: string;
+  attachmentNotes: string;
   wegStatementPeriodFrom?: string;
   wegStatementPeriodTo?: string;
   wegStatementTotal?: number;
@@ -424,6 +425,7 @@ function buildDefaultYear(year: number, requestedUnitCode = "P250"): BillingYear
     yourUnits: 1,
     footerNote:
       "Bitte prüfen Sie die Werte vor dem Versand. Diese Seite ist als kompakter Onepager für den Mieter gedacht.",
+    attachmentNotes: "",
     wegStatementPeriodFrom: "",
     wegStatementPeriodTo: "",
     wegStatementTotal: 0,
@@ -897,7 +899,11 @@ export default function NebenkostenTiefgarage() {
     const rows = record.apportionableRows.map((row) => `<tr><td>${escapeHtml(row.label)}</td><td style="text-align:right;font-weight:700">${escapeHtml(formatCurrency(deriveRowShare(row, record)))}</td></tr>`).join("");
     const safeLandlordAddress = escapeHtml(record.landlordAddress || "").replace(/\r?\n/g, "<br/>");
     const safeTenantAddress = escapeHtml(record.tenantAddress || "").replace(/\r?\n/g, "<br/>");
-    return `<!doctype html><html><head><meta charset="utf-8"/><title>NK-Tiefgarage ${escapeHtml(record.year)}</title><style>body{font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:32px;color:#0f172a}table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1px solid #e5e7eb;text-align:left}.print-card{max-width:820px;margin:0 auto;background:#fff;border:1px solid #dbe3f0;border-radius:24px;padding:32px}.brand-logo{display:block;width:240px;height:auto;max-height:96px;object-fit:contain;object-position:left center;margin:0 0 18px}.status{display:inline-block;border-radius:999px;background:#dcfce7;color:#166534;padding:6px 12px;font-weight:800;font-size:12px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:22px 0}.box{border:1px solid #e5e7eb;border-radius:16px;background:#f8fafc;padding:14px}.label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:800}.value{font-weight:900;font-size:22px;margin-top:6px}@media print{body{background:#fff;padding:0}.print-card{border:none;padding:0}}</style></head><body><div class="print-card"><img class="brand-logo" src="${brandLogo}" alt="Koenen Property Management Logo" /><div class="status">${record.finalized ? "Freigegeben / abgeschlossen" : "Entwurf"}</div><h1>Nebenkostenabrechnung Tiefgaragenstellplatz ${escapeHtml(record.year)}</h1><p>${escapeHtml(record.propertyLabel)} · ${escapeHtml(record.unitLabel)} · ${escapeHtml(formatDate(record.periodFrom))} bis ${escapeHtml(formatDate(record.periodTo))}</p><div class="meta"><div class="box"><div class="label">Vermieter</div><strong>${escapeHtml(record.landlordName || "—")}</strong><br/>${safeLandlordAddress}</div><div class="box"><div class="label">Mieter</div><strong>${escapeHtml(record.tenantName || "—")}</strong><br/>${safeTenantAddress}</div></div><div class="meta"><div class="box"><div class="label">Hausgeld Jahr</div><div class="value">${escapeHtml(formatCurrency(annual))}</div></div><div class="box"><div class="label">Umlagefähig</div><div class="value">${escapeHtml(formatCurrency(apportionable))}</div></div><div class="box"><div class="label">Vorauszahlungen</div><div class="value">${escapeHtml(formatCurrency(record.tenantPrepayments))}</div></div><div class="box"><div class="label">${balance >= 0 ? "Nachzahlung" : "Guthaben"}</div><div class="value">${escapeHtml(formatCurrency(Math.abs(balance)))}</div></div></div><table><thead><tr><th>Kostenart</th><th style="text-align:right">Ihr Anteil</th></tr></thead><tbody>${rows}<tr><td><strong>Summe umlagefähige Kosten</strong></td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(apportionable))}</td></tr><tr><td>Abzüglich geleistete Vorauszahlungen</td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(record.tenantPrepayments))}</td></tr><tr><td><strong>${balance >= 0 ? "Nachzahlung" : "Guthaben"}</strong></td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(Math.abs(balance)))}</td></tr></tbody></table><p style="margin-top:24px;color:#475569">${escapeHtml(record.footerNote || "")}</p></div></body></html>`;
+    const safeAttachmentNotes = escapeHtml(record.attachmentNotes || "").replace(/\r?\n/g, "<br/>");
+    const attachmentsSection = safeAttachmentNotes
+      ? `<section class="attachments"><div class="label">Anlagen und Nachweise</div><div class="attachments-text">${safeAttachmentNotes}</div></section>`
+      : "";
+    return `<!doctype html><html><head><meta charset="utf-8"/><title>NK-Tiefgarage ${escapeHtml(record.year)}</title><style>body{font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:32px;color:#0f172a}table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1px solid #e5e7eb;text-align:left}.print-card{max-width:820px;margin:0 auto;background:#fff;border:1px solid #dbe3f0;border-radius:24px;padding:32px}.brand-logo{display:block;width:240px;height:auto;max-height:96px;object-fit:contain;object-position:left center;margin:0 0 18px}.status{display:inline-block;border-radius:999px;background:#dcfce7;color:#166534;padding:6px 12px;font-weight:800;font-size:12px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:22px 0}.box{border:1px solid #e5e7eb;border-radius:16px;background:#f8fafc;padding:14px}.label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:800}.value{font-weight:900;font-size:22px;margin-top:6px}.attachments{margin-top:24px;border:1px solid #dbe3f0;border-radius:16px;background:#f8fafc;padding:16px;break-inside:avoid}.attachments-text{margin-top:8px;color:#334155;line-height:1.6;white-space:normal}@media print{body{background:#fff;padding:0}.print-card{border:none;padding:0}}</style></head><body><div class="print-card"><img class="brand-logo" src="${brandLogo}" alt="Koenen Property Management Logo" /><div class="status">${record.finalized ? "Freigegeben / abgeschlossen" : "Entwurf"}</div><h1>Nebenkostenabrechnung Tiefgaragenstellplatz ${escapeHtml(record.year)}</h1><p>${escapeHtml(record.propertyLabel)} · ${escapeHtml(record.unitLabel)} · ${escapeHtml(formatDate(record.periodFrom))} bis ${escapeHtml(formatDate(record.periodTo))}</p><div class="meta"><div class="box"><div class="label">Vermieter</div><strong>${escapeHtml(record.landlordName || "—")}</strong><br/>${safeLandlordAddress}</div><div class="box"><div class="label">Mieter</div><strong>${escapeHtml(record.tenantName || "—")}</strong><br/>${safeTenantAddress}</div></div><div class="meta"><div class="box"><div class="label">Hausgeld Jahr</div><div class="value">${escapeHtml(formatCurrency(annual))}</div></div><div class="box"><div class="label">Umlagefähig</div><div class="value">${escapeHtml(formatCurrency(apportionable))}</div></div><div class="box"><div class="label">Vorauszahlungen</div><div class="value">${escapeHtml(formatCurrency(record.tenantPrepayments))}</div></div><div class="box"><div class="label">${balance >= 0 ? "Nachzahlung" : "Guthaben"}</div><div class="value">${escapeHtml(formatCurrency(Math.abs(balance)))}</div></div></div><table><thead><tr><th>Kostenart</th><th style="text-align:right">Ihr Anteil</th></tr></thead><tbody>${rows}<tr><td><strong>Summe umlagefähige Kosten</strong></td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(apportionable))}</td></tr><tr><td>Abzüglich geleistete Vorauszahlungen</td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(record.tenantPrepayments))}</td></tr><tr><td><strong>${balance >= 0 ? "Nachzahlung" : "Guthaben"}</strong></td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(Math.abs(balance)))}</td></tr></tbody></table>${attachmentsSection}<p style="margin-top:24px;color:#475569">${escapeHtml(record.footerNote || "")}</p></div></body></html>`;
   }
 
   function openTgRecordPdf(record: BillingYearData) {
@@ -1005,6 +1011,31 @@ export default function NebenkostenTiefgarage() {
             <button type="button" style={pageStyles.accentButton} onClick={resetActiveYear}>
               Aktives Jahr zurücksetzen
             </button>
+          </div>
+        </div>
+      </section>
+
+      <section style={pageStyles.section}>
+        <div style={pageStyles.sectionHeader}>
+          <div>
+            <h2 style={pageStyles.sectionTitle}>Anlagen und Nachweise</h2>
+            <div style={pageStyles.mutedText}>
+              Dokumentieren Sie hier alle Unterlagen, die zusammen mit dieser Nebenkostenabrechnung an den Mieter versendet werden.
+              Der Text wird stellplatz- und jahresbezogen gespeichert und erscheint im Onepager sowie im PDF.
+            </div>
+          </div>
+        </div>
+        <div style={pageStyles.sectionBody}>
+          <label style={pageStyles.label} htmlFor="tg-attachment-notes">Mitgesendete Dokumente / ergänzende Nachweise</label>
+          <textarea
+            id="tg-attachment-notes"
+            style={{ ...pageStyles.textarea, minHeight: 140 }}
+            value={activeRecord.attachmentNotes}
+            onChange={(event) => updateActiveRecord({ attachmentNotes: event.target.value })}
+            placeholder={"z. B.\n– WEG-Jahresabrechnung 2025\n– Einzelabrechnung Tiefgaragenstellplatz\n– Beleg Grundsteuer\n– Nachweis Tiefgaragenstrom"}
+          />
+          <div style={{ ...pageStyles.mutedText, marginTop: 8 }}>
+            Pro Zeile kann ein Dokument oder Hinweis aufgeführt werden. Das Feld ist optional.
           </div>
         </div>
       </section>
@@ -1430,6 +1461,14 @@ export default function NebenkostenTiefgarage() {
               </div>
               {activeRecord.footerNote ? <div style={{ marginTop: 14 }}>{activeRecord.footerNote}</div> : null}
             </div>
+            {activeRecord.attachmentNotes.trim() ? (
+              <div style={{ marginTop: 22, border: "1px solid #dbe3f0", borderRadius: 16, padding: 16, background: "#f8fafc" }}>
+                <div style={pageStyles.summaryLabel}>Anlagen und Nachweise</div>
+                <div style={{ marginTop: 8, whiteSpace: "pre-wrap", lineHeight: 1.65, color: "#334155" }}>
+                  {activeRecord.attachmentNotes}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </section>

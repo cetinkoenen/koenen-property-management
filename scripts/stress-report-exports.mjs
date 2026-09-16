@@ -19,6 +19,7 @@ const p250Migration = await readFile(new URL("../supabase/migrations/20260916110
 const rosensteinParkingStartMigration = await readFile(new URL("../supabase/migrations/20260916123000_align_rosenstein_parking_rental_start.sql", import.meta.url), "utf8");
 const p250RentAmountMigration = await readFile(new URL("../supabase/migrations/20260916124500_fix_p250_2025_rent_amount.sql", import.meta.url), "utf8");
 const parkingBillingMigration = await readFile(new URL("../supabase/migrations/20260916143000_prepare_p253_p254_utility_billing.sql", import.meta.url), "utf8");
+const tgAttachmentMigration = await readFile(new URL("../supabase/migrations/20260916151000_add_tg_attachment_notes.sql", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -153,5 +154,10 @@ assert.match(tgBilling, /P250[\s\S]*P253[\s\S]*P254/, "Beim Anlegen müssen alle
 assert.match(parkingBillingMigration, /'P253'.*'E008440000122'[\s\S]*'P254'.*'E008440000123'/, "P253 und P254 müssen mit ihren eindeutigen Referenzen vorbereitet werden");
 assert.match(parkingBillingMigration, /'periodFrom', '2025-11-14'[\s\S]*'periodTo', '2025-12-31'/, "P253 und P254 müssen den bestätigten Abrechnungsbeginn übernehmen");
 assert.match(parkingBillingMigration, /Grundsteuer'[\s\S]*'totalCost', 0[\s\S]*Tiefgaragenstrom'[\s\S]*'totalCost', 0/, "Die vorbereiteten Kostenfelder müssen leer beziehungsweise nullwertig und editierbar bleiben");
+assert.match(tgBilling, /attachmentNotes: string/, "Jede TG-Abrechnung muss eine eigene Anlagen- und Nachweisliste speichern können");
+assert.match(tgBilling, /updateActiveRecord\(\{ attachmentNotes: event\.target\.value \}\)/, "Das Anlagenfeld muss stellplatz- und jahresbezogen editierbar sein");
+assert.match(tgBilling, /safeAttachmentNotes[\s\S]*attachmentsSection/, "Anlagen und Nachweise müssen sicher maskiert in den PDF-Inhalt übernommen werden");
+assert.match(tgBilling, /activeRecord\.attachmentNotes\.trim\(\)/, "Die Onepager-Vorschau muss die dokumentierten Anlagen anzeigen");
+assert.match(tgAttachmentMigration, /record \? 'attachmentNotes'[\s\S]*jsonb_build_object\('attachmentNotes', ''\)/, "Auch vorhandene TG-Abrechnungen müssen das optionale Anlagenfeld zentral erhalten");
 
-console.log("118 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("123 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
