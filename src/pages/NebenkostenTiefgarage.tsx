@@ -17,6 +17,8 @@ type CostRow = {
 };
 
 type BillingYearData = {
+  recordId: string;
+  unitCode: string;
   year: number;
   finalized?: boolean;
   finalizedAt?: string;
@@ -384,19 +386,38 @@ function monthsInclusive(periodFrom: string, periodTo: string) {
   return (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth()) + 1;
 }
 
-function buildDefaultYear(year: number): BillingYearData {
+const PARKING_REFERENCES: Record<string, string> = {
+  P250: "E008440000121",
+  P253: "E008440000122",
+  P254: "E008440000123",
+};
+
+function normalizeUnitCode(value: unknown): string {
+  const match = String(value ?? "").toUpperCase().match(/P(?:250|253|254)/);
+  return match?.[0] ?? "P250";
+}
+
+function unitCodeFromRecord(record: Partial<BillingYearData>): string {
+  return normalizeUnitCode(`${record.unitCode ?? ""} ${record.unitLabel ?? ""} ${record.propertyLabel ?? ""}`);
+}
+
+function buildDefaultYear(year: number, requestedUnitCode = "P250"): BillingYearData {
+  const unitCode = normalizeUnitCode(requestedUnitCode);
+  const reference = PARKING_REFERENCES[unitCode] ?? "";
   return {
+    recordId: `${unitCode.toLowerCase()}-${year}`,
+    unitCode,
     year,
     finalized: false,
     finalizedAt: "",
-    propertyLabel: "Tiefgaragenstellplatz",
-    unitLabel: "Stellplatz 1",
-    periodFrom: `${year}-01-01`,
+    propertyLabel: `Rosenstein Str. 25 · ${unitCode}${reference ? ` · ${reference}` : ""}`,
+    unitLabel: `Tiefgaragenstellplatz ${unitCode}`,
+    periodFrom: year === 2025 ? `${year}-11-14` : `${year}-01-01`,
     periodTo: `${year}-12-31`,
     monthlyHausgeld: 0,
     tenantPrepayments: 0,
-    landlordName: "",
-    landlordAddress: "",
+    landlordName: "Nihal Könen",
+    landlordAddress: "Hohenloher Str. 78/1\n74243 Langenbrettach",
     tenantName: "",
     tenantAddress: "",
     totalUnits: 1,
@@ -416,7 +437,7 @@ function buildDefaultYear(year: number): BillingYearData {
     section35aLaborShare: 0,
     apportionableRows: [
       {
-        id: createId(),
+        id: `${unitCode.toLowerCase()}-${year}-hausgeld`,
         label: "Hausgeld / TG (Jahressumme)",
         totalCost: 0,
         key: "Einheiten",
@@ -426,7 +447,7 @@ function buildDefaultYear(year: number): BillingYearData {
         autoMode: "annualHausgeld",
       },
       {
-        id: createId(),
+        id: `${unitCode.toLowerCase()}-${year}-strom`,
         label: "Strom / Beleuchtung",
         totalCost: 0,
         key: "Einheiten",
@@ -435,7 +456,7 @@ function buildDefaultYear(year: number): BillingYearData {
         note: "Optional",
       },
       {
-        id: createId(),
+        id: `${unitCode.toLowerCase()}-${year}-sonstiges`,
         label: "Reinigung / Sonstiges",
         totalCost: 0,
         key: "Einheiten",
@@ -446,7 +467,7 @@ function buildDefaultYear(year: number): BillingYearData {
     ],
     nonApportionableRows: [
       {
-        id: createId(),
+        id: `${unitCode.toLowerCase()}-${year}-ruecklage`,
         label: "Rücklage / Instandhaltung",
         totalCost: 0,
         key: "Direktbetrag",
@@ -455,7 +476,7 @@ function buildDefaultYear(year: number): BillingYearData {
         note: "Nur interne Übersicht",
       },
       {
-        id: createId(),
+        id: `${unitCode.toLowerCase()}-${year}-verwaltung`,
         label: "Verwaltung",
         totalCost: 0,
         key: "Direktbetrag",
@@ -481,12 +502,7 @@ function loadLegacyStoredYears(): BillingYearData[] {
       return [buildDefaultYear(new Date().getFullYear())];
     }
 
-    return parsed.records
-      .map((record) => ({
-        ...buildDefaultYear(toNumber(record.year, new Date().getFullYear())),
-        ...record,
-      }))
-      .sort((a, b) => a.year - b.year);
+    return normalizeBillingRecords(parsed.records);
   } catch (error) {
     console.error("Nebenkosten-TG localStorage konnte nicht gelesen werden", error);
     return [buildDefaultYear(new Date().getFullYear())];
@@ -496,12 +512,22 @@ function loadLegacyStoredYears(): BillingYearData[] {
 function normalizeStoredYears(value: unknown): BillingYearData[] {
   const parsed = value as Partial<StoredPayload> | null;
   if (!parsed || !Array.isArray(parsed.records) || parsed.records.length === 0) return [];
-  return parsed.records
-    .map((record) => ({
-      ...buildDefaultYear(toNumber(record.year, new Date().getFullYear())),
-      ...record,
-    }))
-    .sort((a, b) => a.year - b.year);
+  return normalizeBillingRecords(parsed.records);
+}
+
+function normalizeBillingRecords(records: Array<Partial<BillingYearData>>): BillingYearData[] {
+  return records
+    .map((record) => {
+      const year = toNumber(record.year, new Date().getFullYear());
+      const unitCode = unitCodeFromRecord(record);
+      return {
+        ...buildDefaultYear(year, unitCode),
+        ...record,
+        recordId: String(record.recordId ?? `${unitCode.toLowerCase()}-${year}`),
+        unitCode,
+      };
+    })
+    .sort((a, b) => a.year - b.year || a.unitCode.localeCompare(b.unitCode));
 }
 
 function deriveRowTotalCost(row: CostRow, yearData: BillingYearData) {
@@ -529,6 +555,7 @@ function deriveRowShare(row: CostRow, yearData: BillingYearData) {
 function YearButton(props: {
   active: boolean;
   year: number;
+  unitCode: string;
   onClick: () => void;
 }) {
   return (
@@ -540,7 +567,7 @@ function YearButton(props: {
         ...(props.active ? pageStyles.activeYearButton : null),
       }}
     >
-      {props.year}
+      {props.unitCode} · {props.year}
     </button>
   );
 }
@@ -656,13 +683,18 @@ function SummaryValue(props: { label: string; value: string; tone?: "default" | 
 }
 
 export default function NebenkostenTiefgarage() {
-  const [records, setRecords] = useState<BillingYearData[]>(() => [buildDefaultYear(new Date().getFullYear())]);
-  const [activeYear, setActiveYear] = useState<number>(new Date().getFullYear());
+  const initialRecord = useMemo(() => buildDefaultYear(new Date().getFullYear()), []);
+  const [records, setRecords] = useState<BillingYearData[]>(() => [initialRecord]);
+  const [activeRecordId, setActiveRecordId] = useState<string>(initialRecord.recordId);
   const [newYearInput, setNewYearInput] = useState<string>(String(new Date().getFullYear() + 1));
+  const [newUnitInput, setNewUnitInput] = useState<string>("P250");
   const [nkEntries, setNkEntries] = useState<NkRelevantEntry[]>([]);
   const [nkLoading, setNkLoading] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
   const [storageError, setStorageError] = useState("");
+  const activeRecord = useMemo(() => {
+    return records.find((record) => record.recordId === activeRecordId) ?? records[0] ?? initialRecord;
+  }, [records, activeRecordId, initialRecord]);
 
   useEffect(() => {
     let alive = true;
@@ -685,14 +717,14 @@ export default function NebenkostenTiefgarage() {
       const remoteRecords = normalizeStoredYears(data?.data);
       if (remoteRecords.length) {
         setRecords(remoteRecords);
-        setActiveYear(remoteRecords[0].year);
+        setActiveRecordId(remoteRecords[0].recordId);
         setStorageReady(true);
         return;
       }
 
       const legacyRecords = loadLegacyStoredYears();
       setRecords(legacyRecords);
-      setActiveYear(legacyRecords[0]?.year ?? new Date().getFullYear());
+      setActiveRecordId(legacyRecords[0]?.recordId ?? initialRecord.recordId);
       const { error: migrationError } = await supabase.from(BILLING_TABLE).upsert({
         object_id: BILLING_OBJECT_ID,
         year: BILLING_SCOPE,
@@ -711,7 +743,7 @@ export default function NebenkostenTiefgarage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [initialRecord.recordId]);
 
   useEffect(() => {
     if (!storageReady) return;
@@ -731,7 +763,7 @@ export default function NebenkostenTiefgarage() {
     async function loadNk() {
       setNkLoading(true);
       try {
-        const rows = await listNkRelevantEntries(activeYear);
+        const rows = await listNkRelevantEntries(activeRecord.year);
         if (alive) setNkEntries(rows);
       } catch {
         if (alive) setNkEntries([]);
@@ -743,11 +775,7 @@ export default function NebenkostenTiefgarage() {
     return () => {
       alive = false;
     };
-  }, [activeYear]);
-
-  const activeRecord = useMemo(() => {
-    return records.find((record) => record.year === activeYear) ?? records[0] ?? buildDefaultYear(new Date().getFullYear());
-  }, [records, activeYear]);
+  }, [activeRecord.year]);
 
   const monthCount = monthsInclusive(activeRecord.periodFrom, activeRecord.periodTo);
   const annualHausgeld = roundMoney(activeRecord.monthlyHausgeld * monthCount);
@@ -776,7 +804,7 @@ export default function NebenkostenTiefgarage() {
 
   function updateActiveRecord(patch: Partial<BillingYearData>) {
     setRecords((current) =>
-      current.map((record) => (record.year === activeRecord.year ? { ...record, ...patch } : record)),
+      current.map((record) => (record.recordId === activeRecord.recordId ? { ...record, ...patch } : record)),
     );
   }
 
@@ -837,22 +865,24 @@ export default function NebenkostenTiefgarage() {
       return;
     }
 
-    if (records.some((record) => record.year === nextYear)) {
-      setActiveYear(nextYear);
+    const targetUnitCode = normalizeUnitCode(newUnitInput);
+    const existing = records.find((record) => record.year === nextYear && record.unitCode === targetUnitCode);
+    if (existing) {
+      setActiveRecordId(existing.recordId);
       return;
     }
 
-    const nextRecord = buildDefaultYear(nextYear);
-    const nextRecords = [...records, nextRecord].sort((a, b) => a.year - b.year);
+    const nextRecord = buildDefaultYear(nextYear, targetUnitCode);
+    const nextRecords = [...records, nextRecord].sort((a, b) => a.year - b.year || a.unitCode.localeCompare(b.unitCode));
     setRecords(nextRecords);
-    setActiveYear(nextYear);
+    setActiveRecordId(nextRecord.recordId);
   }
 
   function resetActiveYear() {
     const shouldReset = window.confirm(`Möchtest du die Daten für ${activeRecord.year} wirklich zurücksetzen?`);
     if (!shouldReset) return;
 
-    updateActiveRecord(buildDefaultYear(activeRecord.year));
+    updateActiveRecord(buildDefaultYear(activeRecord.year, activeRecord.unitCode));
   }
 
   function openPrintPreview() {
@@ -917,6 +947,7 @@ export default function NebenkostenTiefgarage() {
         <aside style={pageStyles.heroCard}>
           <div style={pageStyles.summaryGrid}>
             <SummaryValue label="Aktives Jahr" value={String(activeRecord.year)} />
+            <SummaryValue label="Aktiver Stellplatz" value={activeRecord.unitCode} />
             <SummaryValue label="Monate im Zeitraum" value={String(monthCount)} />
             <SummaryValue label="Jahres-Hausgeld" value={formatCurrency(annualHausgeld)} />
             <SummaryValue label="Mieter-Vorauszahlungen" value={formatCurrency(activeRecord.tenantPrepayments)} />
@@ -945,12 +976,23 @@ export default function NebenkostenTiefgarage() {
           <div style={pageStyles.yearBar}>
             {records.map((record) => (
               <YearButton
-                key={record.year}
+                key={record.recordId}
                 year={record.year}
-                active={record.year === activeYear}
-                onClick={() => setActiveYear(record.year)}
+                unitCode={record.unitCode}
+                active={record.recordId === activeRecord.recordId}
+                onClick={() => setActiveRecordId(record.recordId)}
               />
             ))}
+            <select
+              aria-label="Stellplatz für neue Abrechnung"
+              style={{ ...pageStyles.input, width: 110 }}
+              value={newUnitInput}
+              onChange={(event) => setNewUnitInput(event.target.value)}
+            >
+              <option value="P250">P250</option>
+              <option value="P253">P253</option>
+              <option value="P254">P254</option>
+            </select>
             <input
               style={{ ...pageStyles.input, width: 110 }}
               value={newYearInput}
@@ -1034,7 +1076,7 @@ export default function NebenkostenTiefgarage() {
             <div style={pageStyles.mutedText}>
               {nkLoading
                 ? "Lade markierte NK-Buchungen..."
-                : `${nkEntries.length} markierte Buchungen im Jahr ${activeYear} · Ausgaben ${formatCurrency(nkEntries.filter((entry) => entry.entry_type === "expense").reduce((sum, entry) => sum + Math.abs(entry.amount), 0))}`}
+                : `${nkEntries.length} markierte Buchungen im Jahr ${activeRecord.year} · Ausgaben ${formatCurrency(nkEntries.filter((entry) => entry.entry_type === "expense").reduce((sum, entry) => sum + Math.abs(entry.amount), 0))}`}
             </div>
           </div>
           <button type="button" style={pageStyles.primaryButton} onClick={importNkEntriesToTg} disabled={nkEntries.length === 0}>
@@ -1064,7 +1106,7 @@ export default function NebenkostenTiefgarage() {
                 const apportionable = roundMoney(record.apportionableRows.reduce((sum, row) => sum + deriveRowShare(row, record), 0));
                 const balance = roundMoney(apportionable - record.tenantPrepayments);
                 return (
-                  <div key={`archive-${record.year}`} style={{ border: "1px solid #bbf7d0", background: "#f0fdf4", borderRadius: 20, padding: 16 }}>
+                  <div key={`archive-${record.recordId}`} style={{ border: "1px solid #bbf7d0", background: "#f0fdf4", borderRadius: 20, padding: 16 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                       <div>
                         <div style={{ display: "inline-block", borderRadius: 999, background: "#dcfce7", color: "#166534", padding: "5px 10px", fontSize: 12, fontWeight: 900 }}>Freigegeben</div>

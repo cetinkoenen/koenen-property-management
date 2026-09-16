@@ -18,6 +18,7 @@ const tgBilling = await readFile(new URL("../src/pages/NebenkostenTiefgarage.tsx
 const p250Migration = await readFile(new URL("../supabase/migrations/20260916110000_import_p250_2025_weg_statement.sql", import.meta.url), "utf8");
 const rosensteinParkingStartMigration = await readFile(new URL("../supabase/migrations/20260916123000_align_rosenstein_parking_rental_start.sql", import.meta.url), "utf8");
 const p250RentAmountMigration = await readFile(new URL("../supabase/migrations/20260916124500_fix_p250_2025_rent_amount.sql", import.meta.url), "utf8");
+const parkingBillingMigration = await readFile(new URL("../supabase/migrations/20260916143000_prepare_p253_p254_utility_billing.sql", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -147,5 +148,10 @@ assert.match(rosensteinParkingStartMigration, /rent_monthly[\s\S]*date '2025-11-
 assert.match(p250RentAmountMigration, /kaltmiete_laut_mietvertrag = 75[\s\S]*nebenkosten = 0[\s\S]*rental\.gesamt_mietkosten = 75[\s\S]*rental\.rent_monthly = 75/, "P250 muss in allen zentralen Mietbetragsfeldern konsistent 75 EUR führen");
 assert.match(p250RentAmountMigration, /unique \(property_id, unit_id, start_date, end_date, rent_monthly, rent_type\)/, "Der Vermietungszeitraum-Schlüssel muss die konkrete Einheit berücksichtigen");
 assert.match(p250Migration, /Verwaltergebühr Garage'[\s\S]*10\.33[\s\S]*Laufende Instandhaltung'[\s\S]*1\.66[\s\S]*Administrative Kosten'[\s\S]*0\.23/, "Nicht umlagefähige Eigentümerkosten müssen vollständig gespeichert werden");
+assert.match(tgBilling, /record\.recordId === activeRecord\.recordId/, "Mehrere Stellplatzabrechnungen desselben Jahres dürfen sich nicht gegenseitig überschreiben");
+assert.match(tgBilling, /P250[\s\S]*P253[\s\S]*P254/, "Beim Anlegen müssen alle drei Rosenstein-Stellplätze auswählbar sein");
+assert.match(parkingBillingMigration, /'P253'.*'E008440000122'[\s\S]*'P254'.*'E008440000123'/, "P253 und P254 müssen mit ihren eindeutigen Referenzen vorbereitet werden");
+assert.match(parkingBillingMigration, /'periodFrom', '2025-11-14'[\s\S]*'periodTo', '2025-12-31'/, "P253 und P254 müssen den bestätigten Abrechnungsbeginn übernehmen");
+assert.match(parkingBillingMigration, /Grundsteuer'[\s\S]*'totalCost', 0[\s\S]*Tiefgaragenstrom'[\s\S]*'totalCost', 0/, "Die vorbereiteten Kostenfelder müssen leer beziehungsweise nullwertig und editierbar bleiben");
 
-console.log("113 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("118 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
