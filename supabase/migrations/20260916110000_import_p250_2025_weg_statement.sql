@@ -43,7 +43,7 @@ begin
           'landlordName', 'Nihal Könen',
           'landlordAddress', E'Hohenloher Str. 78/1\n74243 Langenbrettach',
           'tenantName', 'Miriam Frommer',
-          'tenantAddress', E'Rosenstein Str. 25\n70191 Stuttgart',
+          'tenantAddress', E'Rosenstein Straße 29\n70191 Stuttgart',
           'totalUnits', 1,
           'yourUnits', 1,
           'footerNote', 'Entwurf auf Grundlage der WEG-Abrechnung 2025. Der WEG-Zeitraum 14.11.–31.12.2025 umfasst 48 Tage; wegen Mietbeginn am 19.11.2025 wurden die umlagefähigen Kosten zeitanteilig mit 43/48 angesetzt. Vor Versand ist die mietvertragliche Umlagevereinbarung zu prüfen.',
