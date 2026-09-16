@@ -258,14 +258,15 @@ const pageStyles: Record<string, CSSProperties> = {
   },
   recordGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-    gap: 12,
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 260px), 1fr))",
+    gap: 14,
   },
   recordButton: {
     minWidth: 0,
+    minHeight: 142,
     border: "1px solid #dbe3ec",
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 18,
+    padding: 18,
     background: "#ffffff",
     color: "#0f172a",
     cursor: "pointer",
@@ -274,7 +275,7 @@ const pageStyles: Record<string, CSSProperties> = {
   },
   activeRecordButton: {
     border: "2px solid #4f46e5",
-    padding: 15,
+    padding: 17,
     background: "linear-gradient(145deg, #eef2ff 0%, #ffffff 72%)",
     boxShadow: "0 8px 20px rgba(79, 70, 229, 0.10)",
   },
@@ -282,11 +283,12 @@ const pageStyles: Record<string, CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
-    marginBottom: 12,
+    gap: 8,
+    flexWrap: "wrap",
+    marginBottom: 14,
   },
   recordUnit: {
-    fontSize: 17,
+    fontSize: 21,
     lineHeight: 1.2,
     fontWeight: 900,
   },
@@ -300,12 +302,12 @@ const pageStyles: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     borderRadius: 999,
-    padding: "5px 8px",
-    fontSize: 10,
+    padding: "4px 7px",
+    fontSize: 9,
     lineHeight: 1,
     fontWeight: 900,
     textTransform: "uppercase",
-    letterSpacing: "0.06em",
+    letterSpacing: "0.035em",
     whiteSpace: "nowrap",
   },
   managementGrid: {
@@ -651,8 +653,19 @@ function BillingRecordButton(props: {
       }}
     >
       <span style={pageStyles.recordButtonTop}>
-        <span style={{ fontSize: 11, fontWeight: 900, color: props.active ? "#4338ca" : "#64748b", letterSpacing: "0.08em" }}>
+        <span style={{ fontSize: 10, fontWeight: 900, color: props.active ? "#4338ca" : "#64748b", letterSpacing: "0.08em" }}>
           STELLPLATZ
+        </span>
+        {props.active ? (
+          <span style={{ ...pageStyles.statusBadge, background: "#eef2ff", color: "#4338ca", border: "1px solid #c7d2fe" }}>
+            Aktiv
+          </span>
+        ) : null}
+      </span>
+      <span style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <span>
+          <span style={{ display: "block", ...pageStyles.recordUnit }}>{props.record.unitCode}</span>
+          <span style={{ display: "block", ...pageStyles.recordYear }}>Abrechnung {props.record.year}</span>
         </span>
         <span
           style={{
@@ -665,13 +678,6 @@ function BillingRecordButton(props: {
           {statusText}
         </span>
       </span>
-      <span style={{ display: "block", ...pageStyles.recordUnit }}>{props.record.unitCode}</span>
-      <span style={{ display: "block", ...pageStyles.recordYear }}>Abrechnungsjahr {props.record.year}</span>
-      {props.active ? (
-        <span style={{ display: "block", marginTop: 12, color: "#4338ca", fontSize: 12, fontWeight: 900 }}>
-          Aktuell ausgewählt
-        </span>
-      ) : null}
     </button>
   );
 }
@@ -790,7 +796,7 @@ export default function NebenkostenTiefgarage() {
   const initialRecord = useMemo(() => buildDefaultYear(new Date().getFullYear()), []);
   const [records, setRecords] = useState<BillingYearData[]>(() => [initialRecord]);
   const [activeRecordId, setActiveRecordId] = useState<string>(initialRecord.recordId);
-  const [newYearInput, setNewYearInput] = useState<string>(String(new Date().getFullYear() + 1));
+  const [newYearInput, setNewYearInput] = useState<string>(String(new Date().getFullYear()));
   const [newUnitInput, setNewUnitInput] = useState<string>("P250");
   const [nkEntries, setNkEntries] = useState<NkRelevantEntry[]>([]);
   const [nkLoading, setNkLoading] = useState(false);
