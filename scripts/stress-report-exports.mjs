@@ -14,6 +14,8 @@ const loanRatePlanService = await readFile(new URL("../src/services/loanRatePlan
 const nkClassification = await readFile(new URL("../src/lib/nkClassification.ts", import.meta.url), "utf8");
 const financeCategories = await readFile(new URL("../src/lib/financeCategories.ts", import.meta.url), "utf8");
 const steuerCenter = await readFile(new URL("../src/pages/SteuerCenter.tsx", import.meta.url), "utf8");
+const tgBilling = await readFile(new URL("../src/pages/NebenkostenTiefgarage.tsx", import.meta.url), "utf8");
+const p250Migration = await readFile(new URL("../supabase/migrations/20260916110000_import_p250_2025_weg_statement.sql", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -131,4 +133,13 @@ assert.match(app, /Neue Inserat-Nachweise \(z\.B\. Immobilienscout24-PDF\)/, "Di
 assert.match(app, /category: "expose"[\s\S]*Leerstand_Nachweise/, "Inserat-Nachweise müssen zentral gespeichert und dem Objektordner im ZIP zugeordnet werden");
 assert.match(app, /Bodenrichtwert \(€\/m²\)[\s\S]*Primärenergiebedarf \(kWh\/\(m²a\)\)[\s\S]*Primärenergieverbrauch \(kWh\/\(m²a\)\)/, "Immobilien-PDFs müssen die geforderten Wert- und Energieeinheiten ausweisen");
 
-console.log("101 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+assert.match(financeCategories, /Allgemeinstrom/, "Tiefgaragenstrom muss als eigene steuerliche Ausgabenkategorie erfasst werden können");
+assert.match(financeCategories, /Instandhaltungsrücklage/, "Rücklagenzuführungen müssen getrennt von sofort abzugsfähigen Ausgaben erfasst werden können");
+assert.match(tgBilling, /WEG-Eigentümerabrechnung/, "Die Tiefgaragenseite muss Eigentümer- und Mieterabrechnung sichtbar trennen");
+assert.match(tgBilling, /Steuerbuchung erst nach tatsächlicher Zahlung/, "Offene WEG-Forderungen dürfen nicht vor Zahlung als Ausgabe behandelt werden");
+assert.match(p250Migration, /'periodFrom', '2025-11-19'[\s\S]*'periodTo', '2025-12-31'/, "Die P250-Mieterabrechnung muss erst mit dem bestätigten Mietbeginn beginnen");
+assert.match(p250Migration, /'wegStatementTotal', 24\.56[\s\S]*'wegOwnerPrepayments', 18\.85[\s\S]*'wegOwnerSettlement', 5\.71/, "Die WEG-Forderung muss centgenau aus Kosten und Vorauszahlungen gespeichert werden");
+assert.match(p250Migration, /Grundsteuer'[\s\S]*'totalCost', 0\.99[\s\S]*Tiefgaragenstrom'[\s\S]*'totalCost', 3\.88/, "Der Mieteranteil muss für 43 von 48 Tagen zeitanteilig berechnet werden");
+assert.match(p250Migration, /Verwaltergebühr Garage'[\s\S]*10\.33[\s\S]*Laufende Instandhaltung'[\s\S]*1\.66[\s\S]*Administrative Kosten'[\s\S]*0\.23/, "Nicht umlagefähige Eigentümerkosten müssen vollständig gespeichert werden");
+
+console.log("109 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");

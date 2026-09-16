@@ -33,6 +33,17 @@ type BillingYearData = {
   totalUnits: number;
   yourUnits: number;
   footerNote: string;
+  wegStatementPeriodFrom?: string;
+  wegStatementPeriodTo?: string;
+  wegStatementTotal?: number;
+  wegOwnerPrepayments?: number;
+  wegOwnerSettlement?: number;
+  wegOwnerSettlementStatus?: "open" | "paid";
+  wegOwnerSettlementPaidAt?: string;
+  wegApportionableTotal?: number;
+  wegNonApportionableTotal?: number;
+  wegReserveTotal?: number;
+  section35aLaborShare?: number;
   apportionableRows: CostRow[];
   nonApportionableRows: CostRow[];
 };
@@ -392,6 +403,17 @@ function buildDefaultYear(year: number): BillingYearData {
     yourUnits: 1,
     footerNote:
       "Bitte prüfen Sie die Werte vor dem Versand. Diese Seite ist als kompakter Onepager für den Mieter gedacht.",
+    wegStatementPeriodFrom: "",
+    wegStatementPeriodTo: "",
+    wegStatementTotal: 0,
+    wegOwnerPrepayments: 0,
+    wegOwnerSettlement: 0,
+    wegOwnerSettlementStatus: "open",
+    wegOwnerSettlementPaidAt: "",
+    wegApportionableTotal: 0,
+    wegNonApportionableTotal: 0,
+    wegReserveTotal: 0,
+    section35aLaborShare: 0,
     apportionableRows: [
       {
         id: createId(),
@@ -750,6 +772,7 @@ export default function NebenkostenTiefgarage() {
   );
 
   const settlementBalance = roundMoney(apportionableTotal - activeRecord.tenantPrepayments);
+  const wegOpenSettlement = activeRecord.wegOwnerSettlementStatus === "paid" ? 0 : toNumber(activeRecord.wegOwnerSettlement);
 
   function updateActiveRecord(patch: Partial<BillingYearData>) {
     setRecords((current) =>
@@ -940,6 +963,66 @@ export default function NebenkostenTiefgarage() {
             <button type="button" style={pageStyles.accentButton} onClick={resetActiveYear}>
               Aktives Jahr zurücksetzen
             </button>
+          </div>
+        </div>
+      </section>
+
+      <section style={pageStyles.section}>
+        <div style={pageStyles.sectionHeader}>
+          <div>
+            <h2 style={pageStyles.sectionTitle}>WEG-Eigentümerabrechnung</h2>
+            <div style={pageStyles.mutedText}>
+              Getrennte Eigentümer-Sicht. Diese Werte werden nicht in den Mieter-Onepager übernommen und verhindern eine Vermischung von WEG-Forderung und Mieterabrechnung.
+            </div>
+          </div>
+          <div style={{ fontWeight: 900, color: wegOpenSettlement > 0 ? "#b91c1c" : "#166534" }}>
+            {wegOpenSettlement > 0 ? `Offen: ${formatCurrency(wegOpenSettlement)}` : "Kein offener WEG-Saldo"}
+          </div>
+        </div>
+        <div style={pageStyles.sectionBody}>
+          <div style={pageStyles.inputGrid}>
+            <div style={pageStyles.inputCard}>
+              <label style={pageStyles.label}>WEG-Zeitraum von</label>
+              <input type="date" style={pageStyles.input} value={activeRecord.wegStatementPeriodFrom ?? ""} onChange={(event) => updateActiveRecord({ wegStatementPeriodFrom: event.target.value })} />
+            </div>
+            <div style={pageStyles.inputCard}>
+              <label style={pageStyles.label}>WEG-Zeitraum bis</label>
+              <input type="date" style={pageStyles.input} value={activeRecord.wegStatementPeriodTo ?? ""} onChange={(event) => updateActiveRecord({ wegStatementPeriodTo: event.target.value })} />
+            </div>
+            {[
+              ["Umlagefähig laut WEG", "wegApportionableTotal"],
+              ["Nicht umlagefähig laut WEG", "wegNonApportionableTotal"],
+              ["Rücklagen laut WEG", "wegReserveTotal"],
+              ["Gesamtkosten laut WEG", "wegStatementTotal"],
+              ["WEG-Vorauszahlungen", "wegOwnerPrepayments"],
+              ["WEG-Nachforderung", "wegOwnerSettlement"],
+              ["§ 35a Arbeitskostenanteil (Info)", "section35aLaborShare"],
+            ].map(([label, key]) => (
+              <div key={key} style={pageStyles.inputCard}>
+                <label style={pageStyles.label}>{label}</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  style={pageStyles.input}
+                  value={toNumber(activeRecord[key as keyof BillingYearData])}
+                  onChange={(event) => updateActiveRecord({ [key]: toNumber(event.target.value) })}
+                />
+              </div>
+            ))}
+            <div style={pageStyles.inputCard}>
+              <label style={pageStyles.label}>Status WEG-Nachforderung</label>
+              <select style={pageStyles.input} value={activeRecord.wegOwnerSettlementStatus ?? "open"} onChange={(event) => updateActiveRecord({ wegOwnerSettlementStatus: event.target.value as "open" | "paid" })}>
+                <option value="open">Offen – noch nicht steuerlich gebucht</option>
+                <option value="paid">Bezahlt – Buchungen mit Zahlungsdatum prüfen</option>
+              </select>
+            </div>
+            <div style={pageStyles.inputCard}>
+              <label style={pageStyles.label}>Zahlungsdatum</label>
+              <input type="date" style={pageStyles.input} value={activeRecord.wegOwnerSettlementPaidAt ?? ""} onChange={(event) => updateActiveRecord({ wegOwnerSettlementPaidAt: event.target.value })} />
+            </div>
+          </div>
+          <div style={{ marginTop: 16, border: "1px solid #fde68a", background: "#fffbeb", borderRadius: 16, padding: 16, color: "#78350f", lineHeight: 1.65 }}>
+            <strong>Steuerbuchung erst nach tatsächlicher Zahlung:</strong> 1,11 € Grundsteuer (St/NK), 4,33 € Allgemeinstrom (St/NK), 0,23 € Verwaltungskosten (St, nicht NK) und 0,04 € Instandhaltungsrücklage (nicht St, nicht NK). Der §-35a-Anteil von 0,77 € ist nur eine Zusatzinformation und keine weitere Ausgabe.
           </div>
         </div>
       </section>
