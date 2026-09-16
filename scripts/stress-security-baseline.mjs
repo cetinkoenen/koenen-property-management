@@ -28,9 +28,11 @@ assert.match(invokerViewMigration, /relation\.relrowsecurity = false/i, "Die Sic
 assert.match(invokerViewMigration, /has_table_privilege\('anon'[\s\S]*has_table_privilege\('authenticated'/i, "Browserlesbare Views müssen vollständig auf SECURITY DEFINER geprüft werden");
 assert.match(invokerViewMigration, /security_invoker=true/i, "Browserlesbare Views müssen als SECURITY INVOKER nachgewiesen werden");
 assert.match(garageBillingPage, /function escapeHtml[\s\S]*\.replace\(\/&\/g, "&amp;"\)/, "Frei editierbare TG-Abrechnungsdaten müssen vor HTML-Export maskiert werden");
-for (const field of ["propertyLabel", "unitLabel", "landlordName", "tenantName", "footerNote"]) {
+for (const field of ["propertyLabel", "unitLabel", "landlordName", "tenantName", "landlordIban"]) {
   assert.match(garageBillingPage, new RegExp(`escapeHtml\\(record\\.${field}`), `${field} darf nicht unmaskiert in die TG-Druckausgabe gelangen`);
 }
+assert.match(garageBillingPage, /escapeHtml\(salutation\)/, "Die frei editierbare Briefanrede muss vor dem HTML-Export maskiert werden");
+assert.match(garageBillingPage, /safeAttachmentNotes = escapeHtml\(record\.attachmentNotes/, "Die Anlagenliste muss vor dem HTML-Export maskiert werden");
 assert.match(supabaseClient, /fetch: resilientSupabaseFetch/, "Der Supabase-Client muss den resilienten Netzwerkzugriff verwenden");
 assert.match(supabaseClient, /window\.location\.origin}\/supabase\//, "Fehlgeschlagene direkte Zugriffe müssen über dieselbe App-Domain wiederholt werden");
 assert.match(supabaseClient, /new Request\(proxyUrl, request\)/, "Der Fallback muss Methode, Body und Auth-Header unverändert übernehmen");

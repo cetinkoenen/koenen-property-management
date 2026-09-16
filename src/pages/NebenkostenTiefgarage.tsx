@@ -15,6 +15,8 @@ type CostRow = {
   yourUnits: number | null;
   note: string;
   autoMode?: "annualHausgeld";
+  sourceTotalCost?: number;
+  reportAllocationLabel?: string;
 };
 
 type BillingYearData = {
@@ -32,8 +34,14 @@ type BillingYearData = {
   tenantPrepayments: number;
   landlordName: string;
   landlordAddress: string;
+  landlordBankAccountHolder: string;
+  landlordIban: string;
+  landlordBic: string;
+  landlordBankName: string;
   tenantName: string;
   tenantAddress: string;
+  recipientSalutation: string;
+  documentDate: string;
   totalUnits: number;
   yourUnits: number;
   footerNote: string;
@@ -363,17 +371,17 @@ const pageStyles: Record<string, CSSProperties> = {
     lineHeight: 1.5,
   },
   onePager: {
-    maxWidth: 820,
+    maxWidth: 900,
     margin: "0 auto",
     border: "1px solid #dbe3f0",
-    borderRadius: 24,
-    padding: 32,
+    borderRadius: 18,
+    padding: 36,
     background: "#ffffff",
     boxShadow: "0 10px 30px rgba(15, 23, 42, 0.05)",
   },
   onePagerTitle: {
     margin: 0,
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: 900,
     color: "#0f172a",
   },
@@ -386,15 +394,15 @@ const pageStyles: Record<string, CSSProperties> = {
   onePagerMeta: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 16,
-    marginTop: 24,
-    marginBottom: 24,
+    gap: 24,
+    marginTop: 20,
+    marginBottom: 22,
   },
   onePagerBox: {
-    border: "1px solid #e5e7eb",
-    borderRadius: 18,
-    padding: 16,
-    background: "#f8fafc",
+    border: "none",
+    borderRadius: 0,
+    padding: 0,
+    background: "transparent",
   },
   onePagerTable: {
     width: "100%",
@@ -461,6 +469,20 @@ function monthsInclusive(periodFrom: string, periodTo: string) {
   return (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth()) + 1;
 }
 
+function daysInclusive(periodFrom: string, periodTo: string) {
+  if (!periodFrom || !periodTo) return 0;
+  const from = new Date(`${periodFrom}T00:00:00Z`);
+  const to = new Date(`${periodTo}T00:00:00Z`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) return 0;
+  return Math.floor((to.getTime() - from.getTime()) / 86_400_000) + 1;
+}
+
+function todayIsoDate() {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+}
+
 const PARKING_REFERENCES: Record<string, string> = {
   P250: "E008440000121",
   P253: "E008440000122",
@@ -494,8 +516,14 @@ function buildDefaultYear(year: number, requestedUnitCode = "P250"): BillingYear
     tenantPrepayments: 0,
     landlordName: "Nihal Könen",
     landlordAddress: "Hohenloher Str. 78/1\n74243 Langenbrettach",
+    landlordBankAccountHolder: "Nihal Könen",
+    landlordIban: "",
+    landlordBic: "",
+    landlordBankName: "",
     tenantName: "",
     tenantAddress: "",
+    recipientSalutation: "Sehr geehrte Damen und Herren,",
+    documentDate: todayIsoDate(),
     totalUnits: 1,
     yourUnits: 1,
     footerNote:
@@ -716,6 +744,21 @@ function RowEditor(props: {
             })
           }
         />
+        <input
+          style={{ ...pageStyles.input, marginTop: 8 }}
+          type="number"
+          step="0.01"
+          value={props.row.sourceTotalCost ?? ""}
+          onChange={(event) => {
+            const raw = event.target.value;
+            props.onChange({
+              ...props.row,
+              sourceTotalCost: raw === "" ? undefined : toNumber(raw),
+            });
+          }}
+          placeholder="WEG-Gesamtkosten (Bericht)"
+          aria-label={`WEG-Gesamtkosten für ${props.row.label}`}
+        />
       </td>
       <td style={pageStyles.td}>
         <select
@@ -732,6 +775,13 @@ function RowEditor(props: {
           <option value="Verbrauch/Direkt">Verbrauch/Direkt</option>
           <option value="Direktbetrag">Direktbetrag</option>
         </select>
+        <input
+          style={{ ...pageStyles.input, marginTop: 8 }}
+          value={props.row.reportAllocationLabel ?? ""}
+          onChange={(event) => props.onChange({ ...props.row, reportAllocationLabel: event.target.value })}
+          placeholder="Umlageschlüssel im Bericht"
+          aria-label={`Umlageschlüssel im Bericht für ${props.row.label}`}
+        />
       </td>
       <td style={pageStyles.td}>
         <input
@@ -910,6 +960,7 @@ export default function NebenkostenTiefgarage() {
   );
 
   const settlementBalance = roundMoney(apportionableTotal - activeRecord.tenantPrepayments);
+  const billingDayCount = daysInclusive(activeRecord.periodFrom, activeRecord.periodTo);
   const wegOpenSettlement = activeRecord.wegOwnerSettlementStatus === "paid" ? 0 : toNumber(activeRecord.wegOwnerSettlement);
   const wegOffsetBreakdownTotal = roundMoney(
     toNumber(activeRecord.wegApportionableOffset)
@@ -1034,18 +1085,35 @@ export default function NebenkostenTiefgarage() {
   }
 
   function createTgOnepagerHtml(record: BillingYearData) {
-    const months = monthsInclusive(record.periodFrom, record.periodTo);
-    const annual = roundMoney(record.monthlyHausgeld * months);
     const apportionable = roundMoney(record.apportionableRows.reduce((sum, row) => sum + deriveRowShare(row, record), 0));
     const balance = roundMoney(apportionable - record.tenantPrepayments);
-    const rows = record.apportionableRows.map((row) => `<tr><td>${escapeHtml(row.label)}</td><td style="text-align:right;font-weight:700">${escapeHtml(formatCurrency(deriveRowShare(row, record)))}</td></tr>`).join("");
+    const dayCount = daysInclusive(record.periodFrom, record.periodTo);
+    const resultLabel = balance >= 0 ? "Nachforderung" : "Guthaben";
+    const rows = record.apportionableRows.map((row) => {
+      const totalUnits = row.totalUnits ?? record.totalUnits;
+      const yourUnits = row.yourUnits ?? record.yourUnits;
+      const allocation = row.reportAllocationLabel?.trim()
+        || (row.key === "Einheiten" ? `${yourUnits} / ${totalUnits} Einheiten` : row.key);
+      const sourceTotal = Number.isFinite(row.sourceTotalCost) ? formatCurrency(toNumber(row.sourceTotalCost)) : "—";
+      return `<tr><td>${escapeHtml(row.label)}</td><td class="money">${escapeHtml(sourceTotal)}</td><td>${escapeHtml(allocation)}</td><td class="money strong">${escapeHtml(formatCurrency(deriveRowShare(row, record)))}</td></tr>`;
+    }).join("");
     const safeLandlordAddress = escapeHtml(record.landlordAddress || "").replace(/\r?\n/g, "<br/>");
     const safeTenantAddress = escapeHtml(record.tenantAddress || "").replace(/\r?\n/g, "<br/>");
     const safeAttachmentNotes = escapeHtml(record.attachmentNotes || "").replace(/\r?\n/g, "<br/>");
     const attachmentsSection = safeAttachmentNotes
-      ? `<section class="attachments"><div class="label">Anlagen und Nachweise</div><div class="attachments-text">${safeAttachmentNotes}</div></section>`
+      ? `<section class="attachments"><div class="section-label">Anlagen und Nachweise</div><div class="attachments-text">${safeAttachmentNotes}</div></section>`
       : "";
-  return `<!doctype html><html><head><meta charset="utf-8"/><title>NK-Tiefgarage ${escapeHtml(record.year)}</title><style>body{font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:32px;color:#0f172a}table{width:100%;border-collapse:collapse}th,td{padding:10px 8px;border-bottom:1px solid #e5e7eb;text-align:left}.print-card{max-width:820px;margin:0 auto;background:#fff;border:1px solid #dbe3f0;border-radius:24px;padding:32px}.brand-logo{display:block;width:240px;height:auto;max-height:96px;object-fit:contain;object-position:left center;margin:0 0 18px}.status{display:inline-block;border-radius:999px;background:#eef2ff;color:#3730a3;padding:6px 12px;font-weight:800;font-size:12px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:22px 0}.box{border:1px solid #e5e7eb;border-radius:16px;background:#f8fafc;padding:14px}.label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:800}.value{font-weight:900;font-size:22px;margin-top:6px}.attachments{margin-top:24px;border:1px solid #dbe3f0;border-radius:16px;background:#f8fafc;padding:16px;break-inside:avoid}.attachments-text{margin-top:8px;color:#334155;line-height:1.6;white-space:normal}@media print{body{background:#fff;padding:0}.print-card{border:none;padding:0}}</style></head><body><div class="print-card"><img class="brand-logo" src="${brandLogo}" alt="Koenen Property Management Logo" /><div class="status">Status: ${escapeHtml(normalizeWorkflowStatus(record.workflowStatus, Boolean(record.finalized)))}</div><h1>Nebenkostenabrechnung Tiefgaragenstellplatz ${escapeHtml(record.year)}</h1><p>${escapeHtml(record.propertyLabel)} · ${escapeHtml(record.unitLabel)} · ${escapeHtml(formatDate(record.periodFrom))} bis ${escapeHtml(formatDate(record.periodTo))}</p><div class="meta"><div class="box"><div class="label">Vermieter</div><strong>${escapeHtml(record.landlordName || "—")}</strong><br/>${safeLandlordAddress}</div><div class="box"><div class="label">Mieter</div><strong>${escapeHtml(record.tenantName || "—")}</strong><br/>${safeTenantAddress}</div></div><div class="meta"><div class="box"><div class="label">Hausgeld Jahr</div><div class="value">${escapeHtml(formatCurrency(annual))}</div></div><div class="box"><div class="label">Umlagefähig</div><div class="value">${escapeHtml(formatCurrency(apportionable))}</div></div><div class="box"><div class="label">Vorauszahlungen</div><div class="value">${escapeHtml(formatCurrency(record.tenantPrepayments))}</div></div><div class="box"><div class="label">${balance >= 0 ? "Nachzahlung" : "Guthaben"}</div><div class="value">${escapeHtml(formatCurrency(Math.abs(balance)))}</div></div></div><table><thead><tr><th>Kostenart</th><th style="text-align:right">Ihr Anteil</th></tr></thead><tbody>${rows}<tr><td><strong>Summe umlagefähige Kosten</strong></td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(apportionable))}</td></tr><tr><td>Abzüglich geleistete Vorauszahlungen</td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(record.tenantPrepayments))}</td></tr><tr><td><strong>${balance >= 0 ? "Nachzahlung" : "Guthaben"}</strong></td><td style="text-align:right;font-weight:900">${escapeHtml(formatCurrency(Math.abs(balance)))}</td></tr></tbody></table>${attachmentsSection}<p style="margin-top:24px;color:#475569">${escapeHtml(record.footerNote || "")}</p></div></body></html>`;
+    const bankDetails = balance >= 0 && record.landlordIban.trim()
+      ? `<section class="bank"><div class="section-label">Bankverbindung für die Überweisung</div><div class="bank-grid"><span>Kontoinhaber</span><strong>${escapeHtml(record.landlordBankAccountHolder || record.landlordName)}</strong><span>IBAN</span><strong>${escapeHtml(record.landlordIban)}</strong>${record.landlordBic.trim() ? `<span>BIC</span><strong>${escapeHtml(record.landlordBic)}</strong>` : ""}${record.landlordBankName.trim() ? `<span>Bank</span><strong>${escapeHtml(record.landlordBankName)}</strong>` : ""}</div></section>`
+      : "";
+    const settlementText = balance >= 0
+      ? `Es ergibt sich eine <strong>Nachforderung in Höhe von ${escapeHtml(formatCurrency(Math.abs(balance)))}</strong>. Bitte überweisen Sie diesen Betrag innerhalb von 30 Tagen ${record.landlordIban.trim() ? "auf das unten angegebene Bankkonto" : "auf das Ihnen bekannte Bankkonto"}.`
+      : `Es ergibt sich ein <strong>Guthaben zu Ihren Gunsten in Höhe von ${escapeHtml(formatCurrency(Math.abs(balance)))}</strong>. Der Betrag wird in den nächsten Tagen auf das bekannte Bankkonto überwiesen oder mit der nächsten Mietzahlung verrechnet.`;
+    const salutation = record.recipientSalutation.trim() || "Sehr geehrte Damen und Herren,";
+    const documentDate = record.documentDate || todayIsoDate();
+    return `<!doctype html><html lang="de"><head><meta charset="utf-8"/><title>Nebenkostenabrechnung ${escapeHtml(record.year)} ${escapeHtml(record.unitCode)}</title><style>
+@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box}body{margin:0;background:#eef2f7;color:#172033;font-family:Arial,Helvetica,sans-serif;font-size:10.4pt;line-height:1.42}.page{width:190mm;min-height:277mm;margin:12px auto;background:#fff;padding:11mm 12mm;box-shadow:0 8px 28px rgba(15,23,42,.12)}.header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;border-bottom:2px solid #0f3347;padding-bottom:6mm}.brand-logo{width:52mm;max-height:22mm;object-fit:contain;object-position:left top}.date{text-align:right;color:#475569;padding-top:2mm}.address-grid{display:grid;grid-template-columns:1fr 1fr;gap:12mm;margin:7mm 0 6mm}.address{min-height:25mm}.section-label{font-size:8pt;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#60758a;margin-bottom:2mm}.subject{border-left:4px solid #b88a32;padding:1mm 0 1mm 4mm;margin:0 0 5mm}.subject h1{font-size:17pt;line-height:1.18;margin:0 0 2mm;color:#0b2636}.subject p{margin:0;color:#425466}.intro{margin:0 0 4mm}.intro p{margin:0 0 2.5mm}h2{font-size:11.5pt;color:#0f3347;margin:4mm 0 2mm}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9.2pt}th{background:#0f3347;color:#fff;padding:2.4mm 2mm;text-align:left;font-size:8pt;letter-spacing:.02em}td{padding:2.25mm 2mm;border-bottom:1px solid #dbe3ea;vertical-align:top;overflow-wrap:anywhere}.money{text-align:right;white-space:nowrap}.strong{font-weight:800}.result{margin:4mm 0;padding:3.5mm 4mm;border-radius:3mm;border:1px solid ${balance >= 0 ? "#f1c9c3" : "#b9dfc7"};background:${balance >= 0 ? "#fff7f5" : "#f2fbf5"};color:${balance >= 0 ? "#8d261f" : "#17603a"}}.result-grid{display:grid;grid-template-columns:1fr auto;gap:1.2mm 8mm}.result-grid strong{text-align:right}.message{margin:4mm 0}.bank,.attachments{margin-top:4mm;border:1px solid #dbe3ea;border-radius:3mm;background:#f7f9fb;padding:3mm 4mm;break-inside:avoid}.bank-grid{display:grid;grid-template-columns:30mm 1fr;gap:1mm 4mm;font-size:9pt}.attachments-text{color:#334155;line-height:1.45}.closing{margin-top:5mm}.signature{height:10mm;border-bottom:1px solid #9aa9b7;width:52mm;margin:4mm 0 1mm}.legal{margin-top:4mm;color:#526579;font-size:8.7pt}@media print{body{background:#fff}.page{margin:0;width:auto;min-height:auto;padding:0;box-shadow:none}.no-print{display:none}}
+</style></head><body><main class="page"><header class="header"><img class="brand-logo" src="${brandLogo}" alt="Koenen Property Management"/><div class="date">${escapeHtml(formatDate(documentDate))}</div></header><section class="address-grid"><div class="address"><div class="section-label">Absender</div><strong>${escapeHtml(record.landlordName || "—")}</strong><br/>${safeLandlordAddress}</div><div class="address"><div class="section-label">Empfänger</div><strong>${escapeHtml(record.tenantName || "—")}</strong><br/>${safeTenantAddress}</div></section><section class="subject"><h1>Nebenkostenabrechnung für das Abrechnungsjahr ${escapeHtml(record.year)}</h1><p><strong>Objekt / Stellplatz:</strong> ${escapeHtml(record.propertyLabel)} · ${escapeHtml(record.unitLabel || record.unitCode)} &nbsp;·&nbsp; <strong>Zeitraum:</strong> ${escapeHtml(formatDate(record.periodFrom))} bis ${escapeHtml(formatDate(record.periodTo))}${dayCount ? ` (${dayCount} Tage)` : ""}</p></section><section class="intro"><p>${escapeHtml(salutation)}</p><p>hiermit erhalten Sie die Nebenkostenabrechnung für den oben genannten Zeitraum. Die Berechnung erfolgt für den Zeitraum vom ${escapeHtml(formatDate(record.periodFrom))} bis ${escapeHtml(formatDate(record.periodTo))}${dayCount ? ` zeitanteilig für ${dayCount} Tage` : ""}.</p><p>Die Abrechnung basiert auf der Hausgeldabrechnung der Hausverwaltung und gliedert sich wie folgt:</p></section><h2>1. Aufstellung der umlagefähigen Betriebskosten</h2><table><colgroup><col style="width:29%"><col style="width:22%"><col style="width:29%"><col style="width:20%"></colgroup><thead><tr><th>Kostenart</th><th class="money">Gesamtkosten WEG</th><th>Umlageschlüssel</th><th class="money">Ihr Anteil</th></tr></thead><tbody>${rows}<tr><td colspan="3" class="strong">Summe umlagefähige Kosten</td><td class="money strong">${escapeHtml(formatCurrency(apportionable))}</td></tr></tbody></table><h2>2. Berechnung des Abrechnungsergebnisses</h2><section class="result"><div class="result-grid"><span>Ihre anteiligen Gesamtkosten</span><strong>${escapeHtml(formatCurrency(apportionable))}</strong><span>Abzüglich geleisteter Vorauszahlungen</span><strong>− ${escapeHtml(formatCurrency(record.tenantPrepayments))}</strong><span>${escapeHtml(resultLabel)}</span><strong>${escapeHtml(formatCurrency(Math.abs(balance)))}</strong></div></section><p class="message">${settlementText}</p><p class="legal">Bei Fragen zu dieser Abrechnung können Sie sich gerne an mich wenden. Einsicht in die zugrunde liegenden Belege der Hausverwaltung wird Ihnen auf Wunsch gewährt.</p>${bankDetails}${attachmentsSection}<section class="closing"><p>Mit freundlichen Grüßen</p><div class="signature"></div><strong>${escapeHtml(record.landlordName || "")}</strong></section></main></body></html>`;
   }
 
   function openTgRecordPdf(record: BillingYearData) {
@@ -1568,6 +1636,59 @@ export default function NebenkostenTiefgarage() {
                 onChange={(event) => updateActiveRecord({ tenantAddress: event.target.value })}
               />
             </div>
+            <div style={pageStyles.inputCard}>
+              <label style={pageStyles.label}>Briefdatum</label>
+              <input
+                type="date"
+                style={pageStyles.input}
+                value={activeRecord.documentDate}
+                onChange={(event) => updateActiveRecord({ documentDate: event.target.value })}
+              />
+            </div>
+            <div style={pageStyles.inputCard}>
+              <label style={pageStyles.label}>Briefanrede</label>
+              <input
+                style={pageStyles.input}
+                value={activeRecord.recipientSalutation}
+                onChange={(event) => updateActiveRecord({ recipientSalutation: event.target.value })}
+                placeholder="z. B. Sehr geehrte Frau Frommer,"
+              />
+            </div>
+            <div style={pageStyles.inputCard}>
+              <label style={pageStyles.label}>Kontoinhaber</label>
+              <input
+                style={pageStyles.input}
+                value={activeRecord.landlordBankAccountHolder}
+                onChange={(event) => updateActiveRecord({ landlordBankAccountHolder: event.target.value })}
+              />
+            </div>
+            <div style={pageStyles.inputCard}>
+              <label style={pageStyles.label}>IBAN Vermieter</label>
+              <input
+                style={pageStyles.input}
+                value={activeRecord.landlordIban}
+                onChange={(event) => updateActiveRecord({ landlordIban: event.target.value })}
+                placeholder="IBAN optional"
+              />
+            </div>
+            <div style={pageStyles.inputCard}>
+              <label style={pageStyles.label}>BIC Vermieter</label>
+              <input
+                style={pageStyles.input}
+                value={activeRecord.landlordBic}
+                onChange={(event) => updateActiveRecord({ landlordBic: event.target.value })}
+                placeholder="BIC optional"
+              />
+            </div>
+            <div style={pageStyles.inputCard}>
+              <label style={pageStyles.label}>Bank Vermieter</label>
+              <input
+                style={pageStyles.input}
+                value={activeRecord.landlordBankName}
+                onChange={(event) => updateActiveRecord({ landlordBankName: event.target.value })}
+                placeholder="Bankname optional"
+              />
+            </div>
           </div>
         </div>
       </section>
@@ -1684,33 +1805,52 @@ export default function NebenkostenTiefgarage() {
         </div>
         <div style={pageStyles.sectionBody}>
           <div id="tg-onepager-preview" style={pageStyles.onePager}>
-            <h2 style={pageStyles.onePagerTitle}>Nebenkostenabrechnung Tiefgaragenstellplatz {activeRecord.year}</h2>
-            <p style={pageStyles.onePagerSubTitle}>
-              {activeRecord.propertyLabel} · {activeRecord.unitLabel} · Zeitraum {formatDate(activeRecord.periodFrom)} bis {formatDate(activeRecord.periodTo)}
-            </p>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 20, paddingBottom: 20, borderBottom: "2px solid #0f3347" }}>
+              <img src={brandLogo} alt="Koenen Property Management" style={{ width: 210, maxHeight: 82, objectFit: "contain", objectPosition: "left top" }} />
+              <div style={{ color: "#64748b", fontSize: 13 }}>{formatDate(activeRecord.documentDate || todayIsoDate())}</div>
+            </div>
 
             <div style={pageStyles.onePagerMeta}>
               <div style={pageStyles.onePagerBox}>
-                <div style={pageStyles.summaryLabel}>Vermieter</div>
-                <div style={{ marginTop: 10, whiteSpace: "pre-wrap", lineHeight: 1.7, color: "#0f172a" }}>
-                  {activeRecord.landlordName || "—"}
+                <div style={pageStyles.summaryLabel}>Absender</div>
+                <div style={{ marginTop: 8, whiteSpace: "pre-wrap", lineHeight: 1.6, color: "#0f172a" }}>
+                  <strong>{activeRecord.landlordName || "—"}</strong>
                   {activeRecord.landlordAddress ? `\n${activeRecord.landlordAddress}` : ""}
                 </div>
               </div>
               <div style={pageStyles.onePagerBox}>
-                <div style={pageStyles.summaryLabel}>Mieter</div>
-                <div style={{ marginTop: 10, whiteSpace: "pre-wrap", lineHeight: 1.7, color: "#0f172a" }}>
-                  {activeRecord.tenantName || "—"}
+                <div style={pageStyles.summaryLabel}>Empfänger</div>
+                <div style={{ marginTop: 8, whiteSpace: "pre-wrap", lineHeight: 1.6, color: "#0f172a" }}>
+                  <strong>{activeRecord.tenantName || "—"}</strong>
                   {activeRecord.tenantAddress ? `\n${activeRecord.tenantAddress}` : ""}
                 </div>
               </div>
             </div>
 
-            <table style={pageStyles.onePagerTable}>
+            <div style={{ borderLeft: "4px solid #b88a32", padding: "4px 0 4px 16px", marginBottom: 20 }}>
+              <h2 style={pageStyles.onePagerTitle}>Nebenkostenabrechnung für das Abrechnungsjahr {activeRecord.year}</h2>
+              <p style={{ ...pageStyles.onePagerSubTitle, marginTop: 6 }}>
+                <strong>Objekt / Stellplatz:</strong> {activeRecord.propertyLabel} · {activeRecord.unitLabel || activeRecord.unitCode} · <strong>Zeitraum:</strong> {formatDate(activeRecord.periodFrom)} bis {formatDate(activeRecord.periodTo)}{billingDayCount ? ` (${billingDayCount} Tage)` : ""}
+              </p>
+            </div>
+
+            <div style={{ color: "#334155", fontSize: 14, lineHeight: 1.65, marginBottom: 20 }}>
+              <p>{activeRecord.recipientSalutation || "Sehr geehrte Damen und Herren,"}</p>
+              <p>
+                hiermit erhalten Sie die Nebenkostenabrechnung für den oben genannten Zeitraum. Die Berechnung erfolgt
+                {billingDayCount ? ` zeitanteilig für ${billingDayCount} Tage` : " für den angegebenen Zeitraum"}.
+              </p>
+              <p>Die Abrechnung basiert auf der Hausgeldabrechnung der Hausverwaltung und gliedert sich wie folgt:</p>
+            </div>
+
+            <h3 style={{ margin: "0 0 10px", color: "#0f3347", fontSize: 17 }}>1. Aufstellung der umlagefähigen Betriebskosten</h3>
+            <table style={{ ...pageStyles.onePagerTable, tableLayout: "fixed" }}>
               <thead>
                 <tr>
-                  <th style={pageStyles.th}>Kostenart</th>
-                  <th style={{ ...pageStyles.th, textAlign: "right" }}>Ihr Anteil</th>
+                  <th style={{ ...pageStyles.th, width: "29%", background: "#0f3347", color: "#fff" }}>Kostenart</th>
+                  <th style={{ ...pageStyles.th, width: "22%", textAlign: "right", background: "#0f3347", color: "#fff" }}>Gesamtkosten WEG</th>
+                  <th style={{ ...pageStyles.th, width: "29%", background: "#0f3347", color: "#fff" }}>Umlageschlüssel</th>
+                  <th style={{ ...pageStyles.th, width: "20%", textAlign: "right", background: "#0f3347", color: "#fff" }}>Ihr Anteil</th>
                 </tr>
               </thead>
               <tbody>
@@ -1718,49 +1858,73 @@ export default function NebenkostenTiefgarage() {
                   <tr key={row.id}>
                     <td style={pageStyles.td}>{row.label}</td>
                     <td style={{ ...pageStyles.td, textAlign: "right", ...pageStyles.amountCell }}>
+                      {Number.isFinite(row.sourceTotalCost) ? formatCurrency(toNumber(row.sourceTotalCost)) : "—"}
+                    </td>
+                    <td style={pageStyles.td}>
+                      {row.reportAllocationLabel?.trim()
+                        || (row.key === "Einheiten"
+                          ? `${row.yourUnits ?? activeRecord.yourUnits} / ${row.totalUnits ?? activeRecord.totalUnits} Einheiten`
+                          : row.key)}
+                    </td>
+                    <td style={{ ...pageStyles.td, textAlign: "right", ...pageStyles.amountCell }}>
                       {formatCurrency(deriveRowShare(row, activeRecord))}
                     </td>
                   </tr>
                 ))}
                 <tr>
-                  <td style={{ ...pageStyles.td, fontWeight: 900 }}>Summe umlagefähige Kosten</td>
+                  <td colSpan={3} style={{ ...pageStyles.td, fontWeight: 900 }}>Summe umlagefähige Kosten</td>
                   <td style={{ ...pageStyles.td, textAlign: "right", ...pageStyles.amountCell }}>{formatCurrency(apportionableTotal)}</td>
-                </tr>
-                <tr>
-                  <td style={pageStyles.td}>Abzüglich geleistete Vorauszahlungen</td>
-                  <td style={{ ...pageStyles.td, textAlign: "right", ...pageStyles.amountCell }}>{formatCurrency(activeRecord.tenantPrepayments)}</td>
-                </tr>
-                <tr>
-                  <td style={{ ...pageStyles.td, fontWeight: 900 }}>{settlementBalance >= 0 ? "Nachzahlung" : "Guthaben"}</td>
-                  <td
-                    style={{
-                      ...pageStyles.td,
-                      textAlign: "right",
-                      ...pageStyles.amountCell,
-                      color: settlementBalance >= 0 ? "#b91c1c" : "#166534",
-                    }}
-                  >
-                    {formatCurrency(Math.abs(settlementBalance))}
-                  </td>
                 </tr>
               </tbody>
             </table>
 
-            <div style={pageStyles.onePagerFooter}>
-              <div>
-                Die Abrechnung basiert auf dem Zeitraum vom {formatDate(activeRecord.periodFrom)} bis {formatDate(activeRecord.periodTo)}.
-                Das monatliche Hausgeld beträgt {formatCurrency(activeRecord.monthlyHausgeld)} und ergibt im Abrechnungszeitraum eine Jahressumme von {formatCurrency(annualHausgeld)}.
-              </div>
-              {activeRecord.footerNote ? <div style={{ marginTop: 14 }}>{activeRecord.footerNote}</div> : null}
+            <h3 style={{ margin: "24px 0 10px", color: "#0f3347", fontSize: 17 }}>2. Berechnung des Abrechnungsergebnisses</h3>
+            <div style={{ border: `1px solid ${settlementBalance >= 0 ? "#f1c9c3" : "#b9dfc7"}`, borderRadius: 12, padding: 16, background: settlementBalance >= 0 ? "#fff7f5" : "#f2fbf5", color: settlementBalance >= 0 ? "#8d261f" : "#17603a" }}>
+              {[
+                ["Ihre anteiligen Gesamtkosten", formatCurrency(apportionableTotal)],
+                ["Abzüglich geleisteter Vorauszahlungen", `− ${formatCurrency(activeRecord.tenantPrepayments)}`],
+                [settlementBalance >= 0 ? "Nachforderung" : "Guthaben", formatCurrency(Math.abs(settlementBalance))],
+              ].map(([label, value]) => (
+                <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 20, marginTop: label === "Ihre anteiligen Gesamtkosten" ? 0 : 6 }}>
+                  <span>{label}</span><strong>{value}</strong>
+                </div>
+              ))}
             </div>
+
+            <p style={{ margin: "18px 0", color: "#334155", lineHeight: 1.65 }}>
+              {settlementBalance >= 0
+                ? <>Es ergibt sich eine <strong>Nachforderung in Höhe von {formatCurrency(Math.abs(settlementBalance))}</strong>. Bitte überweisen Sie diesen Betrag innerhalb von 30 Tagen {activeRecord.landlordIban.trim() ? "auf das unten angegebene Bankkonto" : "auf das Ihnen bekannte Bankkonto"}.</>
+                : <>Es ergibt sich ein <strong>Guthaben zu Ihren Gunsten in Höhe von {formatCurrency(Math.abs(settlementBalance))}</strong>. Der Betrag wird in den nächsten Tagen auf das bekannte Bankkonto überwiesen oder mit der nächsten Mietzahlung verrechnet.</>}
+            </p>
+
+            <p style={{ color: "#526579", fontSize: 13, lineHeight: 1.6 }}>
+              Bei Fragen zu dieser Abrechnung können Sie sich gerne an mich wenden. Einsicht in die zugrunde liegenden Belege der Hausverwaltung wird Ihnen auf Wunsch gewährt.
+            </p>
+
+            {settlementBalance >= 0 && activeRecord.landlordIban.trim() ? (
+              <div style={{ marginTop: 18, border: "1px solid #dbe3ea", borderRadius: 12, padding: 16, background: "#f7f9fb" }}>
+                <div style={pageStyles.summaryLabel}>Bankverbindung für die Überweisung</div>
+                <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "5px 14px", marginTop: 10, color: "#334155", fontSize: 13 }}>
+                  <span>Kontoinhaber</span><strong>{activeRecord.landlordBankAccountHolder || activeRecord.landlordName}</strong>
+                  <span>IBAN</span><strong>{activeRecord.landlordIban}</strong>
+                  {activeRecord.landlordBic.trim() ? <><span>BIC</span><strong>{activeRecord.landlordBic}</strong></> : null}
+                  {activeRecord.landlordBankName.trim() ? <><span>Bank</span><strong>{activeRecord.landlordBankName}</strong></> : null}
+                </div>
+              </div>
+            ) : null}
             {activeRecord.attachmentNotes.trim() ? (
-              <div style={{ marginTop: 22, border: "1px solid #dbe3f0", borderRadius: 16, padding: 16, background: "#f8fafc" }}>
+              <div style={{ marginTop: 18, border: "1px solid #dbe3f0", borderRadius: 12, padding: 16, background: "#f8fafc" }}>
                 <div style={pageStyles.summaryLabel}>Anlagen und Nachweise</div>
                 <div style={{ marginTop: 8, whiteSpace: "pre-wrap", lineHeight: 1.65, color: "#334155" }}>
                   {activeRecord.attachmentNotes}
                 </div>
               </div>
             ) : null}
+            <div style={{ marginTop: 24, color: "#334155", lineHeight: 1.6 }}>
+              <p>Mit freundlichen Grüßen</p>
+              <div style={{ height: 38, width: 210, borderBottom: "1px solid #94a3b8", margin: "12px 0 6px" }} />
+              <strong>{activeRecord.landlordName}</strong>
+            </div>
           </div>
         </div>
       </section>

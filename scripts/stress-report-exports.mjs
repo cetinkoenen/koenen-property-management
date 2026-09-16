@@ -24,6 +24,7 @@ const tgWegOffsetsMigration = await readFile(new URL("../supabase/migrations/202
 const tgWorkflowMigration = await readFile(new URL("../supabase/migrations/20260916181500_add_tg_workflow_status.sql", import.meta.url), "utf8");
 const p253CreditMigration = await readFile(new URL("../supabase/migrations/20260916211500_import_p253_2025_weg_credit.sql", import.meta.url), "utf8");
 const tgRemoveEmptyYearsMigration = await readFile(new URL("../supabase/migrations/20260916214500_remove_uncreated_tg_years.sql", import.meta.url), "utf8");
+const tgProfessionalOnepagerMigration = await readFile(new URL("../supabase/migrations/20260916223000_professional_tg_onepager_metadata.sql", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -179,5 +180,10 @@ assert.match(p253CreditMigration, /'wegApportionableOffset', 9\.40[\s\S]*'wegOwn
 assert.match(tgBilling, /gridTemplateColumns: "repeat\(auto-fit, minmax\(min\(100%, 260px\), 1fr\)\)"/, "Die TG-Abrechnungskarten müssen sich ohne Überlappung responsiv an die verfügbare Breite anpassen");
 assert.match(tgBilling, /fontSize: 9[\s\S]*whiteSpace: "nowrap"/, "Statuschips müssen kompakt und ohne Textumbruch dargestellt werden");
 assert.match(tgRemoveEmptyYearsMigration, /not in \('p250-2026', 'p250-2027'\)[\s\S]*in \('p250-2025', 'p253-2025', 'p254-2025'\)/, "Nur die nicht erstellten Jahre 2026 und 2027 dürfen entfernt werden; die drei Abrechnungen 2025 müssen erhalten bleiben");
+assert.match(tgBilling, /@page\{size:A4 portrait;margin:10mm\}/, "Der TG-Mieterbericht muss druckstabil auf eine A4-Seite im Hochformat ausgelegt sein");
+assert.match(tgBilling, /balance >= 0[\s\S]*Nachforderung in Höhe von[\s\S]*Guthaben zu Ihren Gunsten/, "Der Berichtstext muss automatisch zwischen Nachforderung und Guthaben unterscheiden");
+assert.match(tgBilling, /Gesamtkosten WEG[\s\S]*Umlageschlüssel[\s\S]*Ihr Anteil/, "Die professionelle Kostenaufstellung muss Quelle, Umlageschlüssel und Mieteranteil getrennt ausweisen");
+assert.match(tgBilling, /landlordIban\.trim\(\)[\s\S]*Bankverbindung für die Überweisung/, "Bankdaten dürfen nur bei einer Nachforderung und vorhandener IBAN erscheinen");
+assert.match(tgProfessionalOnepagerMigration, /15403\.92[\s\S]*laut Bescheid[\s\S]*9018\.14[\s\S]*1 \/ 274 Stellplätze/, "P250 muss die bestätigten WEG-Gesamtkosten und Umlageschlüssel zentral für den Bericht speichern");
 
-console.log("139 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("144 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
