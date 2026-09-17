@@ -25,6 +25,7 @@ const tgWorkflowMigration = await readFile(new URL("../supabase/migrations/20260
 const p253CreditMigration = await readFile(new URL("../supabase/migrations/20260916211500_import_p253_2025_weg_credit.sql", import.meta.url), "utf8");
 const tgRemoveEmptyYearsMigration = await readFile(new URL("../supabase/migrations/20260916214500_remove_uncreated_tg_years.sql", import.meta.url), "utf8");
 const tgProfessionalOnepagerMigration = await readFile(new URL("../supabase/migrations/20260916223000_professional_tg_onepager_metadata.sql", import.meta.url), "utf8");
+const p254BillingTenantMigration = await readFile(new URL("../supabase/migrations/20260916231500_fix_p254_2025_billing_tenant.sql", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -185,5 +186,8 @@ assert.match(tgBilling, /balance >= 0[\s\S]*Nachforderung in Höhe von[\s\S]*Gut
 assert.match(tgBilling, /Gesamtkosten WEG[\s\S]*Umlageschlüssel[\s\S]*Ihr Anteil/, "Die professionelle Kostenaufstellung muss Quelle, Umlageschlüssel und Mieteranteil getrennt ausweisen");
 assert.match(tgBilling, /landlordIban\.trim\(\)[\s\S]*Bankverbindung für die Überweisung/, "Bankdaten dürfen nur bei einer Nachforderung und vorhandener IBAN erscheinen");
 assert.match(tgProfessionalOnepagerMigration, /15403\.92[\s\S]*laut Bescheid[\s\S]*9018\.14[\s\S]*1 \/ 274 Stellplätze/, "P250 muss die bestätigten WEG-Gesamtkosten und Umlageschlüssel zentral für den Bericht speichern");
+assert.match(tgBilling, /tenant_contracts[\s\S]*contractMatchesBillingPeriod[\s\S]*tenantFieldsFromContract/, "TG-Abrechnungen müssen den Mieter aus dem zum Abrechnungszeitraum passenden zentralen Mietvertrag beziehen");
+assert.match(tgBilling, /P254:[\s\S]*"P254"[\s\S]*"E008440000123"[\s\S]*"GARAGE3"/, "P254 muss auch über die zentrale Einheit Garage 3 eindeutig zum Mietvertrag aufgelöst werden");
+assert.match(p254BillingTenantMigration, /'tenantName', 'Sebastian Pilsl'[\s\S]*'recipientSalutation', 'Sehr geehrter Herr Pilsl,'[\s\S]*not ilike '%Güzel%'/, "P254/2025 darf nur Sebastian Pilsl als Zeitraum-Mieter führen");
 
-console.log("144 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("147 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");

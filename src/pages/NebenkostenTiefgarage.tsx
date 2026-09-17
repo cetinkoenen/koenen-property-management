@@ -68,6 +68,23 @@ type StoredPayload = {
   records: BillingYearData[];
 };
 
+type TgTenantContractRow = {
+  id: string;
+  object_code: string | null;
+  unit_label: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  tenant_profiles?: {
+    salutation: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    company_name: string | null;
+    street: string | null;
+    postal_code: string | null;
+    city: string | null;
+  } | null;
+};
+
 const STORAGE_KEY = "koenen:tiefgarage-nebenkosten:v1";
 const BILLING_TABLE = "apartment_billing_workspaces";
 const BILLING_OBJECT_ID = "rosenstein-str-25-tiefgarage";
@@ -494,6 +511,47 @@ function normalizeUnitCode(value: unknown): string {
   return match?.[0] ?? "P250";
 }
 
+function contractMatchesBillingPeriod(
+  contract: TgTenantContractRow,
+  unitCode: string,
+  periodFrom: string,
+  periodTo: string,
+): boolean {
+  if (!contract.start_date || contract.start_date > periodTo) return false;
+  if (contract.end_date && contract.end_date < periodFrom) return false;
+  const reference = PARKING_REFERENCES[unitCode] ?? "";
+  const contractUnit = `${contract.unit_label ?? ""} ${contract.object_code ?? ""}`.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const aliases: Record<string, string[]> = {
+    P250: ["P250", "E008440000121", "GARAGE1", "STELLPLATZ1"],
+    P253: ["P253", "E008440000122", "GARAGE2", "STELLPLATZ2"],
+    P254: ["P254", "E008440000123", "GARAGE3", "STELLPLATZ3"],
+  };
+  return (aliases[unitCode] ?? [unitCode, reference]).filter(Boolean).some((alias) => contractUnit.includes(alias));
+}
+
+function tenantFieldsFromContract(contract: TgTenantContractRow) {
+  const tenant = contract.tenant_profiles;
+  if (!tenant) return null;
+  const tenantName = tenant.company_name?.trim() || [tenant.first_name, tenant.last_name].filter(Boolean).join(" ").trim();
+  if (!tenantName) return null;
+  const tenantAddress = [tenant.street, [tenant.postal_code, tenant.city].filter(Boolean).join(" ")]
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .join("\n");
+  const salutation = String(tenant.salutation ?? "").trim().toLocaleLowerCase("de-DE");
+  const lastName = String(tenant.last_name ?? "").trim();
+  const recipientSalutation = tenant.company_name?.trim()
+    ? "Sehr geehrte Damen und Herren,"
+    : salutation === "herr" && lastName
+      ? `Sehr geehrter Herr ${lastName},`
+      : salutation === "frau" && lastName
+        ? `Sehr geehrte Frau ${lastName},`
+        : lastName
+          ? `Guten Tag Herr/Frau ${lastName},`
+          : "Sehr geehrte Damen und Herren,";
+  return { tenantName, tenantAddress, recipientSalutation };
+}
+
 function unitCodeFromRecord(record: Partial<BillingYearData>): string {
   return normalizeUnitCode(`${record.unitCode ?? ""} ${record.unitLabel ?? ""} ${record.propertyLabel ?? ""}`);
 }
@@ -917,6 +975,46 @@ export default function NebenkostenTiefgarage() {
     }, 650);
     return () => window.clearTimeout(timeout);
   }, [records, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady || !activeRecord.periodFrom || !activeRecord.periodTo) return;
+    let cancelled = false;
+    const recordId = activeRecord.recordId;
+    const unitCode = activeRecord.unitCode;
+    const periodFrom = activeRecord.periodFrom;
+    const periodTo = activeRecord.periodTo;
+
+    async function syncTenantFromBillingPeriod() {
+      const { data, error } = await supabase
+        .from("tenant_contracts")
+        .select("id,object_code,unit_label,start_date,end_date,tenant_profiles(salutation,first_name,last_name,company_name,street,postal_code,city)")
+        .eq("is_deleted", false)
+        .lte("start_date", periodTo)
+        .order("start_date", { ascending: false, nullsFirst: false });
+      if (cancelled || error) return;
+
+      const periodContract = ((data ?? []) as unknown as TgTenantContractRow[])
+        .filter((contract) => contractMatchesBillingPeriod(contract, unitCode, periodFrom, periodTo))
+        .sort((left, right) => String(right.start_date ?? "").localeCompare(String(left.start_date ?? "")))[0];
+      const tenantFields = periodContract ? tenantFieldsFromContract(periodContract) : null;
+      if (!tenantFields) return;
+
+      setRecords((current) => current.map((record) => {
+        if (record.recordId !== recordId) return record;
+        if (
+          record.tenantName === tenantFields.tenantName
+          && record.tenantAddress === tenantFields.tenantAddress
+          && record.recipientSalutation === tenantFields.recipientSalutation
+        ) return record;
+        return { ...record, ...tenantFields };
+      }));
+    }
+
+    void syncTenantFromBillingPeriod();
+    return () => {
+      cancelled = true;
+    };
+  }, [storageReady, activeRecord.recordId, activeRecord.unitCode, activeRecord.periodFrom, activeRecord.periodTo]);
 
   useEffect(() => {
     let alive = true;
