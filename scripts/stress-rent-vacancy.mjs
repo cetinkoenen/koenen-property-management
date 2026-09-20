@@ -46,6 +46,12 @@ function isVacancyEffectivelyActiveInRange(vacancy, start, end) {
 }
 
 function effectiveRentMonth(entry, isLilienthaler = false, objectLabel = "") {
+  const explicit = String(`${entry.category ?? ""} ${entry.note ?? ""}`).match(/mietmonat\s+(0?[1-9]|1[0-2])(?:[./-])(20\d{2})|mietmonat\s+november\s+(20\d{2})/i);
+  if (explicit) {
+    return explicit[3]
+      ? { year: Number(explicit[3]), month: 11 }
+      : { year: Number(explicit[2]), month: Number(explicit[1]) };
+  }
   const year = Number(entry.booking_date.slice(0, 4));
   const month = Number(entry.booking_date.slice(5, 7));
   const day = Number(entry.booking_date.slice(8, 10));
@@ -229,6 +235,14 @@ const tests = [
     assert.equal(rentalOverlapsMonth({ start_date: "2026-01-01", end_date: "2026-09-29", rent_monthly: 85 }, 2026, 10), false);
     assert.equal(rentalOverlapsMonth({ start_date: "2026-08-01", end_date: null, rent_monthly: 94 }, 2026, 7), false);
     assert.equal(rentalOverlapsMonth({ start_date: "2026-08-01", end_date: null, rent_monthly: 94 }, 2026, 8), true);
+  },
+  () => {
+    assert.deepEqual(
+      effectiveRentMonth({ booking_date: "2025-12-03", category: "Miete", note: "P250 · Mietmonat November 2025 · anteilig ab 14.11.2025" }),
+      { year: 2025, month: 11 },
+      "Ein dokumentierter Mietmonat muss vor dem Bankbuchungsdatum gelten",
+    );
+    assert.equal(isRentAssignedToMonth({ booking_date: "2025-12-03", category: "Miete", note: "P253 · Mietmonat 11/2025" }, 2025, 11), true);
   },
   () => {
     assert.deepEqual(effectiveRentMonth({ booking_date: "2026-01-25", category: "Miete", note: "" }), { year: 2026, month: 2 });

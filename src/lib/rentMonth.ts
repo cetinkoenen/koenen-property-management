@@ -1,5 +1,48 @@
 export type RentYearMonth = { year: number; month: number };
 
+const RENT_MONTH_NAMES: Array<[number, string[]]> = [
+  [1, ["januar", "jan"]],
+  [2, ["februar", "feb"]],
+  [3, ["maerz", "marz", "maer", "mar"]],
+  [4, ["april", "apr"]],
+  [5, ["mai"]],
+  [6, ["juni", "jun"]],
+  [7, ["juli", "jul"]],
+  [8, ["august", "aug"]],
+  [9, ["september", "sep"]],
+  [10, ["oktober", "okt"]],
+  [11, ["november", "nov"]],
+  [12, ["dezember", "dez"]],
+];
+
+/**
+ * Liest einen ausdrücklich dokumentierten Miet-/Leistungsmonat. Diese Angabe
+ * hat Vorrang vor dem Bankbuchungsdatum, etwa wenn eine anteilige Novembermiete
+ * erst Anfang Dezember eingeht.
+ */
+export function explicitRentYearMonth(reference: string | null | undefined): RentYearMonth | null {
+  const text = String(reference ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replaceAll("ß", "ss")
+    .replace(/[^a-z0-9/.-]+/g, " ")
+    .trim();
+  if (!text) return null;
+
+  const numeric = text.match(/(?:mietmonat|leistungsmonat|miete\s+fur|miete\s+fuer)\s*(0?[1-9]|1[0-2])[./-](20\d{2})/);
+  if (numeric) return { year: Number(numeric[2]), month: Number(numeric[1]) };
+
+  const yearMatch = text.match(/\b(20\d{2})\b/);
+  if (!yearMatch || !/(?:mietmonat|leistungsmonat|miete)/.test(text)) return null;
+  for (const [month, names] of RENT_MONTH_NAMES) {
+    if (names.some((name) => new RegExp(`\\b${name}\\b`).test(text))) {
+      return { year: Number(yearMatch[1]), month };
+    }
+  }
+  return null;
+}
+
 /**
  * Zentrale Zuordnung des Zahlungstags zum Mietmonat.
  * Hohenloher wird nach dem belegten Zahlungsrhythmus bereits ab dem 21. Tag
@@ -45,14 +88,18 @@ export function shiftIsoDateByMonthsClamped(value: string, offset: number): stri
 }
 
 /** Zentrale Hausverwaltungsregel: Mietzahlung ab dem 25. zählt zum Folgemonat. */
-export function effectiveRentYearMonth(value: string | null | undefined, cutoffDay = 25): RentYearMonth | null {
+export function effectiveRentYearMonth(value: string | null | undefined, cutoffDay = 25, reference?: string | null): RentYearMonth | null {
+  const explicit = explicitRentYearMonth(reference);
+  if (explicit) return explicit;
   const parsed = parseIsoDate(value);
   if (!parsed) return null;
   if (parsed.day < cutoffDay) return { year: parsed.year, month: parsed.month };
   return shiftYearMonth(parsed.year, parsed.month, 1);
 }
 
-export function effectiveRentDate(value: string | null | undefined, cutoffDay = 25): string | null {
+export function effectiveRentDate(value: string | null | undefined, cutoffDay = 25, reference?: string | null): string | null {
+  const explicit = explicitRentYearMonth(reference);
+  if (explicit) return `${explicit.year}-${String(explicit.month).padStart(2, "0")}-01`;
   const parsed = parseIsoDate(value);
   if (!parsed || !value) return value ?? null;
   return parsed.day >= cutoffDay ? shiftIsoDateByMonthsClamped(value, 1) : value;

@@ -52,6 +52,9 @@ assert.match(rentOverview, /Buchungen, Mietverträge, Mietanpassungen und Leerst
 assert.match(rentOverview, /if \(adjustmentLabel\) \{[\s\S]{0,500}?enoughAddressOverlap\(adjustmentLabel, objectLabel\)/, "Mieteingang muss bei Mietanpassungen die konkrete Objektbezeichnung vor historischen Alias-IDs priorisieren");
 assert.match(rentOverview, /if \(propertyId\) return propertyId === object\.id \|\| candidateIds\.includes\(propertyId\);/, "Eine abweichende Objekt-ID darf nicht über eine unscharfe Notizsuche auf ein anderes Objekt fallen");
 assert.match(rentMonth, /normalized\.includes\("hohenloher"\) \? 21 : 25/, "Die zentrale Mietmonatsregel muss Hohenloher-Zahlungen ab dem 21. dem Folgemonat zuordnen");
+assert.match(rentMonth, /export function explicitRentYearMonth/, "Ein ausdrücklich dokumentierter Mietmonat muss zentral ausgewertet werden");
+assert.match(rentOverview, /explicitRentYearMonth\(bookingReferenceText\(booking\)\)/, "Mieteingang muss nachträglich eingegangene Mieten dem dokumentierten Mietmonat zuordnen");
+assert.match(rentOverview, /daysInMonth - startDay \+ 1/, "Der erste untermonatige Mietzeitraum muss taggenau statt als voller Monat berechnet werden");
 for (const [source, label] of [[rentOverview, "Mieteingang"], [rentDevelopment, "Mietentwicklung"], [appData, "App-Datenquelle"], [consistency, "Konsistenzprüfung"], [cockpit, "Cockpit"]]) {
   assert.match(source, /rentPaymentCutoffDay/, `${label} muss die zentrale Mietmonatsregel verwenden`);
 }
@@ -113,4 +116,4 @@ assert.match(utilitiesPage, /return summarizeBillingWorkspace\(target\)/, "Haupt
 assert.match(billingService, /const balance = roundMoney\(advance - tenantTotal\)/, "Die zentrale Nebenkostenformel muss Guthaben und Nachzahlung centgenau aus Vorauszahlung minus Kosten berechnen");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
-console.log("66 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("69 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

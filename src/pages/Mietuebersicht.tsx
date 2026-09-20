@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import brandLogo from "../assets/koenen-brand-logo.webp";
 import { supabase } from "../lib/supabase";
 import { MIETBESTANDTEIL_NK_CATEGORY, isPureRentBackPayment } from "../lib/financeEntryLabels";
-import { rentPaymentCutoffDay, shiftIsoDateByMonthsClamped } from "../lib/rentMonth";
+import { explicitRentYearMonth, rentPaymentCutoffDay, shiftIsoDateByMonthsClamped } from "../lib/rentMonth";
 import { rentBalancePart } from "../lib/rentPaymentBalance";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
 import {
@@ -464,6 +464,13 @@ function expectedRentFromRentals(
         return String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""));
       })[0];
     amount = Number(selected?.rent_monthly) || 0;
+    if (selected?.start_date && selected.start_date > start && selected.start_date <= end) {
+      const startDay = Number(selected.start_date.slice(8, 10));
+      const daysInMonth = new Date(Number(start.slice(0, 4)), Number(start.slice(5, 7)), 0).getDate();
+      if (Number.isInteger(startDay) && startDay > 1 && startDay <= daysInMonth) {
+        amount = Math.round((amount * (daysInMonth - startDay + 1) / daysInMonth) * 100) / 100;
+      }
+    }
   }
 
   return {
@@ -1069,6 +1076,9 @@ function isGarageLikeBooking(booking: FinanceEntry): boolean {
 function attributedRentDateForUnit(booking: FinanceEntry, objectLabel: string, unitRef: string): string | null {
   void unitRef;
   if (!booking.booking_date) return null;
+
+  const explicitMonth = explicitRentYearMonth(bookingReferenceText(booking));
+  if (explicitMonth) return `${explicitMonth.year}-${String(explicitMonth.month).padStart(2, "0")}-01`;
 
   // Dauerregel für die Verknüpfung Monate/Buchungen -> Mieteingang:
   // Wenn ab dem 25. Monatstag ein Zahlungseingang mit Referenz/Kategorie "Miete" gebucht wird,

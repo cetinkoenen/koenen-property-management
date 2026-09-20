@@ -217,8 +217,8 @@ function expectedRent(contract: ContractRow): number {
   return toMoney(contract.cold_rent) + toMoney(contract.operating_costs);
 }
 
-function bookingEffectiveMonthDate(bookingDate: string | null, objectLabel?: string | null): string | null {
-  return effectiveRentDate(bookingDate, rentPaymentCutoffDay(objectLabel));
+function bookingEffectiveMonthDate(bookingDate: string | null, objectLabel?: string | null, reference?: string | null): string | null {
+  return effectiveRentDate(bookingDate, rentPaymentCutoffDay(objectLabel), reference);
 }
 
 function isRentPayment(row: FinanceRow): boolean {
@@ -535,7 +535,7 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
 
   const payments = ((paymentsRes.data ?? []) as FinanceRow[]).filter((row) => {
     const objectLabel = objectLabels[String(row.object_id ?? "")] || objectLabels[String(row.objekt_code ?? "")];
-    const effectiveDate = bookingEffectiveMonthDate(row.booking_date, objectLabel);
+    const effectiveDate = bookingEffectiveMonthDate(row.booking_date, objectLabel, `${row.category ?? ""} ${row.note ?? ""}`);
     return Boolean(effectiveDate && effectiveDate >= period.start && effectiveDate <= period.end && isRentPayment(row));
   });
   const contractCountByObject = contracts.reduce<Record<string, number>>((result, contract) => {

@@ -4,7 +4,7 @@ import { isAllocatablePortfolioExpenseEntry, isPortfolioExpenseCategory, isPortf
 import { classifyTaxRelevance } from "@/lib/taxClassification";
 import { classifyNkRelevance } from "@/lib/nkClassification";
 import { resolveChfLoanSplitRule } from "@/lib/chfLoanSplit";
-import { rentPaymentCutoffDay } from "@/lib/rentMonth";
+import { explicitRentYearMonth, rentPaymentCutoffDay } from "@/lib/rentMonth";
 import { isAnlageVEligible, isRosensteinSharedExpense, isSection35aProfile, resolveEntryTaxProfile, TAX_OBJECT_PROFILES, type TaxReportObjectOption } from "@/services/taxReportEngine";
 
 export type ConsistencySeverity = "ok" | "warning" | "critical";
@@ -101,40 +101,11 @@ function entryMonth(value: string | null): { year: number; month: number; day: n
   return { year, month, day: Number.isFinite(day) ? day : 1 };
 }
 
-function explicitRentMonthFromNote(entry: FinanceEntry): { year: number; month: number } | null {
-  const text = normalize(`${entry.category ?? ""} ${entry.note ?? ""}`);
-  const yearMatch = text.match(/\b(20\d{2})\b/);
-  if (!yearMatch) return null;
-
-  const monthNames: Array<[number, string[]]> = [
-    [1, ["januar", "jan"]],
-    [2, ["februar", "feb"]],
-    [3, ["maerz", "marz", "maer", "mar"]],
-    [4, ["april", "apr"]],
-    [5, ["mai"]],
-    [6, ["juni", "jun"]],
-    [7, ["juli", "jul"]],
-    [8, ["august", "aug"]],
-    [9, ["september", "sep"]],
-    [10, ["oktober", "okt"]],
-    [11, ["november", "nov"]],
-    [12, ["dezember", "dez"]],
-  ];
-
-  for (const [month, names] of monthNames) {
-    if (names.some((name) => new RegExp(`\\b${name}\\b`).test(text))) {
-      return { year: Number(yearMatch[1]), month };
-    }
-  }
-
-  return null;
-}
-
 function effectiveRentMonth(entry: FinanceEntry, objectLabel?: string | null): { year: number; month: number } | null {
   // Explicit labels such as "April 2026" or "Mai 2026" are more reliable
   // than a pure booking-date rule. This prevents payments booked after the 25th
   // but clearly labelled for the current month from being moved into the next month.
-  const explicit = explicitRentMonthFromNote(entry);
+  const explicit = explicitRentYearMonth(`${entry.category ?? ""} ${entry.note ?? ""}`);
   if (explicit) return explicit;
 
   const parsed = entryMonth(entry.booking_date);
