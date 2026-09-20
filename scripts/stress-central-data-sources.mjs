@@ -55,6 +55,7 @@ assert.match(rentMonth, /normalized\.includes\("hohenloher"\) \? 21 : 25/, "Die 
 assert.match(rentMonth, /export function explicitRentYearMonth/, "Ein ausdrücklich dokumentierter Mietmonat muss zentral ausgewertet werden");
 assert.match(rentOverview, /explicitRentYearMonth\(bookingReferenceText\(booking\)\)/, "Mieteingang muss nachträglich eingegangene Mieten dem dokumentierten Mietmonat zuordnen");
 assert.match(rentOverview, /daysInMonth - startDay \+ 1/, "Der erste untermonatige Mietzeitraum muss taggenau statt als voller Monat berechnet werden");
+assert.match(rentOverview, /activeAdjustmentAmount \?\? contractExpectedAmount \?\? rentalReference\.expectedAmount \?\? inferredOldAdjustmentAmount/, "Ein spaeterer Mietanpassungs-Altwert darf einen exakt datierten Vermietungszeitraum nicht uebersteuern");
 for (const [source, label] of [[rentOverview, "Mieteingang"], [rentDevelopment, "Mietentwicklung"], [appData, "App-Datenquelle"], [consistency, "Konsistenzprüfung"], [cockpit, "Cockpit"]]) {
   assert.match(source, /rentPaymentCutoffDay/, `${label} muss die zentrale Mietmonatsregel verwenden`);
 }
@@ -116,4 +117,4 @@ assert.match(utilitiesPage, /return summarizeBillingWorkspace\(target\)/, "Haupt
 assert.match(billingService, /const balance = roundMoney\(advance - tenantTotal\)/, "Die zentrale Nebenkostenformel muss Guthaben und Nachzahlung centgenau aus Vorauszahlung minus Kosten berechnen");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
-console.log("69 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("70 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

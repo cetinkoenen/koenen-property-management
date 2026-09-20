@@ -631,7 +631,7 @@ function expectedRentFromAdjustments(
   unit: UnitDefinition,
   start: string,
   end: string,
-): { expectedAmount: number | null; source: string } {
+): { expectedAmount: number | null; source: string; active: boolean } {
   const matched = adjustments
     .filter((row) => rentAdjustmentMatchesUnit(row, object, candidateIds, unit))
     .map((row) => ({ row, startDate: rentAdjustmentStartDate(row), endDate: rentAdjustmentEndDate(row) }))
@@ -642,13 +642,13 @@ function expectedRentFromAdjustments(
     .filter((item) => item.startDate <= end && (!item.endDate || item.endDate >= start))
     .sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
   const activeAmount = active ? rentAdjustmentTotal(active.row) : null;
-  if (activeAmount != null) return { expectedAmount: activeAmount, source: "Mietentwicklung > Mietanpassungen" };
+  if (activeAmount != null) return { expectedAmount: activeAmount, source: "Mietentwicklung > Mietanpassungen", active: true };
 
   const nextAdjustment = matched.find((item) => item.startDate > end);
   const oldAmount = nextAdjustment ? rentAdjustmentOldTotal(nextAdjustment.row) : null;
-  if (oldAmount != null) return { expectedAmount: oldAmount, source: "Mietentwicklung > Mietanpassungen (alter Stand)" };
+  if (oldAmount != null) return { expectedAmount: oldAmount, source: "Mietentwicklung > Mietanpassungen (alter Stand)", active: false };
 
-  return { expectedAmount: null, source: "Mietentwicklung > Mietanpassungen" };
+  return { expectedAmount: null, source: "Mietentwicklung > Mietanpassungen", active: false };
 }
 
 function expectedAmountForOpen(row: Pick<OverviewRow, "status" | "expectedAmount" | "paidAmount">): number {
@@ -1641,12 +1641,19 @@ export default function Mietuebersicht({
             const adjustmentReference = expectedRentFromAdjustments(rentAdjustments, object, objectCandidateIds, unit, period.start, period.end);
             const rentalReference = expectedRentFromRentals(portfolioRentals, objectCandidateIds, unit, period.start, period.end);
             const contractExpectedAmount = contractRentAmount(tenantContract);
-            const expectedAmountBeforeVacancy = adjustmentReference.expectedAmount ?? contractExpectedAmount ?? rentalReference.expectedAmount;
-            const expectedSourceBeforeVacancy = adjustmentReference.expectedAmount !== null
+            // Nur eine im Monat aktive Mietanpassung darf die exakt datierten
+            // Vertrags-/Vermietungszeiträume übersteuern. Ein lediglich aus einer
+            // späteren Anpassung abgeleiteter Altwert ist der letzte Fallback.
+            const activeAdjustmentAmount = adjustmentReference.active ? adjustmentReference.expectedAmount : null;
+            const inferredOldAdjustmentAmount = adjustmentReference.active ? null : adjustmentReference.expectedAmount;
+            const expectedAmountBeforeVacancy = activeAdjustmentAmount ?? contractExpectedAmount ?? rentalReference.expectedAmount ?? inferredOldAdjustmentAmount;
+            const expectedSourceBeforeVacancy = activeAdjustmentAmount !== null
               ? adjustmentReference.source
               : contractExpectedAmount !== null
                 ? "Mieterregister > Mietvertrag"
-                : rentalReference.source;
+                : rentalReference.expectedAmount !== null
+                  ? rentalReference.source
+                  : adjustmentReference.source;
             const lilienthalerAllocation = lilienthalerBookingAllocation(allKnownBookings, object, unit, period, vacancy ? null : expectedAmountBeforeVacancy);
             const bookingAmount = lilienthalerAllocation?.paidAmount ?? unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
             const adjustmentStartDates = rentAdjustments
