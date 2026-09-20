@@ -94,6 +94,8 @@ assert.match(utilitiesKpi, /recordMatchesProperty\(record, propertyId, canonical
 assert.match(utilitiesKpi, /selectedYear === "all" \? records : records\.filter/, "Der Jahresfilter muss einzelne Jahre und die Gesamthistorie unterstützen");
 assert.match(utilitiesKpi, /setSelectedYear\(String\(currentYear\)\)[\s\S]{0,200}?void load\(\)/, "Beim Objektwechsel muss der Jahresfilter vollständig zurückgesetzt und neu geladen werden");
 assert.match(utilitiesKpi, /nextRecords\[0\]\?\.sourceObjectId \?\? canonicalObjectCode/, "Spezielle Abrechnungsobjekte wie Rosenstein-Tiefgarage müssen ihren zentralen Abrechnungsschlüssel beibehalten");
+assert.match(utilitiesKpi, /record\?\.sourceObjectId \?\? selectedYearRecord\?\.sourceObjectId \?\? billingObjectId/, "Jede KPI-Karte und jedes ausgewählte Jahr muss auf seine eigene zentrale Abrechnungsquelle verlinken");
+assert.match(utilitiesKpi, /targetObjectId === "rosenstein-str-25-tiefgarage"/, "Rosenstein-Tiefgaragenabrechnungen müssen auf die Tiefgaragen-Hauptseite verweisen");
 assert.match(utilitiesKpi, /status\.pdfEnabled \? billingUrl\(record, "pdf"\)/, "PDF-Aufruf darf nur für freigegebene oder korrigierte Abrechnungen aktiv sein");
 assert.match(utilitiesKpi, /getPropertyDocumentSignedUrl/, "Archivdateien müssen über zeitlich begrenzte URLs aus dem privaten Dokumentenspeicher geöffnet werden");
 assert.match(billingService, /Array\.isArray\(candidate\.records\)/, "Die zentrale Nebenkostenquelle muss auch Tiefgaragen-Jahresdatensätze auswerten");

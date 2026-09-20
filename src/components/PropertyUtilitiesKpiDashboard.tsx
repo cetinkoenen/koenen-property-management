@@ -146,8 +146,10 @@ export default function PropertyUtilitiesKpiDashboard({ propertyId, propertyLabe
   const visibleRecords = useMemo(() => selectedYear === "all" ? records : records.filter((record) => record.year === Number(selectedYear)), [records, selectedYear]);
 
   function billingUrl(record?: KpiRecord, view?: "pdf") {
-    if (billingObjectId === "rosenstein-str-25-tiefgarage") return "/nebenkosten/tiefgarage";
-    const params = new URLSearchParams({ object: billingObjectId, year: String(record?.year ?? (selectedYear === "all" ? currentYear : selectedYear)) });
+    const selectedYearRecord = selectedYear === "all" ? undefined : records.find((item) => item.year === Number(selectedYear));
+    const targetObjectId = record?.sourceObjectId ?? selectedYearRecord?.sourceObjectId ?? billingObjectId;
+    if (targetObjectId === "rosenstein-str-25-tiefgarage") return "/nebenkosten/tiefgarage";
+    const params = new URLSearchParams({ object: targetObjectId, year: String(record?.year ?? (selectedYear === "all" ? currentYear : selectedYear)) });
     if (record) params.set("billing", record.id);
     if (view) params.set("view", view);
     return `/nebenkosten/wohnungen?${params.toString()}`;
