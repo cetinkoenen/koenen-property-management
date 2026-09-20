@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, FileText, FolderOpen, Plus, RefreshCw } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
@@ -44,6 +44,21 @@ function statusPresentation(value: string | undefined, locked: boolean | undefin
   return { label: "Offen", classes: "border-slate-200 bg-slate-100 text-slate-600", pdfEnabled: false };
 }
 
+function recordMatchesProperty(record: KpiRecord, propertyId: string, canonicalObjectCode: string, propertyLabel: string) {
+  const directIds = new Set([propertyId, canonicalObjectCode].map(normalizeIdentity).filter(Boolean));
+  const sourceId = normalizeIdentity(record.sourceObjectId);
+  const workspaceCode = normalizeIdentity(record.workspace.meta.propertyCode);
+  if (directIds.has(sourceId) || directIds.has(workspaceCode)) return true;
+
+  const expectedLabel = normalizeIdentity(propertyLabel);
+  const workspaceLabel = normalizeIdentity(record.workspace.meta.propertyLabel);
+  return Boolean(expectedLabel && workspaceLabel && (
+    workspaceLabel === expectedLabel
+    || workspaceLabel.startsWith(expectedLabel)
+    || expectedLabel.startsWith(workspaceLabel)
+  ));
+}
+
 export default function PropertyUtilitiesKpiDashboard({ propertyId, propertyLabel }: { propertyId: string; propertyLabel: string }) {
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState<string>(String(currentYear));
@@ -53,8 +68,10 @@ export default function PropertyUtilitiesKpiDashboard({ propertyId, propertyLabe
   const [openArchiveId, setOpenArchiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadRequestId = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestId.current;
     try {
       setLoading(true);
       setError(null);
@@ -63,6 +80,7 @@ export default function PropertyUtilitiesKpiDashboard({ propertyId, propertyLabe
         supabase.from("property_documents").select("*").eq("category", "nk_abrechnung").order("document_year", { ascending: false, nullsFirst: false }),
         supabase.from("v_object_dropdown").select("objekt_code,label").order("label", { ascending: true }),
       ]);
+      if (requestId !== loadRequestId.current) return;
       if (billingResult.error) throw billingResult.error;
       if (documentResult.error) throw documentResult.error;
       if (objectResult.error) throw objectResult.error;
@@ -71,43 +89,64 @@ export default function PropertyUtilitiesKpiDashboard({ propertyId, propertyLabe
       const matchingObject = ((objectResult.data ?? []) as ObjectOption[]).find((object) => {
         return object.objekt_code === propertyId || (Boolean(labelKey) && normalizeIdentity(object.label) === labelKey);
       });
-      const canonicalBillingObjectId = matchingObject?.objekt_code ?? propertyId;
-      const nextRecords = ((billingResult.data ?? []) as BillingRow[]).filter((row) => row.object_id === canonicalBillingObjectId).flatMap((row) => {
+      const canonicalObjectCode = matchingObject?.objekt_code ?? propertyId;
+      const allRecords = ((billingResult.data ?? []) as BillingRow[]).flatMap((row) => {
         const year = Number(row.year);
         return extractBillingWorkspaceRecords(row.data, year).map((record) => ({
           ...record,
           sourceObjectId: row.object_id,
           year: Number(record.workspace.meta.billingYear || year),
         }));
-      }).sort((a, b) => b.year - a.year || b.workspace.meta.periodFrom.localeCompare(a.workspace.meta.periodFrom));
+      });
+      const nextRecords = allRecords
+        .filter((record) => recordMatchesProperty(record, propertyId, canonicalObjectCode, propertyLabel))
+        .sort((a, b) => b.year - a.year || b.workspace.meta.periodFrom.localeCompare(a.workspace.meta.periodFrom));
+      const canonicalBillingObjectId = nextRecords[0]?.sourceObjectId ?? canonicalObjectCode;
 
       const nextDocuments = ((documentResult.data ?? []) as PropertyDocumentRow[]).filter((document) => {
         return document.property_id === propertyId
           || document.portfolio_property_id === propertyId
           || document.objekt_code === propertyId
+          || document.objekt_code === canonicalBillingObjectId
           || (Boolean(labelKey) && normalizeIdentity(document.property_name) === labelKey);
       });
+      if (requestId !== loadRequestId.current) return;
       setRecords(nextRecords);
       setDocuments(nextDocuments);
       setBillingObjectId(canonicalBillingObjectId);
+      setSelectedYear((current) => {
+        if (current === "all" || nextRecords.some((record) => record.year === Number(current))) return current;
+        return String(nextRecords[0]?.year ?? currentYear);
+      });
     } catch (loadError) {
+      if (requestId !== loadRequestId.current) return;
       setRecords([]);
       setDocuments([]);
       setError(loadError instanceof Error ? loadError.message : "Nebenkosten-KPIs konnten nicht geladen werden.");
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestId.current) setLoading(false);
     }
-  }, [propertyId, propertyLabel]);
+  }, [currentYear, propertyId, propertyLabel]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
-  }, [load]);
+    const timer = window.setTimeout(() => {
+      setRecords([]);
+      setDocuments([]);
+      setBillingObjectId(propertyId);
+      setSelectedYear(String(currentYear));
+      void load();
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      loadRequestId.current += 1;
+    };
+  }, [currentYear, load, propertyId]);
 
   const years = useMemo(() => Array.from(new Set([currentYear, ...records.map((record) => record.year)])).sort((a, b) => b - a), [currentYear, records]);
   const visibleRecords = useMemo(() => selectedYear === "all" ? records : records.filter((record) => record.year === Number(selectedYear)), [records, selectedYear]);
 
   function billingUrl(record?: KpiRecord, view?: "pdf") {
+    if (billingObjectId === "rosenstein-str-25-tiefgarage") return "/nebenkosten/tiefgarage";
     const params = new URLSearchParams({ object: billingObjectId, year: String(record?.year ?? (selectedYear === "all" ? currentYear : selectedYear)) });
     if (record) params.set("billing", record.id);
     if (view) params.set("view", view);

@@ -42,6 +42,34 @@ export type BillingWorkspaceRecordSnapshot = {
   workspace: BillingWorkspaceSnapshot;
 };
 
+type GarageBillingCostSnapshot = {
+  id?: unknown;
+  label?: unknown;
+  totalCost?: unknown;
+  key?: unknown;
+  totalUnits?: unknown;
+  yourUnits?: unknown;
+  autoMode?: unknown;
+};
+
+type GarageBillingRecordSnapshot = {
+  recordId?: unknown;
+  unitCode?: unknown;
+  unitLabel?: unknown;
+  year?: unknown;
+  finalized?: unknown;
+  workflowStatus?: unknown;
+  propertyLabel?: unknown;
+  periodFrom?: unknown;
+  periodTo?: unknown;
+  monthlyHausgeld?: unknown;
+  tenantPrepayments?: unknown;
+  tenantName?: unknown;
+  totalUnits?: unknown;
+  yourUnits?: unknown;
+  apportionableRows?: unknown;
+};
+
 function finiteNumber(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -53,6 +81,87 @@ function clamp(value: number, min: number, max: number) {
 
 function roundMoney(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function stringValue(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function monthsInclusive(from: string, to: string) {
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0;
+  return Math.max(1, (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth() + 1);
+}
+
+function isReleasedGarageStatus(value: unknown) {
+  return /freigegeben|korrigiert/i.test(stringValue(value));
+}
+
+function garageCostToWorkspaceCost(
+  value: GarageBillingCostSnapshot,
+  record: GarageBillingRecordSnapshot,
+  index: number,
+): BillingCostSnapshot {
+  const allocationKey = stringValue(value.key);
+  const direct = allocationKey === "Direktbetrag" || allocationKey === "Verbrauch/Direkt";
+  const periodFrom = stringValue(record.periodFrom);
+  const periodTo = stringValue(record.periodTo);
+  const totalCost = value.autoMode === "annualHausgeld"
+    ? finiteNumber(record.monthlyHausgeld) * monthsInclusive(periodFrom, periodTo)
+    : finiteNumber(value.totalCost);
+
+  return {
+    id: stringValue(value.id) || `tg-cost-${index + 1}`,
+    label: stringValue(value.label) || `Kostenart ${index + 1}`,
+    amount: roundMoney(totalCost),
+    allocation: direct ? "directAmount" : "allocationKey",
+    totalKey: finiteNumber(value.totalUnits) || finiteNumber(record.totalUnits),
+    apartmentKey: finiteNumber(value.yourUnits) || finiteNumber(record.yourUnits),
+    directAmount: direct ? roundMoney(totalCost) : 0,
+    prorateByOccupancy: false,
+  };
+}
+
+function garageRecordToWorkspaceRecord(
+  value: GarageBillingRecordSnapshot,
+  fallbackYear: number,
+  index: number,
+): BillingWorkspaceRecordSnapshot | null {
+  if (!Array.isArray(value.apportionableRows)) return null;
+  const year = finiteNumber(value.year) || fallbackYear;
+  const id = stringValue(value.recordId) || `tg-billing-${year}-${index + 1}`;
+  const unitCode = stringValue(value.unitCode);
+  const unitLabel = stringValue(value.unitLabel) || unitCode || "Tiefgaragenstellplatz";
+  const workflowStatus = stringValue(value.workflowStatus) || (value.finalized ? "Freigegeben" : "Offen");
+  const apartmentId = `${id}-tenant`;
+
+  return {
+    id,
+    name: `${unitCode || unitLabel} · ${year}`,
+    workspace: {
+      meta: {
+        propertyCode: "rosenstein-str-25-tiefgarage",
+        propertyLabel: stringValue(value.propertyLabel),
+        billingYear: year,
+        periodFrom: stringValue(value.periodFrom),
+        periodTo: stringValue(value.periodTo),
+        workflowStatus,
+        locked: Boolean(value.finalized) || isReleasedGarageStatus(workflowStatus),
+      },
+      apartments: [{
+        id: apartmentId,
+        label: unitLabel,
+        tenantName: stringValue(value.tenantName),
+        occupancyMonths: monthsInclusive(stringValue(value.periodFrom), stringValue(value.periodTo)),
+        advancePayments: finiteNumber(value.tenantPrepayments),
+        co2LandlordDeductionKalo: 0,
+        active: true,
+      }],
+      costs: (value.apportionableRows as GarageBillingCostSnapshot[]).map((row, rowIndex) => garageCostToWorkspaceCost(row, value, rowIndex)),
+      selectedApartmentId: apartmentId,
+    },
+  };
 }
 
 export function getPrimaryBillingApartment(workspace: BillingWorkspaceSnapshot) {
@@ -109,7 +218,16 @@ function isWorkspace(value: unknown): value is BillingWorkspaceSnapshot {
 
 export function extractBillingWorkspaceRecords(data: unknown, fallbackYear: number): BillingWorkspaceRecordSnapshot[] {
   if (!data || typeof data !== "object") return [];
-  const candidate = data as { billings?: unknown[] };
+  const candidate = data as { billings?: unknown[]; records?: unknown[] };
+
+  if (Array.isArray(candidate.records)) {
+    return candidate.records.flatMap((raw, index) => {
+      if (!raw || typeof raw !== "object") return [];
+      const record = garageRecordToWorkspaceRecord(raw as GarageBillingRecordSnapshot, fallbackYear, index);
+      return record ? [record] : [];
+    });
+  }
+
   const rawRecords = Array.isArray(candidate.billings) ? candidate.billings : [{ id: `legacy-${fallbackYear}`, name: "Abrechnung", workspace: data }];
 
   return rawRecords.flatMap((raw, index) => {
