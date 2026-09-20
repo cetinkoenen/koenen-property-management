@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMonth, appData, consistency, cockpit, cashflow, loanOverview, utilitiesKpi, utilitiesPage, billingService, wealth, migration, hohenloherMigration, vercelConfig] = await Promise.all([
+const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMonth, appData, consistency, cockpit, cashflow, loanOverview, utilitiesKpi, utilitiesPage, billingService, wealth, migration, hohenloherMigration, rosensteinRentalMigration, p250JanuaryMigration, vercelConfig] = await Promise.all([
   read("src/App.tsx"),
   read("src/pages/InvestmentBericht.tsx"),
   read("src/services/auditLogService.ts"),
@@ -21,6 +21,8 @@ const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMont
   read("src/pages/ImmobilienVermoegen.tsx"),
   read("supabase/migrations/20260827163000_property_id_aliases.sql"),
   read("supabase/migrations/20260915133500_include_rent_component_in_monthly_view.sql"),
+  read("supabase/migrations/20260920190000_sync_rosenstein_current_rental_periods.sql"),
+  read("supabase/migrations/20260920194500_fix_p250_january_2026_rent.sql"),
   read("vercel.json"),
 ]);
 
@@ -73,6 +75,12 @@ assert.match(wealth, /<CentralLoanOverview[\s\S]{0,300}?lockedPropertyId=\{centr
 assert.match(loanOverview, /const propertyLocked = Boolean\(fixedPropertyId \|\| lockedPropertyLabel\)/, "Die zentrale Darlehensübersicht muss einen fest gebundenen Objektmodus unterstützen");
 assert.match(loanOverview, /if \(propertyLocked\) \{[\s\S]{0,500}?return rows\.filter/, "Eine Immobilienakte darf nur die Darlehensdaten ihres fest gewählten Objekts anzeigen");
 assert.match(wealth, /<PropertyUtilitiesKpiDashboard[\s\S]{0,300}?propertyId=\{centralRentObjectId\(card, objects\)\}/, "Jede Immobilienakte muss das zentrale Nebenkosten-KPI-Dashboard verwenden");
+assert.match(wealth, /function activeParkingContract[\s\S]{0,1500}?startComparison[\s\S]{0,500}?updatedComparison/, "Bei ueberlappenden Stellplatzvertraegen muss der fachlich neueste Vertrag deterministisch gewinnen");
+assert.match(wealth, /Mieter · Stand \$\{tenantReferenceDate\}/, "Aktuelle Mieter muessen sichtbar von historischen Abrechnungszeitraeumen getrennt sein");
+assert.match(rosensteinRentalMigration, /tenant_contracts\) ist die fachliche Quelle/, "Die Rosenstein-Zeitreihe muss ihre fuehrende Mieterquelle dokumentieren");
+assert.match(rosensteinRentalMigration, /p250_unit_id[\s\S]*2026-03-01[\s\S]*85/, "P250 muss ab Maerz 2026 mit 85 EUR in der zentralen Mietzeitreihe stehen");
+assert.match(rosensteinRentalMigration, /p254_unit_id[\s\S]*2026-08-01[\s\S]*94/, "P254 muss ab August 2026 mit 94 EUR in der zentralen Mietzeitreihe stehen");
+assert.match(p250JanuaryMigration, /kaltmiete_laut_mietvertrag = 75[\s\S]*2026-01-01[\s\S]*2026-01-31/, "P250 muss im Januar 2026 mit der vertraglichen Miete von 75 EUR gespeichert sein");
 assert.match(wealth, /function PropertySpecialistAreaNotice/, "Alle Fachbereiche der Immobilienakte müssen denselben Read-only-Hinweis verwenden");
 assert.match(wealth, /Dies ist eine gefilterte Informationsübersicht für dieses Objekt\. Für Detailbearbeitungen oder die Gesamtübersicht nutzen Sie die Hauptseite\./, "Der vorgeschriebene Hinweistext muss vollständig angezeigt werden");
 assert.match(wealth, /mainPagePath="\/mieter\/mieteingang" mainPageLabel="Hauptseite Mieteingang"/, "Der Mietbereich muss auf die zentrale Mieteingang-Hauptseite verweisen");
@@ -105,4 +113,4 @@ assert.match(utilitiesPage, /return summarizeBillingWorkspace\(target\)/, "Haupt
 assert.match(billingService, /const balance = roundMoney\(advance - tenantTotal\)/, "Die zentrale Nebenkostenformel muss Guthaben und Nachzahlung centgenau aus Vorauszahlung minus Kosten berechnen");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
-console.log("60 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("66 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

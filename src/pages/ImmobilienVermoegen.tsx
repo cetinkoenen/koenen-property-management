@@ -701,6 +701,32 @@ function contractMonthlyRent(contract: TenantContract): number {
   return total > 0 ? total : toNumber(contract.cold_rent) + toNumber(contract.operating_costs);
 }
 
+function activeParkingContract(
+  card: WealthCard,
+  unit: ParkingUnit,
+  tenants: TenantProfileWithContracts[],
+  objects: AppObject[],
+  date: string,
+) {
+  return tenants
+    .flatMap((tenant) => (tenant.tenant_contracts ?? []).map((contract) => ({ tenant, contract })))
+    .filter(({ contract }) =>
+      contractMatchesWealthCard(contract, card, objects) &&
+      contractMatchesParkingUnit(contract, unit) &&
+      isContractActiveOn(contract, date),
+    )
+    .sort((left, right) => {
+      // Bei bereinigten oder versehentlich ueberlappenden Vertragszeilen gewinnt
+      // immer der fachlich neueste Vertrag. Die Datenbank-Reihenfolge darf den
+      // angezeigten Mieter niemals beeinflussen.
+      const startComparison = String(right.contract.start_date ?? "").localeCompare(String(left.contract.start_date ?? ""));
+      if (startComparison !== 0) return startComparison;
+      const updatedComparison = String(right.contract.updated_at ?? "").localeCompare(String(left.contract.updated_at ?? ""));
+      if (updatedComparison !== 0) return updatedComparison;
+      return String(right.contract.id).localeCompare(String(left.contract.id));
+    })[0] ?? null;
+}
+
 function buildRosensteinParkingUnits(
   card: WealthCard,
   vacancies: UnitVacancy[],
@@ -718,13 +744,7 @@ function buildRosensteinParkingUnits(
         isVacancyEffectivelyActiveInRange(candidate, today, today),
     );
 
-    const tenantContract = tenants.flatMap((tenant) =>
-      (tenant.tenant_contracts ?? []).map((contract) => ({ tenant, contract })),
-    ).find(({ contract }) =>
-      contractMatchesWealthCard(contract, card, objects) &&
-      contractMatchesParkingUnit(contract, unit) &&
-      isContractActiveOn(contract, today),
-    );
+    const tenantContract = activeParkingContract(card, unit, tenants, objects, today);
     const payment = getRosensteinUnitPayment(entries, unit, year);
 
     if (!vacancy && tenantContract) {
@@ -1072,6 +1092,7 @@ function RosensteinUnitOverview({ entries, year, parkingUnits }: { entries: Fina
   const vacantUnits = units.filter((unit) => unit.status === "vacant");
   const monthlyTarget = rentedUnits.reduce((sum, unit) => sum + unit.monthlyRent, 0);
   const yearlyPayments = units.reduce((sum, unit) => sum + unit.payment.total, 0);
+  const tenantReferenceDate = new Date().toLocaleDateString("de-DE");
 
   return (
     <article className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
@@ -1096,7 +1117,7 @@ function RosensteinUnitOverview({ entries, year, parkingUnits }: { entries: Fina
         <table className="min-w-full divide-y divide-slate-200 text-left">
           <thead className="bg-slate-50">
             <tr>
-              {["Einheit", "Status", "Mieter", "Sollmiete", `Mieteingang ${year}`, "Letzter Eingang"].map((label) => (
+              {["Einheit", "Status", `Mieter · Stand ${tenantReferenceDate}`, "Sollmiete", `Mieteingang ${year}`, "Letzter Eingang"].map((label) => (
                 <th key={label} className="px-5 py-3 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
                   {label}
                 </th>
