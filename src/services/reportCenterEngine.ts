@@ -5,11 +5,13 @@ import { parseLocaleNumber } from '../utils/numberParser';
 import { masterNamesMatch } from './masterDataService';
 import { classifyNkRelevance } from '../lib/nkClassification';
 import { rentBalancePart } from '../lib/rentPaymentBalance';
+import { buildTaxReportPreflight, taxPreflightModule } from './taxReportPreflight';
 
 export type ReportRecord = Record<string, unknown>;
 export type ReportSources = Record<string, ReportRecord[]>;
 export type ReportModule = PdfReportSection & { id: string };
 export const reportNames = [
+  ['validation', 'Datenprüfung vor Steuerexport'],
   ['cover', 'Steuerberater-Report · Deckblatt & Kennzahlen'],
   ['eur', 'Einnahmen-Überschuss-Rechnung (EÜR)'],
   ['tenants', 'Mieterübersicht & Zahlungsmatrix'],
@@ -28,10 +30,11 @@ export const reportNames = [
   ['loan-interest', 'Tilgung & Zins · Laufzeit- und Monatsreport'],
 ] as const;
 export const taxAdvisorReportIds = [
+  'validation',
+  'cover',
   'objects',
   'tenants',
   'adjustments',
-  'cover',
   'eur',
   'journal',
   'mileage',
@@ -103,7 +106,8 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const name = (c: ReportRecord) => tenantName(people.find(p => p.id === c.tenant_id));
   const referenceDate = to < today ? to : today;
   const active = contracts.filter(c => overlaps(c, referenceDate, referenceDate) && c.status !== 'planned');
-  const entries = input.entries
+  const preflight = buildTaxReportPreflight({ objects: input.objects, entries: input.entries, sources: input.sources, from, to, objectId: input.objectId });
+  const entries = preflight.entries
     .filter(e => dateIn(e.booking_date, from, to) && scoped(e))
     .sort((a,b) => text(a.booking_date).localeCompare(text(b.booking_date)) || text(a.id).localeCompare(text(b.id)));
   const incomes = entries.filter(e => e.entry_type === 'income');
@@ -384,5 +388,5 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
       {label:'Tilgung',values:chartPrincipal,color:'#c9972b'},
     ],
   }]:[];
-  return [cover,eur,tenants,journal,objectModule,changeModule,mileage,vacancy,utilities,proofs,register,acquisition,loans,module('arrears',[table('Offene Zahlungen',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears),matrix],[rentNote]),cashflow,loanInterest];
+  return [taxPreflightModule(preflight),cover,eur,tenants,journal,objectModule,changeModule,mileage,vacancy,utilities,proofs,register,acquisition,loans,module('arrears',[table('Offene Zahlungen',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears),matrix],[rentNote]),cashflow,loanInterest];
 }

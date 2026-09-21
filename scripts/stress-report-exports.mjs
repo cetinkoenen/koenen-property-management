@@ -26,6 +26,9 @@ const p253CreditMigration = await readFile(new URL("../supabase/migrations/20260
 const tgRemoveEmptyYearsMigration = await readFile(new URL("../supabase/migrations/20260916214500_remove_uncreated_tg_years.sql", import.meta.url), "utf8");
 const tgProfessionalOnepagerMigration = await readFile(new URL("../supabase/migrations/20260916223000_professional_tg_onepager_metadata.sql", import.meta.url), "utf8");
 const p254BillingTenantMigration = await readFile(new URL("../supabase/migrations/20260916231500_fix_p254_2025_billing_tenant.sql", import.meta.url), "utf8");
+const taxPreflight = await readFile(new URL("../src/services/taxReportPreflight.ts", import.meta.url), "utf8");
+const reportCenter = await readFile(new URL("../src/services/reportCenterEngine.ts", import.meta.url), "utf8");
+const reportCenterPage = await readFile(new URL("../src/pages/ReportCenter.tsx", import.meta.url), "utf8");
 
 assert.match(app, /if \(!filename\.trim\(\) \|\| blob\.size === 0\)/, "Leere Exportdateien müssen vor dem Download abgewiesen werden");
 assert.match(app, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 60_000\)/, "Blob-URLs dürfen nicht unmittelbar nach dem Klick freigegeben werden");
@@ -68,6 +71,17 @@ assert.match(taxEngine, /acquisitionDate: "2025-09-01"[\s\S]*isProfileAcquiredBy
 assert.match(taxEngine, /Hausgeld - Aufteilung erforderlich[\s\S]*reviewStatus: "Blockiert"/, "Nicht aufgeschlüsseltes Hausgeld muss blockiert werden");
 assert.match(taxEngine, /Anlage V Zeile 20/, "Nebenkostenvorauszahlungen müssen der amtlichen Formularzeile zugeordnet werden");
 assert.match(taxEngine, /Anlage V Zeilen 46-48/, "Schuldzinsen müssen der amtlichen Formularzeile zugeordnet werden");
+assert.match(taxEngine, /rented_parking" \? "Anlage V Zeilen 16-18 \(andere Räume\)"/, "Tiefgaragen-Teileigentum im bebauten Objekt muss in Anlage V als andere Räume statt als Wohnraum eingeordnet werden");
+assert.match(taxEngine, /deduplicateTaxReportEntries[\s\S]*duplicateCount[\s\S]*fachlich exakte Buchungsdublette/, "Auch die zentrale Anlage-V-Engine muss exakte Dubletten vor jeder Summierung entfernen und offen protokollieren");
+assert.ok(taxEngine.indexOf("categoryMatches(entry, MAINTENANCE_CATEGORIES") < taxEngine.indexOf("if (entry.nk_relevant === true)"), "Reparaturen und Erhaltungsaufwand müssen vor einem möglicherweise falschen NK-Kennzeichen als nicht umlagefähig erkannt werden");
+assert.match(taxPreflight, /exactDuplicateKey[\s\S]*Exakte Buchungsdublette im Steuerexport unterdrückt/, "Exakte Bankimport-Dubletten müssen vor der Summierung zentral erkannt werden");
+assert.match(taxPreflight, /Kaltmiete fehlt[\s\S]*Nebenkostenvorauszahlung fehlt[\s\S]*Wohnfläche und €\/m² fehlen/, "Die Vorprüfung muss alle geforderten Miet- und Flächenstammdaten kontrollieren");
+assert.match(taxPreflight, /Kaltmiete aus historischer Mietanpassung übernommen[\s\S]*€\/m² automatisch berechnet/, "Historisch belegte Werte und €/m² müssen nachvollziehbar berechnet werden");
+assert.match(taxPreflight, /Mieteingang nicht zugeordnet[\s\S]*Verwendungszweck, Mietername und Betrag/, "Unzugeordnete Mieteingänge müssen mit einem nachvollziehbaren Matching geprüft werden");
+assert.match(taxPreflight, /Steuerkennzeichen widerspricht einer Sperrregel[\s\S]*Umlagekennzeichen widerspricht der BetrKV-Regel/, "Steuer- und Umlagekennzeichen müssen vor dem Export gegen die zentralen Regeln geprüft werden");
+assert.match(reportCenter, /buildTaxReportPreflight[\s\S]*const entries = preflight\.entries/, "Alle Steuerberater-Module müssen dieselbe bereinigte Buchungsmenge verwenden");
+assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'validation'[\s\S]*'cover'/, "Datenprüfung und Management Summary müssen den Steuerberater-Report eröffnen");
+assert.match(reportCenterPage, /taxPreflightBlocked[\s\S]*Export gesperrt: Die Datenprüfung enthält blockierende Punkte/, "Blockierende Datenfehler müssen den Export sichtbar verhindern");
 assert.match(taxClassification, /entryType === "income" && canonicalCategory === "Verwaltungskosten"[\s\S]*taxRelevant: true[\s\S]*locked: false/, "Hausverwaltungs-Gutschriften muessen steuerlich als Kostenminderung freigegeben bleiben");
 assert.match(taxEngine, /category === "Verwaltungskosten"[\s\S]*categoryName: "Nicht umlagefähige Kosten \/ Verwaltung"[\s\S]*expenseAmount: -value/, "Hausverwaltungs-Gutschriften muessen die Verwaltungskosten im Anlage-V-Bericht mindern");
 assert.match(taxEngine, /bankAccountFlatFee: 0/, "Pauschale Kontoführungsgebühren dürfen das Zufluss-/Abflussprinzip nicht verletzen");

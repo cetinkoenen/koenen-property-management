@@ -530,11 +530,11 @@ function classifyBookingForAnlageV(entry: TaxReportEntry, profile: TaxObjectProf
     if (categoryMatches(entry, MONEY_PROCUREMENT_CATEGORIES, profile)) {
       return { categoryName: "Geldbeschaffungskosten", officialFormLine: "Anlage V Zeilen 49-51", incomeAmount: 0, expenseAmount: value, apportionableStatus: "Nein", reviewStatus: "Exportiert" };
     }
-    if (entry.nk_relevant === true) {
-      return { categoryName: "Umlagefähige Betriebskosten", officialFormLine: "Anlage V Zeilen 73-75", incomeAmount: 0, expenseAmount: value, apportionableStatus: "Ja", reviewStatus: "Exportiert" };
-    }
     if (categoryMatches(entry, MAINTENANCE_CATEGORIES, profile) || includesAny(text, ["rücklagenentnahme", "ruecklagenentnahme"])) {
       return { categoryName: "Erhaltungsaufwand", officialFormLine: "Anlage V Zeilen 55-72", incomeAmount: 0, expenseAmount: value / getDistributionYears(entry), apportionableStatus: "Nein", reviewStatus: "Exportiert" };
+    }
+    if (entry.nk_relevant === true) {
+      return { categoryName: "Umlagefähige Betriebskosten", officialFormLine: "Anlage V Zeilen 73-75", incomeAmount: 0, expenseAmount: value, apportionableStatus: "Ja", reviewStatus: "Exportiert" };
     }
     if (categoryMatches(entry, RUNNING_COST_CATEGORIES.filter((item) => item !== "Hausgeld"), profile)) {
       return { categoryName: "Umlagefähige Betriebskosten", officialFormLine: "Anlage V Zeilen 73-75", incomeAmount: 0, expenseAmount: value, apportionableStatus: "Ja", reviewStatus: "Exportiert" };
@@ -572,6 +572,33 @@ function getDistributionYears(entry: TaxReportEntry) {
 
 function entryYear(entry: TaxReportEntry) {
   return Number(String(entry.booking_date ?? "").slice(0, 4));
+}
+
+function exactTaxEntryKey(entry: TaxReportEntry): string {
+  return [
+    String(entry.booking_date ?? "").slice(0, 10),
+    normalize(`${entry.object_id ?? ""}|${entry.objekt_code ?? ""}`),
+    normalize(entry.entry_type),
+    amount(entry.amount).toFixed(2),
+    normalize(entry.category),
+    normalize(entry.note),
+  ].join("|");
+}
+
+export function deduplicateTaxReportEntries(entries: TaxReportEntry[]): { entries: TaxReportEntry[]; duplicateCount: number } {
+  const seen = new Set<string>();
+  const unique: TaxReportEntry[] = [];
+  let duplicateCount = 0;
+  for (const entry of entries) {
+    const key = exactTaxEntryKey(entry);
+    if (seen.has(key)) {
+      duplicateCount += 1;
+      continue;
+    }
+    seen.add(key);
+    unique.push(entry);
+  }
+  return { entries: unique, duplicateCount };
 }
 
 function matchesProfileTrip(trip: MileageTripRow, profile: TaxObjectProfile) {
@@ -713,7 +740,7 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
     year,
     profile,
     incomeLabel: profile.usage === "rented_parking"
-      ? "Einnahmen aus Vermietung anderer Immobilien / Stellplätze ohne Wohnraum"
+      ? "Einnahmen aus Vermietung anderer Räume / Tiefgaragen-Stellplätze"
       : "Einnahmen aus Wohnraumvermietung",
     income,
     coldRentIncome,
@@ -866,7 +893,8 @@ export function buildTaxAdvisorDashboard(params: {
   mileageTrips?: MileageTripRow[];
   objects?: TaxReportObjectOption[];
 }): TaxAdvisorDashboard {
-  const entries = params.entries ?? [];
+  const deduplicated = deduplicateTaxReportEntries(params.entries ?? []);
+  const entries = deduplicated.entries;
   const loans = params.loans ?? [];
   const mileageTrips = params.mileageTrips ?? [];
   const objects = params.objects ?? [];
@@ -886,6 +914,9 @@ export function buildTaxAdvisorDashboard(params: {
     ...section35aReport.warnings.map((warning) => `${section35aReport.profile.reportLabel}: ${warning}`),
     ...(unresolvedTaxEntries.length
       ? [`${unresolvedTaxEntries.length} steuerlich mögliche Buchung(en) konnten keinem Steuerobjekt zugeordnet werden. Bei Rosenstein muss P250, P253 oder P254 im Objektcode stehen.`]
+      : []),
+    ...(deduplicated.duplicateCount
+      ? [`${deduplicated.duplicateCount} fachlich exakte Buchungsdublette(n) wurden im Steuerreport nur einmal summiert. Datenbankdatensätze bitte kontrollieren.`]
       : []),
   ];
   return { year: params.year, AnlageVReports, section35aReport, warnings };

@@ -882,7 +882,7 @@ function openAdvisorPdf(payload: AdvisorExportPayload) {
   const AnlageVSections: PdfReportSection[] = payload.dashboard.AnlageVReports.map((report, index) => ({
     title: `A.${index + 1} ${report.profile.reportLabel}`,
     subtitle: report.profile.usage === "rented_parking"
-      ? "Anlage V · isolierte TG-Stellplatz-Vermietung"
+      ? "Anlage V · andere Räume · isolierte TG-Stellplatz-Vermietung"
       : "Anlage V · Wohnraumvermietung",
     metrics: [
       { label: "Mieteinnahmen", value: formatTaxCurrency(report.income), hint: report.incomeLabel },
