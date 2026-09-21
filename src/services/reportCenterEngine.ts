@@ -5,6 +5,7 @@ import { parseLocaleNumber } from '../utils/numberParser';
 import { masterNamesMatch } from './masterDataService';
 import { classifyNkRelevance } from '../lib/nkClassification';
 import { rentBalancePart } from '../lib/rentPaymentBalance';
+import { effectiveRentYearMonth, rentPaymentCutoffDay } from '../lib/rentMonth';
 import { buildTaxReportPreflight, taxPreflightModule } from './taxReportPreflight';
 
 export type ReportRecord = Record<string, unknown>;
@@ -177,23 +178,26 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const incomeGroups = new Map<string, number>(['Kaltmiete','Nebenkostenzahlungen','Nebenkostennachzahlungen','Mahngebühren'].map(k => [k,0]));
   const addIncome = (key: string, amount: number) => incomeGroups.set(key, roundMoney((incomeGroups.get(key) ?? 0) + amount));
   const splitGenericRent = (e: FinanceEntry): { cold: number; nk: number } | null => {
-    const object = objectFor(e); const amount = Math.abs(e.amount); const bookingDate = text(e.booking_date).slice(0,10); const month = Number(bookingDate.slice(5,7));
-    const rentMonth = rentRows.find(r => r.objectId === object?.id)?.months.find(m => m.month === month);
-    if (!rentMonth || Math.abs(rentMonth.expected - amount) > 0.02) return null;
-    const billing = billingPeriods.find(p => p.object?.id === object?.id && p.from <= bookingDate && p.to >= bookingDate && n(p.occupancyMonths) > 0);
-    if (billing && n(billing.advancePayments) > 0) {
-      const nk = roundMoney(n(billing.advancePayments) / n(billing.occupancyMonths));
-      return nk <= amount ? { cold: roundMoney(amount - nk), nk } : null;
-    }
+    const object = objectFor(e); const amount = Math.abs(e.amount); const bookingDate = text(e.booking_date).slice(0,10);
+    const effectiveMonth = effectiveRentYearMonth(bookingDate,rentPaymentCutoffDay(object?.label),e.note);
+    const effectiveFrom = effectiveMonth ? `${effectiveMonth.year}-${String(effectiveMonth.month).padStart(2,'0')}-01` : bookingDate;
+    const effectiveTo = effectiveMonth ? new Date(effectiveMonth.year,effectiveMonth.month,0).toLocaleDateString('sv-SE') : bookingDate;
     const matchingRentalSplits = rentalHistory
-      .filter(r => objectFor(r)?.id === object?.id && overlaps(r,bookingDate,bookingDate))
+      .filter(r => objectFor(r)?.id === object?.id && overlaps(r,effectiveFrom,effectiveTo))
       .filter(r => Math.abs(n(r.gesamt_mietkosten ?? r.rent_monthly) - amount) <= 0.02)
       .map(r => ({ cold: roundMoney(n(r.kaltmiete_laut_mietvertrag)), nk: roundMoney(n(r.nebenkosten)) }))
       .filter((value,index,values) => value.cold > 0 && value.nk >= 0 && values.findIndex(candidate => candidate.cold === value.cold && candidate.nk === value.nk) === index);
     if (matchingRentalSplits.length === 1) return matchingRentalSplits[0];
-    const adjustment = adjustments.find(a => objectFor(a)?.id === object?.id && text(a.effective_date) <= bookingDate && (!a.effective_end_date || text(a.effective_end_date) >= bookingDate) && Math.abs(n(a.new_total_rent) - amount) <= 0.02);
+    const rentMonth = rentRows.find(r => r.objectId === object?.id)?.months.find(m => m.month === effectiveMonth?.month);
+    if (!rentMonth || rent?.year !== effectiveMonth?.year || Math.abs(rentMonth.expected - amount) > 0.02) return null;
+    const billing = billingPeriods.find(p => p.object?.id === object?.id && p.from <= effectiveTo && p.to >= effectiveFrom && n(p.occupancyMonths) > 0);
+    if (billing && n(billing.advancePayments) > 0) {
+      const nk = roundMoney(n(billing.advancePayments) / n(billing.occupancyMonths));
+      return nk <= amount ? { cold: roundMoney(amount - nk), nk } : null;
+    }
+    const adjustment = adjustments.find(a => objectFor(a)?.id === object?.id && text(a.effective_date) <= effectiveTo && (!a.effective_end_date || text(a.effective_end_date) >= effectiveFrom) && Math.abs(n(a.new_total_rent) - amount) <= 0.02);
     if (adjustment) return { cold: n(adjustment.new_cold_rent), nk: n(adjustment.new_operating_costs) };
-    const contract = contracts.find(c => objectFor(c)?.id === object?.id && overlaps(c,bookingDate,bookingDate) && Math.abs(n(c.total_rent)-amount) <= 0.02);
+    const contract = contracts.find(c => objectFor(c)?.id === object?.id && overlaps(c,effectiveFrom,effectiveTo) && Math.abs(n(c.total_rent)-amount) <= 0.02);
     return contract ? { cold: n(contract.cold_rent), nk: n(contract.operating_costs) } : null;
   };
   const nkRuleFor = (e: FinanceEntry) => classifyNkRelevance({entry_type:e.entry_type === 'income' ? 'income' : 'expense',category:e.category,note:e.note,objectLabel:objectFor(e)?.label});
