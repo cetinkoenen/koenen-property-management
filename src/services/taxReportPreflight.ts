@@ -136,11 +136,49 @@ export function buildTaxReportPreflight(input: {
     && overlaps(contract, input.from, input.to)
     && (!input.objectId || objectFor(contract)?.id === input.objectId)
   ));
+  const rentalPeriods = (input.sources.portfolio_property_rentals ?? []).filter((rental) => (
+    overlaps(rental,input.from,input.to)
+    && (!input.objectId || objectFor(rental)?.id === input.objectId)
+  ));
+  const rentSources = [
+    ...contracts,
+    ...rentalPeriods.filter((rental) => !contracts.some((contract) => (
+      objectFor(contract)?.id === objectFor(rental)?.id
+      && text(contract.start_date).slice(0,10) === text(rental.start_date).slice(0,10)
+      && text(contract.end_date).slice(0,10) === text(rental.end_date).slice(0,10)
+      && numberOrNull(contract.total_rent) === numberOrNull(rental.gesamt_mietkosten ?? rental.rent_monthly)
+    ))),
+  ];
   const units = input.sources.portfolio_units ?? [];
   const adjustments = input.sources.rent_adjustments ?? [];
   const extraRows = input.sources.property_extra ?? [];
 
-  for (const contract of contracts) {
+  for (const rental of rentalPeriods) {
+    const object = objectFor(rental);
+    if (!object) continue;
+    const cold = numberOrNull(rental.kaltmiete_laut_mietvertrag);
+    const operating = numberOrNull(rental.nebenkosten);
+    const totalRent = numberOrNull(rental.gesamt_mietkosten ?? rental.rent_monthly);
+    const start = text(rental.start_date).slice(0,10);
+    const end = text(rental.end_date).slice(0,10);
+    if (end && start && end < start) {
+      issues.push({ id:`rental-dates-${rental.id}`, severity:'blocker', objectLabel:object.label, title:'Ungültiger Vermietungszeitraum', detail:`Beginn ${start} liegt nach dem Ende ${end}.` });
+    }
+    if (cold === null || operating === null || totalRent === null || Math.abs(cold + operating - totalRent) > 0.02) {
+      issues.push({ id:`rental-sum-${rental.id}`, severity:'blocker', objectLabel:object.label, title:'Mietbestandteile sind nicht vollständig oder widersprüchlich', detail:`Zeitraum ${start || 'ohne Beginn'}: Kaltmiete, Nebenkosten und Warmmiete müssen vollständig sein; Kalt + NK muss der Warmmiete entsprechen.` });
+    }
+    const unitKey = text(rental.unit_id || rental.unit_label || 'Gesamte Immobilie');
+    const overlap = rentalPeriods.find(candidate => candidate !== rental
+      && objectFor(candidate)?.id === object.id
+      && text(candidate.unit_id || candidate.unit_label || 'Gesamte Immobilie') === unitKey
+      && text(candidate.id).localeCompare(text(rental.id)) > 0
+      && overlaps(candidate,start || input.from,end || input.to));
+    if (overlap) {
+      issues.push({ id:`rental-overlap-${rental.id}-${overlap.id}`, severity:'blocker', objectLabel:object.label, title:'Überlappende Vermietungszeiträume', detail:`Dieselbe Einheit ist in den Zeiträumen ab ${start} und ab ${text(overlap.start_date).slice(0,10)} gleichzeitig belegt. Die zentrale Mietquelle muss vor dem Steuerexport bereinigt werden.` });
+    }
+  }
+
+  for (const contract of rentSources) {
     const object = objectFor(contract);
     if (!object || isOwnerOccupied(object.label)) continue;
     const tenant = tenantName(contract) || "Mieter nicht gepflegt";
@@ -181,7 +219,7 @@ export function buildTaxReportPreflight(input: {
     const rentIncome = entry.entry_type === "income" && /miete|stellplatz|garage|nebenkosten|betriebskosten/i.test(`${category} ${entry.note ?? ""}`);
     if (rentIncome && !object) {
       const normalizedNote = normalize(entry.note);
-      const candidates = contracts.filter((contract) => {
+      const candidates = rentSources.filter((contract) => {
         const name = normalize(tenantName(contract));
         const surname = name.split(" ").at(-1) ?? "";
         const expected = numberOrNull(contract.total_rent ?? contract.gesamt_mietkosten ?? contract.rent_monthly);

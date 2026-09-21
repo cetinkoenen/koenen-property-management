@@ -17,6 +17,9 @@ type PortfolioRentalRow = {
   unit_id: string | null;
   rent_type: string | null;
   rent_monthly: number | null;
+  kaltmiete_laut_mietvertrag: number | null;
+  nebenkosten: number | null;
+  gesamt_mietkosten: number | null;
   start_date: string | null;
   end_date: string | null;
   created_at: string | null;
@@ -73,6 +76,7 @@ type DevelopmentRow = {
   qualityText: string;
   adjustmentStatus: "Aktiv" | "Prüfung empfohlen" | "Geplant" | "Offene Zustimmung";
   manualAdjustments: ManualRentAdjustment[];
+  rentalPeriods: PortfolioRentalRow[];
 };
 
 type RentChartPoint = {
@@ -896,7 +900,7 @@ export default function Mietentwicklung() {
           supabase.from("portfolio_properties").select("id,name,core_property_id"),
           supabase
             .from("portfolio_property_rentals")
-            .select("id,property_id,unit_id,rent_type,rent_monthly,start_date,end_date,created_at,updated_at")
+            .select("id,property_id,unit_id,rent_type,rent_monthly,kaltmiete_laut_mietvertrag,nebenkosten,gesamt_mietkosten,start_date,end_date,created_at,updated_at")
             .order("start_date", { ascending: true }),
           supabase
             .from("rent_adjustments")
@@ -920,6 +924,9 @@ export default function Mietentwicklung() {
           unit_id: row.unit_id ?? null,
           rent_type: row.rent_type ?? null,
           rent_monthly: row.rent_monthly == null ? null : Number(row.rent_monthly),
+          kaltmiete_laut_mietvertrag: row.kaltmiete_laut_mietvertrag == null ? null : Number(row.kaltmiete_laut_mietvertrag),
+          nebenkosten: row.nebenkosten == null ? null : Number(row.nebenkosten),
+          gesamt_mietkosten: row.gesamt_mietkosten == null ? null : Number(row.gesamt_mietkosten),
           start_date: row.start_date ?? null,
           end_date: row.end_date ?? null,
           created_at: row.created_at ?? null,
@@ -981,6 +988,9 @@ export default function Mietentwicklung() {
         return manualLabel === objectLabel || manualLabel.startsWith(`${objectLabel} `);
       });
       const latestManualAdjustment = manualForObject[0] ?? null;
+      const rentalPeriodsForObject = portfolioRentals
+        .filter((rental) => candidateIds.has(rental.property_id))
+        .sort((left,right) => String(right.start_date ?? '').localeCompare(String(left.start_date ?? '')));
       const monthPoints = months.map((month) => ({
         ...month,
         expected: expectedRentForMonth(portfolioRentals, candidateIds, month.year, month.month),
@@ -1078,6 +1088,7 @@ export default function Mietentwicklung() {
         qualityText,
         adjustmentStatus,
         manualAdjustments: manualForObject,
+        rentalPeriods: rentalPeriodsForObject,
       };
 
       if (!isFuertherObject(object) && !isRosensteinObject(object)) return [baseRow];
@@ -1137,6 +1148,7 @@ export default function Mietentwicklung() {
             previousExpected: unitPreviousWarm,
             deltaExpected: unitWarm - unitPreviousWarm,
             latestIncrease: null,
+            rentalPeriods: rentalPeriodsForObject.filter(rental => rental.unit_id === activeRentals.find(activeRental => activeRental.id === unit.key)?.unit_id),
             activeUnitSummary: `${unit.label} ${formatCurrency(unitWarm)}`,
             activeUnitBreakdown: [unit],
             hasGarageUnit: isGarageUnit,
@@ -1701,6 +1713,26 @@ export default function Mietentwicklung() {
                 <h3 className="text-lg font-black text-slate-950">Historie aller Mietanpassungen</h3>
                 <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">Lückenlose Dokumentation der bisherigen Erhöhungen und Begründungen für dieses Mietverhältnis.</p>
                 <div className="mt-4 grid gap-3">
+                  {selectedRow.rentalPeriods.map((period) => {
+                    const cold = money(period.kaltmiete_laut_mietvertrag);
+                    const operating = money(period.nebenkosten);
+                    const total = money(period.gesamt_mietkosten ?? period.rent_monthly);
+                    const area = money(selectedRow.object.livingAreaM2);
+                    return (
+                      <div key={`rental-${period.id}`} className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-[0.1em] text-emerald-700 ring-1 ring-emerald-200">Zentraler Vermietungszeitraum</span>
+                          <strong className="text-sm text-slate-950">{formatDate(period.start_date)} bis {period.end_date ? formatDate(period.end_date) : "laufend"}</strong>
+                        </div>
+                        <div className="mt-3 grid gap-2 text-sm font-bold text-slate-700 sm:grid-cols-4">
+                          <span><strong>Kaltmiete:</strong> {formatCurrency(cold)}</span>
+                          <span><strong>Nebenkosten:</strong> {formatCurrency(operating)}</span>
+                          <span><strong>Warmmiete:</strong> {formatCurrency(total)}</span>
+                          <span><strong>Kalt €/m²:</strong> {area > 0 ? `${(cold / area).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : "nicht anwendbar"}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
                   {selectedRow.manualAdjustments.map((adjustment) => {
                     const oldParts = manualRentParts(adjustment, "old");
                     const newParts = manualRentParts(adjustment, "new");
@@ -1742,7 +1774,7 @@ export default function Mietentwicklung() {
                       </div>
                     );
                   })}
-                  {!selectedRow.manualAdjustments.length ? (
+                  {!selectedRow.manualAdjustments.length && !selectedRow.rentalPeriods.length ? (
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500">
                       Noch keine manuelle Mietanpassung für dieses Mietverhältnis eingetragen.
                     </div>

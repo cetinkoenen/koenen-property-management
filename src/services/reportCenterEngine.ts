@@ -102,10 +102,24 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const areaForObject = (o: AppObject | undefined): unknown => o ? o.livingAreaM2 ?? profiles(o).livingArea ?? profiles(o).totalArea : undefined;
   const units = (s.portfolio_units ?? []).filter(r => r.is_active !== false && scoped(r));
   const contracts = (s.tenant_contracts ?? []).filter(r => scoped(r) && r.is_deleted !== true && r.status !== 'vacant');
+  const rentals = (s.portfolio_property_rentals ?? []).filter(r => scoped(r) && overlaps(r,from,to));
+  const rentalUnitLabel = (r: ReportRecord) => text(units.find(unit => unit.id === r.unit_id)?.name || r.unit_label || 'Gesamte Immobilie');
+  const rentalHistory = rentals
+    .filter((r,index,rows) => rows.findIndex(candidate => (
+      objectFor(candidate)?.id === objectFor(r)?.id
+      && normalizePerson(rentalUnitLabel(candidate)) === normalizePerson(rentalUnitLabel(r))
+      && text(candidate.start_date).slice(0,10) === text(r.start_date).slice(0,10)
+      && text(candidate.end_date).slice(0,10) === text(r.end_date).slice(0,10)
+      && n(candidate.rent_monthly) === n(r.rent_monthly)
+      && n(candidate.kaltmiete_laut_mietvertrag) === n(r.kaltmiete_laut_mietvertrag)
+      && n(candidate.nebenkosten) === n(r.nebenkosten)
+    )) === index)
+    .sort((a,b) => text(a.start_date).localeCompare(text(b.start_date)) || rentalUnitLabel(a).localeCompare(rentalUnitLabel(b),'de'));
   const people = s.tenant_profiles ?? [];
   const name = (c: ReportRecord) => tenantName(people.find(p => p.id === c.tenant_id));
   const referenceDate = to < today ? to : today;
   const active = contracts.filter(c => overlaps(c, referenceDate, referenceDate) && c.status !== 'planned');
+  const activeRentals = rentalHistory.filter(r => overlaps(r,referenceDate,referenceDate));
   const preflight = buildTaxReportPreflight({ objects: input.objects, entries: input.entries, sources: input.sources, from, to, objectId: input.objectId });
   const entries = preflight.entries
     .filter(e => dateIn(e.booking_date, from, to) && scoped(e))
@@ -171,6 +185,12 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
       const nk = roundMoney(n(billing.advancePayments) / n(billing.occupancyMonths));
       return nk <= amount ? { cold: roundMoney(amount - nk), nk } : null;
     }
+    const matchingRentalSplits = rentalHistory
+      .filter(r => objectFor(r)?.id === object?.id && overlaps(r,bookingDate,bookingDate))
+      .filter(r => Math.abs(n(r.gesamt_mietkosten ?? r.rent_monthly) - amount) <= 0.02)
+      .map(r => ({ cold: roundMoney(n(r.kaltmiete_laut_mietvertrag)), nk: roundMoney(n(r.nebenkosten)) }))
+      .filter((value,index,values) => value.cold > 0 && value.nk >= 0 && values.findIndex(candidate => candidate.cold === value.cold && candidate.nk === value.nk) === index);
+    if (matchingRentalSplits.length === 1) return matchingRentalSplits[0];
     const adjustment = adjustments.find(a => objectFor(a)?.id === object?.id && text(a.effective_date) <= bookingDate && (!a.effective_end_date || text(a.effective_end_date) >= bookingDate) && Math.abs(n(a.new_total_rent) - amount) <= 0.02);
     if (adjustment) return { cold: n(adjustment.new_cold_rent), nk: n(adjustment.new_operating_costs) };
     const contract = contracts.find(c => objectFor(c)?.id === object?.id && overlaps(c,bookingDate,bookingDate) && Math.abs(n(c.total_rent)-amount) <= 0.02);
@@ -254,16 +274,25 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     balance += e.entry_type === 'income' ? Math.abs(e.amount) : e.entry_type === 'expense' ? -Math.abs(e.amount) : 0;
     return [e.booking_date,label(e),tenantForEntry(e),e.entry_type,e.category,e.note,e.entry_type==='income'?euro(Math.abs(e.amount)):'',e.entry_type==='expense'?euro(Math.abs(e.amount)):'',euro(balance)];
   }))],['Saldo = kumulierte Bewegung im gewählten Zeitraum, Anfangswert 0; kein Bankkontostand.']);
+  const rentValueForObject = (o: AppObject, field: 'cold_rent' | 'operating_costs'): number | null => {
+    const objectContracts = active.filter(c => objectFor(c)?.id === o.id);
+    if (objectContracts.length && objectContracts.every(c => currentRent(c,field) != null)) {
+      return roundMoney(objectContracts.reduce((sum,c) => sum + n(currentRent(c,field)),0));
+    }
+    const objectRentals = activeRentals.filter(r => objectFor(r)?.id === o.id);
+    const rentalField = (r: ReportRecord) => field === 'cold_rent' ? r.kaltmiete_laut_mietvertrag : r.nebenkosten;
+    return objectRentals.length && objectRentals.every(r => rentalField(r) != null)
+      ? roundMoney(objectRentals.reduce((sum,r) => sum + n(rentalField(r)),0))
+      : null;
+  };
   const objectRows = objects.map(o => {
-    const rus = reportingUnits.filter(u => u.object?.id === o.id); const cs = active.filter(c => objectFor(c)?.id === o.id);
+    const rus = reportingUnits.filter(u => u.object?.id === o.id);
     const parking = rus.filter(u => isParkingText(u.row.unitLabel)).length;
     const commercial = rus.filter(u => /commercial|gewerbe/i.test(u.row.unitLabel)).length;
     const residential = rus.length-parking-commercial;
     const area = o.livingAreaM2 ?? profiles(o).livingArea ?? profiles(o).totalArea;
     const usefulArea = profiles(o).usableArea ?? profiles(o).commercialArea;
-    const completeRentSum = (field: string): number | null => cs.length && cs.every(c => currentRent(c,field) != null)
-      ? roundMoney(cs.reduce((v,c) => v+n(currentRent(c,field)),0))
-      : null;
+    const completeRentSum = (field: 'cold_rent' | 'operating_costs'): number | null => rentValueForObject(o,field);
     const cold = completeRentSum('cold_rent');
     const operatingCosts = completeRentSum('operating_costs');
     const referenceMonth = Number(referenceDate.slice(5,7));
@@ -281,7 +310,10 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     ['Garagen / Stellplätze', reportingUnits.filter(u => isParkingText(u.row.unitLabel)).length],
     ['Wohnfläche gesamt m²', objects.filter(o => !/rosenstein/i.test(o.label)).every(o => o.livingAreaM2 != null || profiles(o).livingArea || profiles(o).totalArea) ? objects.reduce((v,o) => v+n(o.livingAreaM2 ?? profiles(o).livingArea ?? profiles(o).totalArea),0) : 'Nicht vollständig gepflegt'],
     ['Nutzfläche gesamt m²', objects.some(o => profiles(o).usableArea != null || profiles(o).commercialArea != null) ? objects.reduce((v,o) => v+n(profiles(o).usableArea ?? profiles(o).commercialArea),0) : 'Nicht erforderlich / nicht gepflegt'],
-    ...['cold_rent','operating_costs'].map((key,i) => [ ['Kaltmiete monatlich','Nebenkosten monatlich'][i],active.length > 0 && active.every(c => currentRent(c,key) != null) ? euro(active.reduce((v,c) => v+n(currentRent(c,key)),0)) : 'Nicht vollständig gepflegt']),
+    ...(['cold_rent','operating_costs'] as const).map((key,i) => {
+      const values=objects.map(o=>rentValueForObject(o,key));
+      return [['Kaltmiete monatlich','Nebenkosten monatlich'][i],values.every(value=>value!=null)?euro(values.reduce((sum,value)=>sum+n(value),0)):'Nicht vollständig gepflegt'];
+    }),
     ['Gesamtmiete monatlich', rent ? euro(reportingUnits.reduce((sum,{row}) => sum + (row.months.find(month => month.month === Number(referenceDate.slice(5,7)))?.expected ?? 0),0)) : 'Nicht vollständig gepflegt'],
     ['Vermietungsquote im Zeitraum', reportingUnits.length ? percent(rented/reportingUnits.length*100) : '—'],
   ]);
@@ -289,7 +321,19 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const unitDetails = reportingUnits.map(({object,row}) => { const parking=isParkingText(row.unitLabel); const area=parking?0:areaForObject(object); const activeInPeriod=row.months.some(m=>m.month>=firstMonth&&m.month<=lastMonth&&m.expected>0); return [row.objectLabel,row.unitLabel,parking?'Stellplatz / Garage':'Wohnung',parking?'0 (nicht anwendbar)':str(area),activeInPeriod?'Vermietet im Zeitraum':'Ohne Soll-Miete im Zeitraum',row.tenantName||'—']; });
   const objectModule = module('objects',[table('Datenvollständigkeit Wohnfläche',['Objekt','Wohnfläche','Status','Hauptquelle'],areaStatus),table('Eckdaten · Stand zum Periodenende',['Objekt','Einheiten','Wohnen','Gewerbe','Garagen / Stellplätze','Unklassifiziert','Wohnfläche m²','Nutzfläche m²','Kalt monatlich','NK monatlich','Gesamt monatlich','Kalt €/m²','Vermietungsquote'],objectRows),table('Einheiten-Details aus dem Mietkonto',['Objekt','Einheit','Art','Fläche m²','Status','Mieter'],unitDetails)],['Einheiten und Belegungsstatus stammen aus dem zentralen Mietkonto. Wohnflächen werden direkt aus Immobilienvermögen/property_extra_info übernommen; sie werden nicht in einer zweiten Report-Datenquelle gespeichert. Stellplätze haben keine Wohnfläche.']);
   objectModule.tables?.unshift(portfolioStats);
-  const changeModule = module('adjustments',[table('Mietanpassungen im Zeitraum',['Objekt','Mieter','Wirksam ab / letzte Anpassung','Bis','Kalt alt','Kalt neu','NK alt','NK neu','Gesamt neu'],adjustments.filter(a=>dateIn(a.effective_date,from,to)).map(a=>[label(a),tenantForDate(a,text(a.effective_date)) ?? str(a.tenant_name),str(a.effective_date),str(a.effective_end_date),euro(a.old_cold_rent),euro(a.new_cold_rent),euro(a.old_operating_costs),euro(a.new_operating_costs),euro(a.new_total_rent)])),table('Fehlende Miete',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears)],[rentNote]);
+  const rentalHistoryRows = rentalHistory.map(r => {
+    const object = objectFor(r);
+    const unitLabel = rentalUnitLabel(r);
+    const parking = isParkingText(`${object?.label ?? ''} ${unitLabel}`);
+    const area = parking ? 0 : areaForObject(object);
+    const cold = n(r.kaltmiete_laut_mietvertrag);
+    return [label(r),unitLabel,str(r.start_date),str(r.end_date),euro(cold),euro(r.nebenkosten),euro(r.gesamt_mietkosten ?? r.rent_monthly),parking?'Nicht anwendbar':str(area),!parking&&n(area)>0&&cold>0?euro(cold/n(area)):'—','Vermietungszeitraum · zentrale Mietquelle'];
+  });
+  const changeModule = module('adjustments',[
+    table('Mietsituation aus Vermietungszeiträumen',['Objekt','Einheit','Von','Bis','Kaltmiete','NK','Warmmiete','Fläche m²','Kalt €/m²','Hauptquelle'],rentalHistoryRows),
+    table('Mietanpassungen im Zeitraum',['Objekt','Mieter','Wirksam ab / letzte Anpassung','Bis','Kalt alt','Kalt neu','NK alt','NK neu','Gesamt neu'],adjustments.filter(a=>dateIn(a.effective_date,from,to)).map(a=>[label(a),tenantForDate(a,text(a.effective_date)) ?? str(a.tenant_name),str(a.effective_date),str(a.effective_end_date),euro(a.old_cold_rent),euro(a.new_cold_rent),euro(a.old_operating_costs),euro(a.new_operating_costs),euro(a.new_total_rent)])),
+    table('Fehlende Miete',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears),
+  ],[rentNote,'Historische Mietwerte stammen ausschließlich aus portfolio_property_rentals. Manuelle Anpassungen bleiben ergänzende Ereignisse und überschreiben die Vermietungszeiträume nicht.']);
   const mileage = module('mileage',[table('Einzelnachweis',['Datum','Objekt','Anlass','Start','Ziel','km','Hin/Rück','Betrag'],(s.mileage_trips ?? []).filter(r=>scoped(r)&&dateIn(r.datum,from,to)).map(r=>[r.datum,label(r),r.grund,r.start_adresse,r.zieladresse,n(r.distanz_km),r.hin_und_rueckfahrt?'Ja':'Nein',euro(r.berechneter_betrag ?? r.reisekosten_betrag)]).map(r=>r.map(v=>str(v))))]);
   const vacancies = (s.unit_vacancies ?? []).filter(r=>scoped(r)&&overlaps(r,from,to));
   const vacancy = module('vacancy',[table('Leerstände',['Objekt','Einheit','Von','Bis','Status','Grund','Notiz'],vacancies.map(r=>[label(r),str(r.unit_label),str(r.start_date),str(r.end_date),str(r.status),str(r.reason),str(r.notes)]))]);

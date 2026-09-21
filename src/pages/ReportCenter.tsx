@@ -11,7 +11,7 @@ import type { RentAnnualReportSnapshot } from './Mietuebersicht';
 import './ReportCenter.css';
 const RentOverview = lazy(()=>import('./Mietuebersicht'));
 const root='/berichte';
-const tableSources: Record<string,string>={billing_workspaces:'apartment_billing_workspaces',property_extra:'property_extra_info',portfolio_properties:'portfolio_properties',portfolio_units:'portfolio_units',tenant_contracts:'tenant_contracts',tenant_profiles:'tenant_profiles',rent_adjustments:'rent_adjustments',mileage_trips:'property_mileage_trips',unit_vacancies:'unit_vacancies',property_documents:'property_documents',property_id_aliases:'property_id_aliases',object_bridge:'v_koenen_object_bridge',property_loan_ledger:'property_loan_ledger',property_loan_rate_plan:'property_loan_rate_plan'};
+const tableSources: Record<string,string>={billing_workspaces:'apartment_billing_workspaces',property_extra:'property_extra_info',portfolio_properties:'portfolio_properties',portfolio_units:'portfolio_units',portfolio_property_rentals:'portfolio_property_rentals',tenant_contracts:'tenant_contracts',tenant_profiles:'tenant_profiles',rent_adjustments:'rent_adjustments',mileage_trips:'property_mileage_trips',unit_vacancies:'unit_vacancies',property_documents:'property_documents',property_id_aliases:'property_id_aliases',object_bridge:'v_koenen_object_bridge',property_loan_ledger:'property_loan_ledger',property_loan_rate_plan:'property_loan_rate_plan'};
 async function loadSources():Promise<ReportSources>{
   const auth=await supabase.auth.getUser();if(auth.error)throw auth.error;if(!auth.data.user)throw new Error('Bitte erneut anmelden.');
   const user=auth.data.user;
