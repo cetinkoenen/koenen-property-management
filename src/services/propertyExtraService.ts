@@ -48,20 +48,6 @@ export const emptyPropertyExtra: PropertyExtraInfo = {
   last_name: "",
 };
 
-const STORAGE_KEY = "koenen:property-extra-info:v5";
-const OLD_KEYS = [
-  "koenen:portfolio:object-overview-extra:v4",
-  "koenen:portfolio:object-overview-extra:v3",
-  "koenen:portfolio:object-overview-extra:v2",
-  "koenen:mieteruebersicht:tenant-info:v3",
-  "koenen:mieteruebersicht:tenant-info:v2",
-  "koenen_property_extra_info",
-];
-
-function safeStorageGet(key: string) {
-  try { return typeof localStorage === "undefined" ? null : localStorage.getItem(key); } catch { return null; }
-}
-
 function readObjectValue(value: unknown, key: string): unknown {
   return value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined;
 }
@@ -91,38 +77,6 @@ function normalize(value: unknown): PropertyExtraInfo {
   normalized.last_name = normalized.lastName;
   return normalized;
 }
-
-function readRecordFromStorage(key: string): Record<string, PropertyExtraInfo> {
-  const raw = safeStorageGet(key);
-  if (!raw) return {};
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const result: Record<string, PropertyExtraInfo> = {};
-    for (const [propertyId, value] of Object.entries(parsed ?? {})) {
-      result[propertyId] = { ...normalize(value), property_id: String(readObjectValue(value, "property_id") ?? propertyId) };
-    }
-    return result;
-  } catch { return {}; }
-}
-
-export function loadLocalTenantExtras(): Record<string, PropertyExtraInfo> {
-  const merged: Record<string, PropertyExtraInfo> = {};
-  for (const key of [...OLD_KEYS, STORAGE_KEY]) {
-    const record = readRecordFromStorage(key);
-    for (const [propertyId, value] of Object.entries(record)) {
-      merged[propertyId] = { ...(merged[propertyId] ?? emptyPropertyExtra), ...normalize(value), property_id: propertyId };
-    }
-  }
-  return merged;
-}
-export function mergeLocalSources(): Record<string, PropertyExtraInfo> { return loadLocalTenantExtras(); }
-
-export function writeLocalTenantExtras(dataOrPropertyId: Record<string, PropertyExtraInfo> | string, extra?: Partial<PropertyExtraInfo>) {
-  void dataOrPropertyId;
-  void extra;
-}
-export function writeLocalPropertyExtras(dataOrPropertyId: Record<string, PropertyExtraInfo> | string, extra?: Partial<PropertyExtraInfo>) { writeLocalTenantExtras(dataOrPropertyId, extra); }
-export function writeLocalPropertyExtra(propertyId: string, extra: Partial<PropertyExtraInfo>) { writeLocalTenantExtras(propertyId, extra); }
 
 export async function fetchPropertyExtras(propertyIds?: string[]): Promise<Record<string, PropertyExtraInfo>> {
   const { data: userData } = await supabase.auth.getUser();
@@ -173,10 +127,6 @@ export async function loadPropertyExtras(): Promise<Record<string, PropertyExtra
 }
 export async function loadAllPropertyExtras(): Promise<Record<string, PropertyExtraInfo>> { return loadPropertyExtras(); }
 export async function loadPropertyExtra(propertyId: string): Promise<PropertyExtraInfo | null> { const all = await loadPropertyExtras(); return all[propertyId] ?? null; }
-export async function migrateLocalExtrasToSupabase(propertyIds: string[], local: Record<string, PropertyExtraInfo>, remote: Record<string, PropertyExtraInfo>) {
-  for (const propertyId of propertyIds) if (local[propertyId] && !remote[propertyId]) await savePropertyExtra(propertyId, local[propertyId]);
-}
-
 function normalizeWealthProfile(value: unknown): PropertyWealthProfile {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(

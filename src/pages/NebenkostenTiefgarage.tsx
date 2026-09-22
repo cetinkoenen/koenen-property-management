@@ -941,8 +941,6 @@ export default function NebenkostenTiefgarage() {
       }
 
       const legacyRecords = loadLegacyStoredYears();
-      setRecords(legacyRecords);
-      setActiveRecordId(legacyRecords[0]?.recordId ?? initialRecord.recordId);
       const { error: migrationError } = await supabase.from(BILLING_TABLE).upsert({
         object_id: BILLING_OBJECT_ID,
         year: BILLING_SCOPE,
@@ -954,6 +952,9 @@ export default function NebenkostenTiefgarage() {
         setStorageReady(false);
         return;
       }
+      setRecords(legacyRecords);
+      setActiveRecordId(legacyRecords[0]?.recordId ?? initialRecord.recordId);
+      try { window.localStorage.removeItem(STORAGE_KEY); } catch { /* Altspeicher kann blockiert sein. */ }
       setStorageReady(true);
     }
 

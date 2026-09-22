@@ -1,7 +1,6 @@
 import { parseLocaleNumber, parseNullableLocaleNumber } from "@/utils/numberParser";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "../lib/supabase";
-import { APP_DATA_CACHE_KEY } from "../lib/appCache";
 import { isPureRentBackPayment } from "../lib/financeCategories";
 import { effectiveRentYearMonth, rentPaymentCutoffDay } from "../lib/rentMonth";
 import { loadCanonicalPropertyLoanSnapshots } from "@/services/propertyLoanLedgerService";
@@ -107,16 +106,6 @@ export type AppDataContextValue = {
   getMonthlyRentSummaryByObjectCode: (objectCode: string | null | undefined, year: number, month: number) => number | null;
   getYearlyFinanceSummary: (propertyId: string | null | undefined, year: number) => YearlyFinanceSummaryRow | null;
   getYearlyFinanceSummaryByObjectCode: (objectCode: string | null | undefined, year: number) => YearlyFinanceSummaryRow | null;
-};
-
-type CachedAppData = {
-  objects?: AppObject[];
-  entries?: FinanceEntry[];
-  monthlyRentSummaries?: MonthlyRentSummaryRow[];
-  yearlyFinanceSummaries?: YearlyFinanceSummaryRow[];
-  portfolioRows?: PortfolioLoanRow[];
-  loanRows?: LoanDashboardRow[];
-  loanChartByPropertyId?: Record<string, LoanChartPoint[]>;
 };
 
 type ObjectDropdownRow = {
@@ -480,34 +469,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   const [loanRows, setLoanRows] = useState<LoanDashboardRow[]>([]);
   const [loanChartByPropertyId, setLoanChartByPropertyId] = useState<Record<string, LoanChartPoint[]>>({});
 
-  const applyCachedData = useCallback((cached: CachedAppData) => {
-    setObjects(Array.isArray(cached.objects) ? cached.objects : []);
-    setEntries(Array.isArray(cached.entries) ? cached.entries : []);
-    setMonthlyRentSummaries(Array.isArray(cached.monthlyRentSummaries) ? cached.monthlyRentSummaries : []);
-    setYearlyFinanceSummaries(Array.isArray(cached.yearlyFinanceSummaries) ? cached.yearlyFinanceSummaries : []);
-    setPortfolioRows(Array.isArray(cached.portfolioRows) ? cached.portfolioRows : []);
-    setLoanRows(Array.isArray(cached.loanRows) ? cached.loanRows : []);
-    setLoanChartByPropertyId(cached.loanChartByPropertyId && typeof cached.loanChartByPropertyId === "object" ? cached.loanChartByPropertyId : {});
-  }, []);
-
-  const hydrateFromCache = useCallback(() => {
-    try {
-      const raw = window.localStorage.getItem(APP_DATA_CACHE_KEY);
-      if (!raw) return false;
-      const cached = JSON.parse(raw) as CachedAppData;
-      const hasUsefulData = Array.isArray(cached.objects) || Array.isArray(cached.entries) || Array.isArray(cached.portfolioRows);
-      if (!hasUsefulData) return false;
-      applyCachedData(cached);
-      setError(null);
-      return true;
-    } catch {
-      return false;
-    }
-  }, [applyCachedData]);
-
   const load = useCallback(async () => {
-    const hydrated = hydrateFromCache();
-    setLoading(!hydrated);
+    setLoading(true);
     setError(null);
     try {
       const [objectsRes, entriesRes, portfolioRes, loanRes, propertyExtraRes] = await Promise.all([
@@ -702,24 +665,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       setPortfolioRows(mappedPortfolio);
       setLoanRows(mappedLoans);
       setLoanChartByPropertyId(charts);
-      window.localStorage.setItem(APP_DATA_CACHE_KEY, JSON.stringify({
-        objects: mappedObjects,
-        entries: mappedEntries,
-        monthlyRentSummaries: mappedMonthlyRentSummaries,
-        yearlyFinanceSummaries: mappedYearlyFinanceSummaries,
-        portfolioRows: mappedPortfolio,
-        loanRows: mappedLoans,
-        loanChartByPropertyId: charts,
-        savedAt: new Date().toISOString(),
-      }));
     } catch (err: unknown) {
-      if (!hydrated && !hydrateFromCache()) {
-        setError(getErrorMessage(err));
-      }
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
-  }, [hydrateFromCache]);
+  }, []);
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void load(), 0);

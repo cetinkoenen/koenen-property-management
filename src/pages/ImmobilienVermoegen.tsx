@@ -115,7 +115,6 @@ type FieldConfig = {
 };
 
 const STORAGE_KEY = "koenen:immobilienvermoegen:v2";
-const EXPOSE_STORAGE_KEY = "koenen:portfolio:exposes:v1";
 const WEALTH_UPDATED_EVENT = "koenen:immobilienvermoegen:updated";
 
 const ROSENSTEIN_PARKING_UNITS: ParkingUnit[] = [
@@ -805,15 +804,6 @@ function getRosensteinUnitPayment(entries: FinanceEntry[], unit: ParkingUnit, ye
     .filter((entry) => entry.booking_date)
     .sort((left, right) => String(right.booking_date).localeCompare(String(left.booking_date)))[0];
   return { total, lastBookingDate: lastEntry?.booking_date ?? null, lastAmount: lastEntry?.amount ?? 0 };
-}
-
-function loadExposes(): Record<string, ExposeInfo> {
-  try {
-    const raw = window.localStorage.getItem(EXPOSE_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, ExposeInfo>) : {};
-  } catch {
-    return {};
-  }
 }
 
 function loadStoredDrafts(): Record<string, WealthDraft> {
@@ -1974,12 +1964,12 @@ export default function ImmobilienVermoegen() {
   const capexSyncSignatureRef = useRef("");
   const [legacyDrafts] = useState<Record<string, WealthDraft>>(loadStoredDrafts);
   const wealthProfilesLoadedRef = useRef(false);
-  const [storedDrafts, setStoredDrafts] = useState<Record<string, WealthDraft>>(legacyDrafts);
+  const [storedDrafts, setStoredDrafts] = useState<Record<string, WealthDraft>>({});
   const [saveStatus, setSaveStatus] = useState<Record<string, string>>({});
   const [extraInfo, setExtraInfo] = useState<Record<string, PropertyExtraInfo>>({});
   const [dirtyExtras, setDirtyExtras] = useState<Record<string, boolean>>({});
   const [extraStatus, setExtraStatus] = useState<Record<string, string>>({});
-  const [exposes, setExposes] = useState<Record<string, ExposeInfo>>(() => loadExposes());
+  const [exposes, setExposes] = useState<Record<string, ExposeInfo>>({});
   const [uploadTarget, setUploadTarget] = useState<string | null>(null);
   const [exposePreview, setExposePreview] = useState<ExposePreview | null>(null);
   const [selectedImage, setSelectedImage] = useState<PortfolioGalleryItem | null>(null);
@@ -2027,7 +2017,7 @@ export default function ImmobilienVermoegen() {
       const propertyIds = appData.portfolioRows.map((row) => row.property_id).filter(Boolean);
       const remote = await fetchPropertyWealthProfiles(propertyIds);
       const legacy = legacyDrafts;
-      const next: Record<string, WealthDraft> = { ...legacy, ...remote };
+      const next: Record<string, WealthDraft> = { ...remote };
 
       if (isAdmin) {
         for (const row of appData.portfolioRows) {
@@ -2061,8 +2051,8 @@ export default function ImmobilienVermoegen() {
       try {
         const links = await loadExposeLinks();
         if (cancelled) return;
-        setExposes((legacy) => {
-          const next = { ...legacy };
+        setExposes(() => {
+          const next: Record<string, ExposeInfo> = {};
           for (const link of links) {
             const value = { fileName: link.fileName, dataUrl: link.signedUrl, uploadedAt: "" };
             next[link.portfolioPropertyId] = value;

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMonth, appData, consistency, cockpit, cashflow, loanOverview, utilitiesKpi, utilitiesPage, billingService, wealth, migration, hohenloherMigration, rosensteinRentalMigration, p250JanuaryMigration, vercelConfig] = await Promise.all([
+const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMonth, appData, consistency, cockpit, cashflow, loanOverview, utilitiesKpi, utilitiesPage, billingService, wealth, propertyExtraService, garageUtilities, migration, hohenloherMigration, rosensteinRentalMigration, p250JanuaryMigration, vercelConfig] = await Promise.all([
   read("src/App.tsx"),
   read("src/pages/InvestmentBericht.tsx"),
   read("src/services/auditLogService.ts"),
@@ -19,6 +19,8 @@ const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMont
   read("src/pages/NebenkostenWohnungen.tsx"),
   read("src/services/billingWorkspaceService.ts"),
   read("src/pages/ImmobilienVermoegen.tsx"),
+  read("src/services/propertyExtraService.ts"),
+  read("src/pages/NebenkostenTiefgarage.tsx"),
   read("supabase/migrations/20260827163000_property_id_aliases.sql"),
   read("supabase/migrations/20260915133500_include_rent_component_in_monthly_view.sql"),
   read("supabase/migrations/20260920190000_sync_rosenstein_current_rental_periods.sql"),
@@ -27,6 +29,10 @@ const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMont
 ]);
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
+assert.doesNotMatch(appData, /localStorage\.(?:getItem|setItem)/, "Zentrale App-Daten dürfen keinen browserweiten Fallback als zweite Fachquelle verwenden");
+assert.doesNotMatch(propertyExtraService, /localStorage\.(?:getItem|setItem)/, "Objekt-Stammdaten dürfen nicht parallel aus localStorage gelesen werden");
+assert.doesNotMatch(wealth, /function loadExposes/, "Exposés dürfen nicht parallel aus einem lokalen Browserbestand angezeigt werden");
+assert.match(garageUtilities, /migrationError[\s\S]{0,500}?setRecords\(legacyRecords\)/, "TG-Altdaten dürfen erst nach erfolgreicher Übernahme in die zentrale Quelle angezeigt werden");
 assert.match(investment, /fetchPropertyWealthProfiles/, "Investment-Bericht muss die zentrale Supabase-Quelle verwenden");
 assert.doesNotMatch(audit, /localStorage/, "Audit-Protokolle dürfen keine zweite lokale Datenquelle führen");
 assert.match(resolver, /property_id_aliases/, "Historische Objekt-IDs müssen zentral geladen werden");
@@ -121,5 +127,13 @@ assert.match(await readFile("src/pages/Mietuebersicht.tsx", "utf8"), /prorateMon
 assert.match(await readFile("src/pages/Mietuebersicht.tsx", "utf8"), /vacancyCandidate && bookingAmount <= 0/, "Eine belegte Teilmonatsmiete darf nicht durch einen historischen Teil-Leerstand uebersteuert werden");
 assert.match(await readFile("src/pages/Mietuebersicht.tsx", "utf8"), /exactLateMonthTopUpBooking[\s\S]*openAmount[\s\S]*candidates\.length === 1/, "Eine eindeutige centgenaue Restzahlung am Monatsende muss zur offenen Monatsmiete addiert werden");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
+
+const migrationFiles = (await readdir(new URL("../supabase/migrations", import.meta.url)))
+  .filter((file) => file.endsWith(".sql"));
+assert.deepEqual(
+  migrationFiles.filter((file) => !/^\d{14}_[a-z0-9_]+\.sql$/.test(file)),
+  [],
+  "Jede Supabase-Migration muss einen gültigen Zeitstempel tragen und reproduzierbar ausführbar sein",
+);
 
 console.log("70 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
