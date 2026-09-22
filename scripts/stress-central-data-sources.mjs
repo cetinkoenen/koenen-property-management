@@ -117,6 +117,8 @@ assert.match(utilitiesPage, /return summarizeBillingWorkspace\(target\)/, "Haupt
 assert.match(billingService, /const balance = roundMoney\(advance - tenantTotal\)/, "Die zentrale Nebenkostenformel muss Guthaben und Nachzahlung centgenau aus Vorauszahlung minus Kosten berechnen");
 assert.match(await readFile("src/pages/NebenkostenWohnungen.tsx", "utf8"), /Vorauszahlungen im Abrechnungszeitraum \(€\)[\s\S]*monatliche NK-Vorauszahlung × Belegungsmonate/, "Die Eingabe muss eindeutig den Periodengesamtbetrag statt eines Monatswerts verlangen");
 assert.match(await readFile("src/pages/NebenkostenWohnungen.tsx", "utf8"), /settlementStatus[\s\S]*Nachzahlung ausgeglichen[\s\S]*settlementReference/, "Ausgeglichene NK-Nachzahlungen müssen mit Buchungsreferenz sichtbar bleiben");
+assert.match(await readFile("src/pages/Mietuebersicht.tsx", "utf8"), /prorateMonthlyRentFromStart[\s\S]*occupiedDays[\s\S]*zeitanteilig ab/, "Untermonatiger Mietbeginn muss das Monats-Soll taggenau reduzieren");
+assert.match(await readFile("src/pages/Mietuebersicht.tsx", "utf8"), /vacancyCandidate && bookingAmount <= 0/, "Eine belegte Teilmonatsmiete darf nicht durch einen historischen Teil-Leerstand uebersteuert werden");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
 console.log("70 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

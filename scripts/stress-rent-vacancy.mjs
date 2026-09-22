@@ -67,6 +67,16 @@ function isRentAssignedToMonth(entry, year, month, isLilienthaler = false, objec
   return effective.year === year && effective.month === month;
 }
 
+function prorateMonthlyRentFromStart(amount, startDate, periodStart, periodEnd) {
+  if (amount == null || !startDate || startDate <= periodStart || startDate > periodEnd) return amount;
+  const year = Number(periodStart.slice(0, 4));
+  const month = Number(periodStart.slice(5, 7));
+  const startDay = Number(startDate.slice(8, 10));
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const occupiedDays = daysInMonth - startDay + 1;
+  return Math.round((amount * occupiedDays / daysInMonth) * 100) / 100;
+}
+
 function rentReferenceText(entry) {
   return String(`${entry.category ?? ""} ${entry.note ?? ""} ${entry.objekt_code ?? ""}`)
     .toLowerCase()
@@ -259,6 +269,8 @@ const tests = [
     assert.equal(isRentAssignedToMonth({ booking_date: "2025-12-10", category: "Miete", note: "Fürther Str. 74 · Sammelzahlung 10.12.2025 · Mietmonat 10/2025" }, 2025, 10), true, "Eine aufgeteilte Sammelzahlung muss dem dokumentierten Mietmonat folgen");
     assert.equal(isRentAssignedToMonth({ booking_date: "2025-12-10", category: "Miete", note: "Fürther Str. 74 · Sammelzahlung 10.12.2025 · Mietmonat 11/2025" }, 2025, 11), true, "November-Anteil der Sammelzahlung muss im November erscheinen");
     assert.equal(isRentAssignedToMonth({ booking_date: "2025-12-10", category: "Miete", note: "Fürther Str. 74 · Sammelzahlung 10.12.2025 · Mietmonat 12/2025" }, 2025, 12), true, "Dezember-Anteil der Sammelzahlung muss im Dezember erscheinen");
+    assert.equal(prorateMonthlyRentFromStart(660, "2025-11-18", "2025-11-01", "2025-11-30"), 286, "Elsasser November 2025 muss mit 13/30 der Warmmiete berechnet werden");
+    assert.equal(isRentAssignedToMonth({ booking_date: "2025-11-21", category: "Miete", note: "Elsasser Str. 52 · Mietmonat 11/2025 · anteilig 18.11.-30.11.2025" }, 2025, 11), true, "Die belegte Elsasser-Teilzahlung muss November 2025 zugeordnet bleiben");
   },
   () => {
     assert.equal(

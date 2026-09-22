@@ -631,7 +631,7 @@ function expectedRentFromAdjustments(
   unit: UnitDefinition,
   start: string,
   end: string,
-): { expectedAmount: number | null; source: string; active: boolean } {
+): { expectedAmount: number | null; source: string; active: boolean; activeStartDate: string | null } {
   const matched = adjustments
     .filter((row) => rentAdjustmentMatchesUnit(row, object, candidateIds, unit))
     .map((row) => ({ row, startDate: rentAdjustmentStartDate(row), endDate: rentAdjustmentEndDate(row) }))
@@ -642,13 +642,24 @@ function expectedRentFromAdjustments(
     .filter((item) => item.startDate <= end && (!item.endDate || item.endDate >= start))
     .sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
   const activeAmount = active ? rentAdjustmentTotal(active.row) : null;
-  if (activeAmount != null) return { expectedAmount: activeAmount, source: "Mietentwicklung > Mietanpassungen", active: true };
+  if (activeAmount != null) return { expectedAmount: activeAmount, source: "Mietentwicklung > Mietanpassungen", active: true, activeStartDate: active.startDate };
 
   const nextAdjustment = matched.find((item) => item.startDate > end);
   const oldAmount = nextAdjustment ? rentAdjustmentOldTotal(nextAdjustment.row) : null;
-  if (oldAmount != null) return { expectedAmount: oldAmount, source: "Mietentwicklung > Mietanpassungen (alter Stand)", active: false };
+  if (oldAmount != null) return { expectedAmount: oldAmount, source: "Mietentwicklung > Mietanpassungen (alter Stand)", active: false, activeStartDate: null };
 
-  return { expectedAmount: null, source: "Mietentwicklung > Mietanpassungen", active: false };
+  return { expectedAmount: null, source: "Mietentwicklung > Mietanpassungen", active: false, activeStartDate: null };
+}
+
+function prorateMonthlyRentFromStart(amount: number | null, startDate: string | null, periodStart: string, periodEnd: string): number | null {
+  if (amount === null || !startDate || startDate <= periodStart || startDate > periodEnd) return amount;
+  const year = Number(periodStart.slice(0, 4));
+  const month = Number(periodStart.slice(5, 7));
+  const startDay = Number(startDate.slice(8, 10));
+  const daysInMonth = new Date(year, month, 0).getDate();
+  if (!Number.isInteger(startDay) || startDay < 1 || startDay > daysInMonth) return amount;
+  const occupiedDays = daysInMonth - startDay + 1;
+  return Math.round((amount * occupiedDays / daysInMonth) * 100) / 100;
 }
 
 function expectedAmountForOpen(row: Pick<OverviewRow, "status" | "expectedAmount" | "paidAmount">): number {
@@ -1597,7 +1608,7 @@ export default function Mietuebersicht({
             const periodTenant = tenantInfoFromContract(periodContract);
             const tenantForMatch = tenantHasAnyValue(periodTenant) ? periodTenant : tenantInfo[tenantKey] ?? tenantInfo[object.id] ?? emptyTenant;
             const tenantContract = periodContract ? tenantContractInfoFromContract(periodContract) : null;
-            const vacancy = vacancies.find((candidate) => vacancyMatchesUnit(candidate, object, unit) && isVacancyInRange(candidate, period.start, period.end));
+            const vacancyCandidate = vacancies.find((candidate) => vacancyMatchesUnit(candidate, object, unit) && isVacancyInRange(candidate, period.start, period.end));
             let unitBookings = relevantBookings.filter(unit.matcher);
 
             if (isFuertherWohnungUnit(object.label, unit.ref)) {
@@ -1646,7 +1657,13 @@ export default function Mietuebersicht({
             // späteren Anpassung abgeleiteter Altwert ist der letzte Fallback.
             const activeAdjustmentAmount = adjustmentReference.active ? adjustmentReference.expectedAmount : null;
             const inferredOldAdjustmentAmount = adjustmentReference.active ? null : adjustmentReference.expectedAmount;
-            const expectedAmountBeforeVacancy = activeAdjustmentAmount ?? contractExpectedAmount ?? rentalReference.expectedAmount ?? inferredOldAdjustmentAmount;
+            const fullExpectedAmount = activeAdjustmentAmount ?? contractExpectedAmount ?? rentalReference.expectedAmount ?? inferredOldAdjustmentAmount;
+            const expectedStartDate = activeAdjustmentAmount !== null
+              ? adjustmentReference.activeStartDate
+              : contractExpectedAmount !== null
+                ? dateKeyFromValue(periodContract?.start_date)
+                : null;
+            const expectedAmountBeforeVacancy = prorateMonthlyRentFromStart(fullExpectedAmount, expectedStartDate, period.start, period.end);
             const expectedSourceBeforeVacancy = activeAdjustmentAmount !== null
               ? adjustmentReference.source
               : contractExpectedAmount !== null
@@ -1654,8 +1671,12 @@ export default function Mietuebersicht({
                 : rentalReference.expectedAmount !== null
                   ? rentalReference.source
                   : adjustmentReference.source;
-            const lilienthalerAllocation = lilienthalerBookingAllocation(allKnownBookings, object, unit, period, vacancy ? null : expectedAmountBeforeVacancy);
+            const lilienthalerAllocation = lilienthalerBookingAllocation(allKnownBookings, object, unit, period, vacancyCandidate ? null : expectedAmountBeforeVacancy);
             const bookingAmount = lilienthalerAllocation?.paidAmount ?? unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
+            // Ein historischer Teil-Leerstand darf eine belegte Teilmonatsmiete
+            // nicht uebersteuern. Sobald ein passender Eingang vorhanden ist,
+            // wird der Monat gegen das zeitanteilige Soll bewertet.
+            const vacancy = vacancyCandidate && bookingAmount <= 0 ? vacancyCandidate : undefined;
             const adjustmentStartDates = rentAdjustments
               .filter((candidate) => rentAdjustmentMatchesUnit(candidate, object, objectCandidateIds, unit))
               .map(rentAdjustmentStartDate)
@@ -1697,7 +1718,9 @@ export default function Mietuebersicht({
               ? "Leerstand > Leerstandszeitraum"
               : inactive
                 ? `Mietbeginn laut zentraler Stammdatenquelle: ${sourceRentStartDate}`
-                : expectedSourceBeforeVacancy;
+                : expectedStartDate && expectedStartDate > period.start && expectedStartDate <= period.end
+                  ? `${expectedSourceBeforeVacancy} · zeitanteilig ab ${expectedStartDate}`
+                  : expectedSourceBeforeVacancy;
             const paidAmount = vacancy ? 0 : bookingAmount;
             const sortedDates = unitBookings.map((booking) => booking.booking_date).filter(Boolean).sort() as string[];
             const lastBookingDate = lilienthalerAllocation?.lastBookingDate ?? (sortedDates.length ? sortedDates[sortedDates.length - 1] : null);
