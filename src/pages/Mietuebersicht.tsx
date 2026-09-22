@@ -1162,6 +1162,38 @@ function pickMostLikelySingleRentBooking(currentCandidates: FinanceEntry[], hist
   return [latest.sort((a, b) => a.amount - b.amount)[0]];
 }
 
+function exactLateMonthTopUpBooking(
+  allBookings: FinanceEntry[],
+  currentBookings: FinanceEntry[],
+  object: { id: string; code: string | null; label: string },
+  unit: UnitDefinition,
+  period: ReturnType<typeof monthRangeFromYearMonth>,
+  expectedAmount: number | null,
+): FinanceEntry | null {
+  if (expectedAmount === null || currentBookings.length === 0) return null;
+  const currentPaid = currentBookings.reduce((sum, booking) => sum + booking.amount, 0);
+  const openAmount = Math.round((expectedAmount - currentPaid) * 100) / 100;
+  if (currentPaid <= 0 || openAmount <= 0) return null;
+
+  const currentIds = new Set(currentBookings.map((booking) => booking.id).filter((id) => id != null));
+  const candidates = allBookings.filter((booking) => {
+    if (!booking.booking_date || !isDateInRange(booking.booking_date, period.start, period.end)) return false;
+    if (booking.id != null && currentIds.has(booking.id)) return false;
+    if (booking.entry_type !== "income" || booking.amount <= 0) return false;
+    if (!hasStrictRentText(booking) || isClearlyExcludedFromRent(booking) || isRentBackPaymentBooking(booking)) return false;
+    if (!unit.matcher(booking)) return false;
+    if (!directObjectMatch(booking, object.id, object.code) && !bookingMatchesObject(booking, object.id, object.code, object.label)) return false;
+    const effectiveDate = attributedRentDateForUnit(booking, object.label, unit.ref);
+    if (isDateInRange(effectiveDate, period.start, period.end)) return false;
+    return Math.abs(booking.amount - openAmount) < 0.005;
+  });
+
+  // Nur ein centgenau eindeutiger Restbetrag darf automatisch dem laufenden
+  // Monat zugerechnet werden. Bei mehreren Kandidaten bleibt eine manuelle
+  // Mietmonat-Referenz erforderlich.
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
 function parkingCodeFromText(value: string | null | undefined): string | null {
   const compact = compactReferenceText(value);
   const directCode = compact.match(/p\d{2,4}/)?.[0] ?? null;
@@ -1672,7 +1704,14 @@ export default function Mietuebersicht({
                   ? rentalReference.source
                   : adjustmentReference.source;
             const lilienthalerAllocation = lilienthalerBookingAllocation(allKnownBookings, object, unit, period, vacancyCandidate ? null : expectedAmountBeforeVacancy);
-            const bookingAmount = lilienthalerAllocation?.paidAmount ?? unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
+            let bookingAmount = lilienthalerAllocation?.paidAmount ?? unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
+            if (!lilienthalerAllocation) {
+              const lateTopUp = exactLateMonthTopUpBooking(allKnownBookings, unitBookings, object, unit, period, expectedAmountBeforeVacancy);
+              if (lateTopUp) {
+                unitBookings = [...unitBookings, lateTopUp];
+                bookingAmount = unitBookings.reduce((sum, booking) => sum + booking.amount, 0);
+              }
+            }
             // Ein historischer Teil-Leerstand darf eine belegte Teilmonatsmiete
             // nicht uebersteuern. Sobald ein passender Eingang vorhanden ist,
             // wird der Monat gegen das zeitanteilige Soll bewertet.

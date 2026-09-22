@@ -119,6 +119,7 @@ assert.match(await readFile("src/pages/NebenkostenWohnungen.tsx", "utf8"), /Vora
 assert.match(await readFile("src/pages/NebenkostenWohnungen.tsx", "utf8"), /settlementStatus[\s\S]*Nachzahlung ausgeglichen[\s\S]*settlementReference/, "Ausgeglichene NK-Nachzahlungen müssen mit Buchungsreferenz sichtbar bleiben");
 assert.match(await readFile("src/pages/Mietuebersicht.tsx", "utf8"), /prorateMonthlyRentFromStart[\s\S]*occupiedDays[\s\S]*zeitanteilig ab/, "Untermonatiger Mietbeginn muss das Monats-Soll taggenau reduzieren");
 assert.match(await readFile("src/pages/Mietuebersicht.tsx", "utf8"), /vacancyCandidate && bookingAmount <= 0/, "Eine belegte Teilmonatsmiete darf nicht durch einen historischen Teil-Leerstand uebersteuert werden");
+assert.match(await readFile("src/pages/Mietuebersicht.tsx", "utf8"), /exactLateMonthTopUpBooking[\s\S]*openAmount[\s\S]*candidates\.length === 1/, "Eine eindeutige centgenaue Restzahlung am Monatsende muss zur offenen Monatsmiete addiert werden");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
 console.log("70 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

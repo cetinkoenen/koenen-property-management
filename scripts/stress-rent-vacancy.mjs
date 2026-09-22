@@ -271,6 +271,8 @@ const tests = [
     assert.equal(isRentAssignedToMonth({ booking_date: "2025-12-10", category: "Miete", note: "Fürther Str. 74 · Sammelzahlung 10.12.2025 · Mietmonat 12/2025" }, 2025, 12), true, "Dezember-Anteil der Sammelzahlung muss im Dezember erscheinen");
     assert.equal(prorateMonthlyRentFromStart(660, "2025-11-18", "2025-11-01", "2025-11-30"), 286, "Elsasser November 2025 muss mit 13/30 der Warmmiete berechnet werden");
     assert.equal(isRentAssignedToMonth({ booking_date: "2025-11-21", category: "Miete", note: "Elsasser Str. 52 · Mietmonat 11/2025 · anteilig 18.11.-30.11.2025" }, 2025, 11), true, "Die belegte Elsasser-Teilzahlung muss November 2025 zugeordnet bleiben");
+    assert.equal(isRentAssignedToMonth({ booking_date: "2026-01-31", category: "Miete", note: "P250 - E008440000121 · Mietmonat 01/2026 · Restzahlung 10,00 EUR" }, 2026, 1), true, "Die dokumentierte P250-Restzahlung muss trotz Monatsende dem Januar zugeordnet bleiben");
+    assert.equal(roundCurrency(75 + 10), 85, "P250 Januar 2026 muss beide Teilzahlungen zur Sollmiete addieren");
   },
   () => {
     assert.equal(
