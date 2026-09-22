@@ -256,6 +256,9 @@ const tests = [
     assert.equal(isRentAssignedToMonth({ booking_date: "2026-08-31", category: "Miete", note: "Fürther Str. 74" }, 2026, 8), false, "Die September-Miete darf nicht zugleich im August erscheinen");
     assert.equal(isRentAssignedToMonth({ booking_date: "2026-08-31", category: "Miete", note: "Fürther Str. 74" }, 2026, 9), true, "Die Zahlung am 31.08. muss genau September zugeordnet sein");
     assert.equal(isRentAssignedToMonth({ booking_date: "2026-09-04", category: "Miete", note: "Fürther Str. 74" }, 2026, 9), true, "Eine frühe Monatszahlung bleibt im selben Monat");
+    assert.equal(isRentAssignedToMonth({ booking_date: "2025-12-10", category: "Miete", note: "Fürther Str. 74 · Sammelzahlung 10.12.2025 · Mietmonat 10/2025" }, 2025, 10), true, "Eine aufgeteilte Sammelzahlung muss dem dokumentierten Mietmonat folgen");
+    assert.equal(isRentAssignedToMonth({ booking_date: "2025-12-10", category: "Miete", note: "Fürther Str. 74 · Sammelzahlung 10.12.2025 · Mietmonat 11/2025" }, 2025, 11), true, "November-Anteil der Sammelzahlung muss im November erscheinen");
+    assert.equal(isRentAssignedToMonth({ booking_date: "2025-12-10", category: "Miete", note: "Fürther Str. 74 · Sammelzahlung 10.12.2025 · Mietmonat 12/2025" }, 2025, 12), true, "Dezember-Anteil der Sammelzahlung muss im Dezember erscheinen");
   },
   () => {
     assert.equal(

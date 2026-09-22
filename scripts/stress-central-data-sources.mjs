@@ -116,6 +116,7 @@ assert.match(utilitiesPage, /requestedObjectCode[\s\S]{0,1500}?requestedBillingI
 assert.match(utilitiesPage, /return summarizeBillingWorkspace\(target\)/, "Hauptseite und KPI-Dashboard müssen dieselbe Kosten-/Saldoformel verwenden");
 assert.match(billingService, /const balance = roundMoney\(advance - tenantTotal\)/, "Die zentrale Nebenkostenformel muss Guthaben und Nachzahlung centgenau aus Vorauszahlung minus Kosten berechnen");
 assert.match(await readFile("src/pages/NebenkostenWohnungen.tsx", "utf8"), /Vorauszahlungen im Abrechnungszeitraum \(€\)[\s\S]*monatliche NK-Vorauszahlung × Belegungsmonate/, "Die Eingabe muss eindeutig den Periodengesamtbetrag statt eines Monatswerts verlangen");
+assert.match(await readFile("src/pages/NebenkostenWohnungen.tsx", "utf8"), /settlementStatus[\s\S]*Nachzahlung ausgeglichen[\s\S]*settlementReference/, "Ausgeglichene NK-Nachzahlungen müssen mit Buchungsreferenz sichtbar bleiben");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
 console.log("70 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
