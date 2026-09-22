@@ -115,6 +115,7 @@ assert.match(billingService, /garageRecordToWorkspaceRecord/, "Tiefgaragen-Abrec
 assert.match(utilitiesPage, /requestedObjectCode[\s\S]{0,1500}?requestedBillingId/, "Die Nebenkosten-Hauptseite muss Objekt, Jahr und Abrechnung aus dem KPI-Link übernehmen");
 assert.match(utilitiesPage, /return summarizeBillingWorkspace\(target\)/, "Hauptseite und KPI-Dashboard müssen dieselbe Kosten-/Saldoformel verwenden");
 assert.match(billingService, /const balance = roundMoney\(advance - tenantTotal\)/, "Die zentrale Nebenkostenformel muss Guthaben und Nachzahlung centgenau aus Vorauszahlung minus Kosten berechnen");
+assert.match(await readFile("src/pages/NebenkostenWohnungen.tsx", "utf8"), /Vorauszahlungen im Abrechnungszeitraum \(€\)[\s\S]*monatliche NK-Vorauszahlung × Belegungsmonate/, "Die Eingabe muss eindeutig den Periodengesamtbetrag statt eines Monatswerts verlangen");
 assert.equal(JSON.parse(vercelConfig).buildCommand, "npm run verify", "Jede Vercel-Veröffentlichung muss die vollständige Qualitätsprüfung ausführen");
 
 console.log("70 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
