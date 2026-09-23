@@ -127,6 +127,10 @@ assert.match(app, /"Offen" \| "In Arbeit" \| "In Prüfung" \| "Freigegeben" \| "
 assert.match(app, /Statusverteilung/, "Die gefilterten NK-Statuswerte müssen zusätzlich professionell visualisiert werden");
 assert.match(app, /Immobilien und Einheiten je Status/, "Jeder NK-Status muss die betroffenen Immobilien und Einheiten nachvollziehbar benennen");
 assert.match(app, /recordDetailUrl\(record\)/, "Jede Immobilie in der NK-Statusübersicht muss direkt zu ihrer zentralen Abrechnung führen");
+assert.match(app, /fetchPropertyWealthProfiles\(\)/, "Die NK-Übersicht muss das Kaufjahr aus der zentralen Immobilienvermögen-Quelle laden");
+assert.match(app, /purchaseYear !== null && billingYear < purchaseYear/, "NK-Abrechnungen vor dem Kaufjahr dürfen nicht in die KPI-Zahlen einfließen");
+assert.match(app, /Erwerbsprüfung aktiv/, "Vor dem Kaufjahr ausgeschlossene NK-Altdaten müssen nachvollziehbar ausgewiesen werden");
+assert.match(app, /Bearbeitungsfortschritt/, "Die NK-KPIs müssen den professionellen Gesamtfortschritt darstellen");
 assert.match(await readFile("src/pages/NebenkostenWohnungen.tsx", "utf8"), /Vorauszahlungen im Abrechnungszeitraum \(€\)[\s\S]*monatliche NK-Vorauszahlung × Belegungsmonate/, "Die Eingabe muss eindeutig den Periodengesamtbetrag statt eines Monatswerts verlangen");
 assert.match(await readFile("src/pages/NebenkostenWohnungen.tsx", "utf8"), /settlementStatus[\s\S]*Nachzahlung ausgeglichen[\s\S]*settlementReference/, "Ausgeglichene NK-Nachzahlungen müssen mit Buchungsreferenz sichtbar bleiben");
 assert.match(await readFile("src/pages/Mietuebersicht.tsx", "utf8"), /prorateMonthlyRentFromStart[\s\S]*occupiedDays[\s\S]*zeitanteilig ab/, "Untermonatiger Mietbeginn muss das Monats-Soll taggenau reduzieren");

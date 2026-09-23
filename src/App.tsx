@@ -1078,6 +1078,11 @@ type NebenkostenOverviewRecord = {
   year: number;
   status: NebenkostenOverviewStatus;
   isGarage: boolean;
+  purchaseYear: number | null;
+};
+
+type ExcludedNebenkostenOverviewRecord = NebenkostenOverviewRecord & {
+  exclusionReason: "before-purchase";
 };
 
 const NEBENKOSTEN_STATUS_CONFIG: Array<{
@@ -1102,24 +1107,72 @@ function normalizeNebenkostenStatus(value: unknown, locked: boolean | undefined)
   return "Offen";
 }
 
+function normalizeNebenkostenPropertyIdentity(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("de-DE")
+    .replace(/ß/g, "ss")
+    .replace(/strasse/g, "str")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function purchaseYearFromWealthProfile(profile: PropertyWealthProfile): number | null {
+  for (const candidate of [profile.purchaseYear, profile.purchaseDate, profile.transferBenefitsDate]) {
+    const match = String(candidate ?? "").match(/(?:19|20)\d{2}/);
+    const year = Number(match?.[0]);
+    if (Number.isInteger(year) && year >= 1900 && year <= 2200) return year;
+  }
+  return null;
+}
+
+function findPurchaseYearForBilling(
+  profiles: Record<string, PropertyWealthProfile>,
+  billingIdentities: unknown[],
+): number | null {
+  const normalizedBillingIdentities = new Set(
+    billingIdentities.map(normalizeNebenkostenPropertyIdentity).filter(Boolean),
+  );
+  if (!normalizedBillingIdentities.size) return null;
+
+  for (const [propertyId, profile] of Object.entries(profiles)) {
+    const profileIdentities = [
+      propertyId,
+      profile.name,
+      profile.address,
+      [profile.street, profile.houseNumber].filter(Boolean).join(" "),
+    ].map(normalizeNebenkostenPropertyIdentity).filter(Boolean);
+    if (profileIdentities.some((identity) => normalizedBillingIdentities.has(identity))) {
+      return purchaseYearFromWealthProfile(profile);
+    }
+  }
+  return null;
+}
+
 function NebenkostenIndexPage() {
   const currentYear = new Date().getFullYear();
   const [workflowRecords, setWorkflowRecords] = useState<NebenkostenOverviewRecord[]>([]);
   const [workflowLoading, setWorkflowLoading] = useState(true);
   const [workflowError, setWorkflowError] = useState("");
   const [selectedYear, setSelectedYear] = useState(String(currentYear));
+  const [excludedWorkflowRecords, setExcludedWorkflowRecords] = useState<ExcludedNebenkostenOverviewRecord[]>([]);
 
   useEffect(() => {
     let active = true;
-    supabase.from("apartment_billing_workspaces").select("object_id,year,data").order("year", { ascending: false }).then(({ data, error }) => {
+    Promise.all([
+      supabase.from("apartment_billing_workspaces").select("object_id,year,data").order("year", { ascending: false }),
+      fetchPropertyWealthProfiles(),
+    ]).then(([{ data, error }, wealthProfiles]) => {
       if (!active) return;
       if (error) {
         setWorkflowRecords([]);
+        setExcludedWorkflowRecords([]);
         setWorkflowError(`Nebenkosten-KPIs konnten nicht geladen werden: ${error.message}`);
         setWorkflowLoading(false);
         return;
       }
       const next: NebenkostenOverviewRecord[] = [];
+      const excluded: ExcludedNebenkostenOverviewRecord[] = [];
       for (const row of data ?? []) {
         const rawYear = Number(row.year);
         const fallbackYear = Number.isFinite(rawYear) && rawYear >= 2000 ? rawYear : currentYear;
@@ -1131,25 +1184,46 @@ function NebenkostenIndexPage() {
             || billing.workspace.meta.propertyCode === "rosenstein-str-25-tiefgarage";
           const primaryUnit = billing.workspace.apartments.find((apartment) => apartment.id === billing.workspace.selectedApartmentId)
             ?? billing.workspace.apartments[0];
-          next.push({
+          const propertyLabel = billing.workspace.meta.propertyLabel || (isGarage ? "Rosensteinstr. 25" : objectId || "Immobilie nicht benannt");
+          const purchaseYear = findPurchaseYearForBilling(wealthProfiles, [
+            objectId,
+            billing.workspace.meta.propertyCode,
+            propertyLabel,
+          ]);
+          const overviewRecord: NebenkostenOverviewRecord = {
             id: `${objectId}:${billingYear}:${billing.id}`,
             billingId: billing.id,
             objectId,
-            propertyLabel: billing.workspace.meta.propertyLabel || (isGarage ? "Rosensteinstr. 25" : objectId || "Immobilie nicht benannt"),
+            propertyLabel,
             unitLabel: primaryUnit?.label || billing.name || "Abrechnung",
             year: billingYear,
             status: normalizeNebenkostenStatus(billing.workspace.meta.workflowStatus, billing.workspace.meta.locked),
             isGarage,
-          });
+            purchaseYear,
+          };
+          if (purchaseYear !== null && billingYear < purchaseYear) {
+            excluded.push({ ...overviewRecord, exclusionReason: "before-purchase" });
+          } else {
+            next.push(overviewRecord);
+          }
         }
       }
       next.sort((left, right) => right.year - left.year || left.objectId.localeCompare(right.objectId));
+      excluded.sort((left, right) => right.year - left.year || left.propertyLabel.localeCompare(right.propertyLabel, "de"));
       setWorkflowRecords(next);
+      setExcludedWorkflowRecords(excluded);
+      setWorkflowError("");
       const availableYears = Array.from(new Set(next.map((record) => record.year))).sort((a, b) => b - a);
       setSelectedYear((previous) => {
         if (previous === "all" || availableYears.includes(Number(previous))) return previous;
         return String(availableYears.includes(currentYear) ? currentYear : availableYears[0] ?? currentYear);
       });
+      setWorkflowLoading(false);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setWorkflowRecords([]);
+      setExcludedWorkflowRecords([]);
+      setWorkflowError(`Nebenkosten-KPIs konnten nicht geladen werden: ${error instanceof Error ? error.message : "Unbekannter Fehler"}`);
       setWorkflowLoading(false);
     });
     return () => { active = false; };
@@ -1186,6 +1260,13 @@ function NebenkostenIndexPage() {
   const apartmentCount = filteredWorkflowRecords.filter((record) => !record.isGarage).length;
   const garageCount = totalCount - apartmentCount;
   const selectedPeriodLabel = selectedYear === "all" ? "Alle Jahre" : `Abrechnungsjahr ${selectedYear}`;
+  const excludedForSelectedPeriod = useMemo(
+    () => selectedYear === "all" ? excludedWorkflowRecords : excludedWorkflowRecords.filter((record) => record.year === Number(selectedYear)),
+    [excludedWorkflowRecords, selectedYear],
+  );
+  const completedCount = workflowCounts.Freigegeben + workflowCounts.Korrigiert;
+  const processingCount = workflowCounts["In Arbeit"] + workflowCounts["In Prüfung"];
+  const completionRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   function recordDetailUrl(record: NebenkostenOverviewRecord) {
     if (record.isGarage) return "/nebenkosten/tiefgarage";
@@ -1248,6 +1329,47 @@ function NebenkostenIndexPage() {
 
         {!workflowLoading && !workflowError && totalCount > 0 ? (
           <div className="mt-5 space-y-5">
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+              <div className="rounded-[20px] border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Bearbeitungsfortschritt</p>
+                    <p className="mt-1 text-sm font-black text-slate-950">{completedCount} von {totalCount} Abrechnungen abgeschlossen</p>
+                  </div>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-black tabular-nums text-emerald-700">{completionRate} %</span>
+                </div>
+                <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100" aria-label={`Bearbeitungsfortschritt ${completionRate} Prozent`}>
+                  <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${completionRate}%` }} />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 rounded-[20px] border border-slate-200 bg-slate-50 p-3 text-center shadow-sm">
+                <div className="rounded-xl bg-white px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Offen</p><p className="mt-1 text-lg font-black tabular-nums text-slate-950">{workflowCounts.Offen}</p></div>
+                <div className="rounded-xl bg-white px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-sky-600">Aktiv</p><p className="mt-1 text-lg font-black tabular-nums text-sky-700">{processingCount}</p></div>
+                <div className="rounded-xl bg-white px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-emerald-600">Fertig</p><p className="mt-1 text-lg font-black tabular-nums text-emerald-700">{completedCount}</p></div>
+              </div>
+            </div>
+
+            {excludedForSelectedPeriod.length > 0 ? (
+              <div className="rounded-[20px] border border-sky-200 bg-sky-50/80 p-4" role="status">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-sky-700">Erwerbsprüfung aktiv</p>
+                    <p className="mt-1 text-sm font-bold text-sky-950">
+                      {excludedForSelectedPeriod.length} historische {excludedForSelectedPeriod.length === 1 ? "Abrechnung" : "Abrechnungen"} vor dem jeweiligen Kaufjahr werden nicht in den KPIs gezählt.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-sky-700 shadow-sm">Quelle: Immobilienvermögen</span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {excludedForSelectedPeriod.map((record) => (
+                    <span key={`excluded:${record.id}`} className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-bold text-sky-900">
+                      {record.propertyLabel} · {record.year} · Kaufjahr {record.purchaseYear}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             <div className="rounded-[20px] border border-slate-200 bg-slate-50/80 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-600">Statusverteilung</p>
