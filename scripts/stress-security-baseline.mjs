@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 
-const [rlsMigration, storageMigration, aliasMigration, invokerViewMigration, garageBillingPage, supabaseClient, vercelConfig] = await Promise.all([
+const explicitGrantMigrationName = "20260923150000_explicit_data_api_table_grants.sql";
+const migrationsDirectory = new URL("../supabase/migrations/", import.meta.url);
+
+const [rlsMigration, storageMigration, aliasMigration, invokerViewMigration, explicitGrantMigration, garageBillingPage, supabaseClient, vercelConfig] = await Promise.all([
   readFile(new URL("../supabase/migrations/20260826090000_lock_down_public_tables_without_rls.sql", import.meta.url), "utf8"),
   readFile(new URL("../supabase/migrations/20260827153000_private_exposes_storage.sql", import.meta.url), "utf8"),
   readFile(new URL("../supabase/migrations/20260827163000_property_id_aliases.sql", import.meta.url), "utf8"),
   readFile(new URL("../supabase/migrations/20260901143500_secure_object_bridge_view.sql", import.meta.url), "utf8"),
+  readFile(new URL(`../supabase/migrations/${explicitGrantMigrationName}`, import.meta.url), "utf8"),
   readFile(new URL("../src/pages/NebenkostenTiefgarage.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/lib/supabase.ts", import.meta.url), "utf8"),
   readFile(new URL("../vercel.json", import.meta.url), "utf8"),
@@ -27,6 +31,25 @@ assert.match(invokerViewMigration, /grant select on public\.v_koenen_object_brid
 assert.match(invokerViewMigration, /relation\.relrowsecurity = false/i, "Die Sicherheitsmigration muss weiterhin jede öffentliche Tabelle ohne RLS blockieren");
 assert.match(invokerViewMigration, /has_table_privilege\('anon'[\s\S]*has_table_privilege\('authenticated'/i, "Browserlesbare Views müssen vollständig auf SECURITY DEFINER geprüft werden");
 assert.match(invokerViewMigration, /security_invoker=true/i, "Browserlesbare Views müssen als SECURITY INVOKER nachgewiesen werden");
+assert.match(explicitGrantMigration, /revoke all privileges on table[\s\S]*from anon/i, "Private App-Tabellen dürfen keine anonymen Data-API-Rechte behalten");
+assert.match(explicitGrantMigration, /grant select, insert, update, delete on table[\s\S]*to authenticated/i, "Angemeldete App-Nutzer brauchen explizite Data-API-Rechte");
+assert.match(explicitGrantMigration, /grant select, insert, update, delete on table[\s\S]*to service_role/i, "Der Service-Role-Zugriff muss explizit reproduzierbar sein");
+assert.match(explicitGrantMigration, /relation\.relrowsecurity = true/i, "Explizit freigegebene Data-API-Tabellen müssen weiterhin RLS erzwingen");
+assert.doesNotMatch(explicitGrantMigration, /finance_entry_backup_acquisition_side_cost_20260803/i, "Interne Sicherungstabellen dürfen nicht für die Data API freigegeben werden");
+
+const migrationFiles = (await readdir(migrationsDirectory))
+  .filter((fileName) => fileName.endsWith(".sql") && fileName > explicitGrantMigrationName)
+  .sort();
+
+for (const fileName of migrationFiles) {
+  const migration = await readFile(new URL(fileName, migrationsDirectory), "utf8");
+  if (!/create\s+table(?:\s+if\s+not\s+exists)?\s+public\./i.test(migration)) continue;
+
+  assert.match(migration, /enable row level security/i, `${fileName}: Neue public-Tabelle muss RLS im selben Migrationsschritt aktivieren`);
+  assert.match(migration, /grant[\s\S]*to authenticated/i, `${fileName}: Neue public-Tabelle braucht explizite authenticated-Rechte`);
+  assert.match(migration, /grant[\s\S]*to service_role/i, `${fileName}: Neue public-Tabelle braucht explizite service_role-Rechte`);
+  assert.match(migration, /revoke[\s\S]*from (?:public, )?anon/i, `${fileName}: Neue private public-Tabelle muss anon explizit sperren`);
+}
 assert.match(garageBillingPage, /function escapeHtml[\s\S]*\.replace\(\/&\/g, "&amp;"\)/, "Frei editierbare TG-Abrechnungsdaten müssen vor HTML-Export maskiert werden");
 for (const field of ["propertyLabel", "unitLabel", "landlordName", "tenantName", "landlordIban"]) {
   assert.match(garageBillingPage, new RegExp(`escapeHtml\\(record\\.${field}`), `${field} darf nicht unmaskiert in die TG-Druckausgabe gelangen`);
@@ -39,4 +62,4 @@ assert.match(supabaseClient, /new Request\(proxyUrl, request\)/, "Der Fallback m
 const parsedVercel = JSON.parse(vercelConfig);
 assert.deepEqual(parsedVercel.rewrites[0], { source: "/supabase/:path*", destination: "https://ufqfrotpefxtwczuqrxf.supabase.co/:path*" }, "Der Supabase-Proxy muss vor dem SPA-Fallback ausgewertet werden");
 
-console.log("25 Stressfaelle fuer RLS-, Rollen-, View-, Storage-, Netzwerk- und HTML-Export-Grundschutz bestanden.");
+console.log("30 Stressfaelle fuer RLS-, Data-API-, Rollen-, View-, Storage-, Netzwerk- und HTML-Export-Grundschutz bestanden.");
