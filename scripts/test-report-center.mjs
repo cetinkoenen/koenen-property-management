@@ -32,6 +32,8 @@ assert.equal(module('journal').tables[0].rows.at(-1).at(-1),'2.750,00 €');
 assert.equal(row('cover','Einheiten mit Soll-Miete / Mietkonto-Zeilen')[1],'1/1');
 assert.match(module('tenants').tables[1].rows[0][4],/teilweise$/);
 assert.match(module('tenants').tables[1].rows[0][14],/künftig$/);
+assert.equal(module('tenants').tables[0].rows[0][11],'2.400,00 €','Vereinbarte Kaution muss aus dem zeitlich passenden Mietvertrag übernommen werden');
+assert.match(module('tenants').paragraphs.join(' '),/tenant_contracts\.deposit_amount/,'Der Steuerberater-Report muss die eindeutige Kautionsquelle ausweisen');
 assert.equal(module('arrears').tables[0].rows[0][3],'100,00 €');
 assert.deepEqual(module('loan-interest').charts[0].labels,['2026']);
 assert.deepEqual(module('loan-interest').charts[0].series[0].values,[200]);

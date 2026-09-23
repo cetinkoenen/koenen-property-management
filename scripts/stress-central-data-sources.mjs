@@ -27,6 +27,7 @@ const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMont
   read("supabase/migrations/20260920194500_fix_p250_january_2026_rent.sql"),
   read("vercel.json"),
 ]);
+const tenantService = await read("src/services/tenantService.ts");
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
 assert.doesNotMatch(appData, /localStorage\.(?:getItem|setItem)/, "Zentrale App-Daten dürfen keinen browserweiten Fallback als zweite Fachquelle verwenden");
@@ -85,6 +86,10 @@ assert.match(wealth, /<CentralLoanOverview[\s\S]{0,300}?lockedPropertyId=\{centr
 assert.match(loanOverview, /const propertyLocked = Boolean\(fixedPropertyId \|\| lockedPropertyLabel\)/, "Die zentrale Darlehensübersicht muss einen fest gebundenen Objektmodus unterstützen");
 assert.match(loanOverview, /if \(propertyLocked\) \{[\s\S]{0,500}?return rows\.filter/, "Eine Immobilienakte darf nur die Darlehensdaten ihres fest gewählten Objekts anzeigen");
 assert.match(wealth, /<PropertyUtilitiesKpiDashboard[\s\S]{0,300}?propertyId=\{centralRentObjectId\(card, objects\)\}/, "Jede Immobilienakte muss das zentrale Nebenkosten-KPI-Dashboard verwenden");
+assert.match(wealth, /Vereinbarte Kaution/, "Die Mietkosten jeder Immobilienakte müssen die vereinbarte Kaution anzeigen");
+assert.match(wealth, /ownerOccupied[\s\S]{0,800}?Schreibgeschützt, solange der Nutzungstyp „Eigennutzung“ ist/, "Die Kaution muss bei Eigennutzung sichtbar und schreibgeschützt bleiben");
+assert.match(wealth, /depositContractsForCard[\s\S]{0,1800}?contract\.deposit_amount/, "Die Immobilienakte muss Kautionen direkt aus dem passenden aktiven Mietvertrag lesen");
+assert.match(tenantService, /updateTenantContractDepositAmount[\s\S]{0,900}?\.from\("tenant_contracts"\)[\s\S]{0,500}?deposit_amount/, "Kautionsänderungen müssen ausschließlich in der zentralen Mietvertragsquelle gespeichert werden");
 assert.match(wealth, /function activeParkingContract[\s\S]{0,1500}?startComparison[\s\S]{0,500}?updatedComparison/, "Bei ueberlappenden Stellplatzvertraegen muss der fachlich neueste Vertrag deterministisch gewinnen");
 assert.match(wealth, /Mieter · Stand \$\{tenantReferenceDate\}/, "Aktuelle Mieter muessen sichtbar von historischen Abrechnungszeitraeumen getrennt sein");
 assert.match(rosensteinRentalMigration, /tenant_contracts\) ist die fachliche Quelle/, "Die Rosenstein-Zeitreihe muss ihre fuehrende Mieterquelle dokumentieren");

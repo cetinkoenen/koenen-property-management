@@ -360,6 +360,32 @@ async function updateTenantContractById(
   return (data as TenantContract | null) ?? null;
 }
 
+export async function updateTenantContractDepositAmount(
+  contractId: string,
+  depositAmount: number | null,
+): Promise<TenantContract> {
+  const userId = await getCurrentUserId();
+  if (await isCurrentUserReadonly()) throw new Error("Nur-Lesen-Zugang: Kaution kann nicht geändert werden.");
+  const normalizedContractId = cleanText(contractId);
+  if (!normalizedContractId) throw new Error("Mietvertrags-ID fehlt.");
+  if (depositAmount !== null && (!Number.isFinite(depositAmount) || depositAmount < 0)) {
+    throw new Error("Die vereinbarte Kaution muss leer oder ein positiver Betrag sein.");
+  }
+
+  const { data, error } = await supabase
+    .from("tenant_contracts")
+    .update({ deposit_amount: depositAmount })
+    .eq("id", normalizedContractId)
+    .eq("user_id", userId)
+    .eq("is_deleted", false)
+    .select("*")
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("Mietvertrag wurde nicht gefunden oder darf nicht bearbeitet werden.");
+  return data as TenantContract;
+}
+
 async function getCurrentUserId(): Promise<string> {
   const { data, error } = await supabase.auth.getUser();
   if (error) throw error;

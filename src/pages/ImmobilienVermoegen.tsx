@@ -43,7 +43,12 @@ import {
   listVacancies,
   type UnitVacancy,
 } from "@/services/vacancyService";
-import { listTenantProfilesWithContracts, type TenantContract, type TenantProfileWithContracts } from "@/services/tenantService";
+import {
+  listTenantProfilesWithContracts,
+  updateTenantContractDepositAmount,
+  type TenantContract,
+  type TenantProfileWithContracts,
+} from "@/services/tenantService";
 import type { MasterFinanceSnapshot } from "@/services/masterDataService";
 import type { RentAnnualReportMonth, RentAnnualReportSnapshot } from "./Mietuebersicht";
 
@@ -104,6 +109,14 @@ type ParkingUnit = {
   tenantName: string;
   monthlyRent: number;
   vacancy?: UnitVacancy;
+};
+
+type DepositContractRow = {
+  contractId: string;
+  tenantName: string;
+  unitLabel: string;
+  depositAmount: number | null;
+  parkingUnitKey: string | null;
 };
 
 type FieldConfig = {
@@ -316,6 +329,7 @@ const WEALTH_TEMPLATES: WealthTemplate[] = [
       buildingPurchasePrice: "340000",
       landPurchasePrice: "45000",
       parkingPurchasePrice: "15000",
+      usageType: "Eigennutzung",
       notes: "Kaufpreis-Aufteilung: Gebäude 340.000 EUR, Grund und Boden 45.000 EUR, Stellplatz 15.000 EUR. Erwerbsnebenkosten separat in Buchhaltung dokumentiert.",
     },
   },
@@ -724,6 +738,32 @@ function activeParkingContract(
       if (updatedComparison !== 0) return updatedComparison;
       return String(right.contract.id).localeCompare(String(left.contract.id));
     })[0] ?? null;
+}
+
+function depositContractsForCard(
+  card: WealthCard,
+  tenants: TenantProfileWithContracts[],
+  objects: AppObject[],
+  date: string,
+): DepositContractRow[] {
+  return tenants
+    .flatMap((tenant) => (tenant.tenant_contracts ?? []).map((contract) => ({ tenant, contract })))
+    .filter(({ contract }) => contractMatchesWealthCard(contract, card, objects) && isContractActiveOn(contract, date))
+    .sort((left, right) => {
+      const unitComparison = String(left.contract.unit_label ?? "").localeCompare(String(right.contract.unit_label ?? ""), "de");
+      if (unitComparison !== 0) return unitComparison;
+      return String(right.contract.start_date ?? "").localeCompare(String(left.contract.start_date ?? ""));
+    })
+    .filter(({ contract }, index, rows) => rows.findIndex(({ contract: candidate }) => (
+      compactReference(candidate.unit_label || "Gesamte Immobilie") === compactReference(contract.unit_label || "Gesamte Immobilie")
+    )) === index)
+    .map(({ tenant, contract }) => ({
+      contractId: contract.id,
+      tenantName: tenantDisplayName(tenant),
+      unitLabel: contract.unit_label || "Gesamte Immobilie",
+      depositAmount: contract.deposit_amount,
+      parkingUnitKey: ROSENSTEIN_PARKING_UNITS.find((unit) => contractMatchesParkingUnit(contract, unit))?.key ?? null,
+    }));
 }
 
 function buildRosensteinParkingUnits(
@@ -1178,6 +1218,74 @@ function RentDataField({
   );
 }
 
+function AgreedDepositFields({
+  contracts,
+  drafts,
+  statuses,
+  disabled,
+  ownerOccupied,
+  onDraftChange,
+  onSave,
+}: {
+  contracts: DepositContractRow[];
+  drafts: Record<string, string>;
+  statuses: Record<string, string>;
+  disabled: boolean;
+  ownerOccupied: boolean;
+  onDraftChange: (contractId: string, value: string) => void;
+  onSave: (contractId: string) => Promise<void>;
+}) {
+  if (ownerOccupied) {
+    return (
+      <div className="grid gap-2">
+        <RentDataField label="Vereinbarte Kaution" value="" disabled placeholder="Nicht anwendbar · Eigennutzung" onChange={() => undefined} />
+        <p className="text-xs font-bold leading-5 text-slate-500">Schreibgeschützt, solange der Nutzungstyp „Eigennutzung“ ist.</p>
+      </div>
+    );
+  }
+
+  if (!contracts.length) {
+    return (
+      <div className="grid gap-2">
+        <RentDataField label="Vereinbarte Kaution" value="" disabled placeholder="Kein aktiver Mietvertrag" onChange={() => undefined} />
+        <p className="text-xs font-bold leading-5 text-amber-700">Bitte zuerst einen aktiven Mietvertrag in den Mieterstammdaten anlegen.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3">
+      {contracts.map((contract) => {
+        const value = drafts[contract.contractId] ?? (contract.depositAmount == null ? "" : contract.depositAmount.toFixed(2).replace(".", ","));
+        const labelSuffix = contracts.length > 1 ? ` · ${contract.unitLabel}` : "";
+        return (
+          <div key={contract.contractId} className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3">
+            <RentDataField
+              label={`Vereinbarte Kaution${labelSuffix}`}
+              value={value}
+              disabled={disabled}
+              placeholder="0,00"
+              onChange={(nextValue) => onDraftChange(contract.contractId, nextValue)}
+            />
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-bold text-slate-500">Vertragsquelle · {contract.tenantName}</span>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => void onSave(contract.contractId)}
+                className="inline-flex min-h-9 items-center rounded-xl bg-[#255f6f] px-3 text-xs font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+              >
+                Kaution speichern
+              </button>
+            </div>
+            {statuses[contract.contractId] ? <p className="mt-2 text-xs font-bold text-slate-600" role="status">{statuses[contract.contractId]}</p> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function StandardRentInfoPanel({
   extra,
   propertyId,
@@ -1187,6 +1295,12 @@ function StandardRentInfoPanel({
   extraStatus,
   onExtraChange,
   onExtraSave,
+  depositContracts,
+  depositDrafts,
+  depositStatuses,
+  ownerOccupied,
+  onDepositDraftChange,
+  onDepositSave,
 }: {
   extra: PropertyExtraInfo;
   propertyId: string;
@@ -1196,6 +1310,12 @@ function StandardRentInfoPanel({
   extraStatus?: string;
   onExtraChange: (propertyId: string, field: keyof PropertyExtraInfo, value: string) => void;
   onExtraSave: (propertyId: string) => Promise<void>;
+  depositContracts: DepositContractRow[];
+  depositDrafts: Record<string, string>;
+  depositStatuses: Record<string, string>;
+  ownerOccupied: boolean;
+  onDepositDraftChange: (contractId: string, value: string) => void;
+  onDepositSave: (contractId: string) => Promise<void>;
 }) {
   const rentSummary = [
     { label: "Kaltmiete", value: extra.coldRent ? formatCurrencyExact(extra.coldRent) : "—" },
@@ -1250,6 +1370,15 @@ function StandardRentInfoPanel({
                 onChange={(value) => onExtraChange(propertyId, field as keyof PropertyExtraInfo, value)}
               />
             ))}
+            <AgreedDepositFields
+              contracts={depositContracts}
+              drafts={depositDrafts}
+              statuses={depositStatuses}
+              disabled={!isAdmin}
+              ownerOccupied={ownerOccupied}
+              onDraftChange={onDepositDraftChange}
+              onSave={onDepositSave}
+            />
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
             {rentSummary.map((item) => (
@@ -1277,7 +1406,27 @@ function StandardRentInfoPanel({
   );
 }
 
-function RosensteinRentInfoPanel({ entries, year, parkingUnits }: { entries: FinanceEntry[]; year: number; parkingUnits: ParkingUnit[] }) {
+function RosensteinRentInfoPanel({
+  entries,
+  year,
+  parkingUnits,
+  depositContracts,
+  depositDrafts,
+  depositStatuses,
+  isAdmin,
+  onDepositDraftChange,
+  onDepositSave,
+}: {
+  entries: FinanceEntry[];
+  year: number;
+  parkingUnits: ParkingUnit[];
+  depositContracts: DepositContractRow[];
+  depositDrafts: Record<string, string>;
+  depositStatuses: Record<string, string>;
+  isAdmin: boolean;
+  onDepositDraftChange: (contractId: string, value: string) => void;
+  onDepositSave: (contractId: string) => Promise<void>;
+}) {
   const units = parkingUnits.map((unit) => ({
     ...unit,
     payment: getRosensteinUnitPayment(entries, unit, year),
@@ -1330,6 +1479,15 @@ function RosensteinRentInfoPanel({ entries, year, parkingUnits }: { entries: Fin
                 <span className="font-black text-emerald-700">Gesamtmiete</span>
                 <b className="font-black text-emerald-800">{formatCurrencyExact(unit.monthlyRent)}</b>
               </div>
+              <AgreedDepositFields
+                contracts={depositContracts.filter((contract) => contract.parkingUnitKey === unit.key)}
+                drafts={depositDrafts}
+                statuses={depositStatuses}
+                disabled={!isAdmin}
+                ownerOccupied={false}
+                onDraftChange={onDepositDraftChange}
+                onSave={onDepositSave}
+              />
             </div>
 
             <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3">
@@ -1604,6 +1762,11 @@ function DetailPage({
   extraStatus,
   saveStatus,
   isAdmin,
+  depositContracts,
+  depositDrafts,
+  depositStatuses,
+  onDepositDraftChange,
+  onDepositSave,
 }: {
   card: WealthCard;
   extra: PropertyExtraInfo;
@@ -1626,9 +1789,15 @@ function DetailPage({
   extraStatus?: string;
   saveStatus?: string;
   isAdmin: boolean;
+  depositContracts: DepositContractRow[];
+  depositDrafts: Record<string, string>;
+  depositStatuses: Record<string, string>;
+  onDepositDraftChange: (contractId: string, value: string) => void;
+  onDepositSave: (contractId: string) => Promise<void>;
 }) {
   const navigate = useNavigate();
   const propertyId = card.row?.property_id ?? card.id;
+  const ownerOccupied = normalize(card.draft.usageType).includes("eigennutzung");
   const [activeTab, setActiveTab] = useState<PropertyDetailTab>(() => propertyDetailTabFromHash(window.location.hash));
 
   useEffect(() => {
@@ -1748,7 +1917,17 @@ function DetailPage({
             </article>
 
             {isRosensteinCard(card) ? (
-                  <RosensteinRentInfoPanel entries={entries} year={year} parkingUnits={parkingUnits} />
+                  <RosensteinRentInfoPanel
+                    entries={entries}
+                    year={year}
+                    parkingUnits={parkingUnits}
+                    depositContracts={depositContracts}
+                    depositDrafts={depositDrafts}
+                    depositStatuses={depositStatuses}
+                    isAdmin={isAdmin}
+                    onDepositDraftChange={onDepositDraftChange}
+                    onDepositSave={onDepositSave}
+                  />
                 ) : (
                 <StandardRentInfoPanel
                   extra={extra}
@@ -1759,6 +1938,12 @@ function DetailPage({
                   extraStatus={extraStatus}
                   onExtraChange={onExtraChange}
                   onExtraSave={onExtraSave}
+                  depositContracts={depositContracts}
+                  depositDrafts={depositDrafts}
+                  depositStatuses={depositStatuses}
+                  ownerOccupied={ownerOccupied}
+                  onDepositDraftChange={onDepositDraftChange}
+                  onDepositSave={onDepositSave}
                 />
                 )}
 
@@ -1975,6 +2160,8 @@ export default function ImmobilienVermoegen() {
   const [selectedImage, setSelectedImage] = useState<PortfolioGalleryItem | null>(null);
   const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
   const [tenantProfiles, setTenantProfiles] = useState<TenantProfileWithContracts[]>([]);
+  const [depositDrafts, setDepositDrafts] = useState<Record<string, string>>({});
+  const [depositStatuses, setDepositStatuses] = useState<Record<string, string>>({});
 
   const cards = useMemo(() => buildCards(appData.portfolioRows, storedDrafts), [appData.portfolioRows, storedDrafts]);
   const modernizationSummaries = useMemo<ModernizationSummaryByCardId>(() => {
@@ -2286,6 +2473,42 @@ export default function ImmobilienVermoegen() {
     setDirtyExtras((prev) => ({ ...prev, [propertyId]: !result.ok }));
   }
 
+  function updateDepositDraft(contractId: string, value: string) {
+    setDepositDrafts((current) => ({ ...current, [contractId]: value }));
+    setDepositStatuses((current) => ({ ...current, [contractId]: "Ungespeicherte Änderung." }));
+  }
+
+  async function saveDeposit(contractId: string) {
+    if (!Object.prototype.hasOwnProperty.call(depositDrafts, contractId)) {
+      setDepositStatuses((current) => ({ ...current, [contractId]: "Keine Änderung zu speichern." }));
+      return;
+    }
+    const rawValue = String(depositDrafts[contractId] ?? "").trim();
+    const parsedDeposit = rawValue ? Number(rawValue.replace(/\s/g, "").replace(/\./g, "").replace(",", ".")) : null;
+    const depositAmount = typeof parsedDeposit === "number" && Number.isFinite(parsedDeposit) ? parsedDeposit : null;
+    if (rawValue && (depositAmount === null || depositAmount < 0)) {
+      setDepositStatuses((current) => ({ ...current, [contractId]: "Bitte eine gültige positive Kaution eingeben." }));
+      return;
+    }
+    setDepositStatuses((current) => ({ ...current, [contractId]: "Kaution wird in der zentralen Vertragsquelle gespeichert…" }));
+    try {
+      const updated = await updateTenantContractDepositAmount(contractId, depositAmount);
+      setTenantProfiles((profiles) => profiles.map((profile) => ({
+        ...profile,
+        tenant_contracts: (profile.tenant_contracts ?? []).map((contract) => contract.id === contractId ? updated : contract),
+      })));
+      setDepositDrafts((current) => ({
+        ...current,
+        [contractId]: updated.deposit_amount == null ? "" : updated.deposit_amount.toFixed(2).replace(".", ","),
+      }));
+      setDepositStatuses((current) => ({ ...current, [contractId]: "Gespeichert · Quelle: Mietvertrag" }));
+      window.dispatchEvent(new Event("koenen:tenant-changed"));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unbekannter Fehler";
+      setDepositStatuses((current) => ({ ...current, [contractId]: `Speichern fehlgeschlagen: ${message}` }));
+    }
+  }
+
   function openUpload(propertyId: string) {
     setUploadTarget(propertyId);
     window.setTimeout(() => fileInputRef.current?.click(), 0);
@@ -2332,6 +2555,7 @@ export default function ImmobilienVermoegen() {
     const finance = getFinanceForCard(selectedCard);
     const image = getPropertyImage(selectedCard.draft.name || selectedCard.row?.property_name || "");
     const parkingUnits = isRosensteinCard(selectedCard) ? buildRosensteinParkingUnits(selectedCard, vacancies, tenantProfiles, appData.objects, appData.entries, year) : [];
+    const depositContracts = depositContractsForCard(selectedCard, tenantProfiles, appData.objects, todayIso());
     return (
       <>
         <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleExposeUpload} />
@@ -2357,6 +2581,11 @@ export default function ImmobilienVermoegen() {
           extraStatus={extraStatus[propertyId]}
           saveStatus={saveStatus[selectedCard.id]}
           isAdmin={isAdmin}
+          depositContracts={depositContracts}
+          depositDrafts={depositDrafts}
+          depositStatuses={depositStatuses}
+          onDepositDraftChange={updateDepositDraft}
+          onDepositSave={saveDeposit}
         />
         {exposePreview ? <ExposeModal preview={exposePreview} uploaded={exposes[exposePreview.card.row?.property_id ?? exposePreview.card.id]} onClose={() => setExposePreview(null)} /> : null}
         {selectedImage ? <PropertyImageModal image={selectedImage} onClose={() => setSelectedImage(null)} /> : null}

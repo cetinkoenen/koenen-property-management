@@ -80,6 +80,9 @@ assert.match(taxPreflight, /Kaltmiete aus historischer Mietanpassung übernommen
 assert.match(taxPreflight, /Mieteingang nicht zugeordnet[\s\S]*Verwendungszweck, Mietername und Betrag/, "Unzugeordnete Mieteingänge müssen mit einem nachvollziehbaren Matching geprüft werden");
 assert.match(taxPreflight, /Steuerkennzeichen widerspricht einer Sperrregel[\s\S]*Umlagekennzeichen widerspricht der BetrKV-Regel/, "Steuer- und Umlagekennzeichen müssen vor dem Export gegen die zentralen Regeln geprüft werden");
 assert.match(reportCenter, /buildTaxReportPreflight[\s\S]*const entries = preflight\.entries/, "Alle Steuerberater-Module müssen dieselbe bereinigte Buchungsmenge verwenden");
+assert.match(reportCenter, /euro\(c\.deposit_amount\)/, "Der Steuerberater-Report muss die vereinbarte Kaution direkt aus dem Mietvertrag übernehmen");
+assert.match(reportCenter, /Kaution \(vereinbart\)/, "Die vereinbarte Kaution muss im Vertragsdaten-Report sichtbar sein");
+assert.match(reportCenter, /tenant_contracts\.deposit_amount[\s\S]*Historische Berichtsjahre/, "Die Kautionsquelle und ihre jahresbezogene Vertragslogik müssen im Report dokumentiert sein");
 assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'validation'[\s\S]*'cover'/, "Datenprüfung und Management Summary müssen den Steuerberater-Report eröffnen");
 assert.match(reportCenterPage, /taxPreflightBlocked[\s\S]*Export gesperrt: Die Datenprüfung enthält blockierende Punkte/, "Blockierende Datenfehler müssen den Export sichtbar verhindern");
 assert.match(taxClassification, /entryType === "income" && canonicalCategory === "Verwaltungskosten"[\s\S]*taxRelevant: true[\s\S]*locked: false/, "Hausverwaltungs-Gutschriften muessen steuerlich als Kostenminderung freigegeben bleiben");
