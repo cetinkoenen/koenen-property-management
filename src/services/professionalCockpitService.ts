@@ -534,8 +534,7 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
     supabase
       .from("tenant_contracts")
       .select("*,tenant_profiles(first_name,last_name,company_name,tenant_number)")
-      .eq("is_deleted", false)
-      .in("status", ["active", "planned"]),
+      .eq("is_deleted", false),
     supabase.from("v_object_dropdown").select("value,object_id,property_id,objekt_code,label"),
     supabase
       .from("finance_entry")

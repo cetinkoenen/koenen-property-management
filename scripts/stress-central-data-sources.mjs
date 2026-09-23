@@ -76,6 +76,10 @@ assert.match(rentOverview, /isRosensteinObject\(object\.label\)[\s\S]*rosenstein
 assert.match(cockpit, /text\.includes\("mietbestandteil"\)/, "Das Cockpit muss separat gebuchte Mietbestandteile in der Gesamtmiete berücksichtigen");
 assert.match(cockpit, /isFuertherLabel\(objectLabel\)[\s\S]{0,300}?isGarageReference\(contractText\) === isGarageReference\(bookingText\)/, "Das Cockpit muss Fürther Wohnung und Garage bei Zahlungen strikt trennen");
 assert.match(cockpit, /cockpitUnitLabel[\s\S]{0,400}?"Garage" : "Wohnung"/, "Fürther muss im Cockpit mit lesbaren separaten Einheiten erscheinen");
+const cockpitContractQuery = cockpit.match(/\.from\("tenant_contracts"\)[\s\S]{0,300}?\.eq\("is_deleted", false\)/)?.[0] ?? "";
+assert.doesNotMatch(cockpitContractQuery, /\.in\("status"/, "Das Cockpit darf einen im Berichtsmonat gültigen Vertrag nicht wegen eines vorzeitig gepflegten Status ausblenden");
+assert.match(cockpit, /contract\.start_date && contract\.start_date > end[\s\S]{0,250}?contract\.end_date && contract\.end_date < start/, "Das Cockpit muss die Monatsgültigkeit jedes Vertrags aus den zentralen Start- und Enddaten bestimmen");
+assert.match(cockpit, /const requiresUnitMatch = \(contractCountByObject\[objectGroupKey\] \?\? 0\) > 1/, "Mehrere Einheiten eines Objekts müssen im Cockpit getrennte Soll-Ist-Zeilen erhalten");
 assert.match(hohenloherMigration, /v_koenen_object_bridge/, "Die Backend-Mietmonatsquelle muss die zentrale Objekt-Bridge verwenden");
 assert.match(hohenloherMigration, /mietbestandteil\[- _\]\?nk/, "Die Backend-Mietmonatsquelle muss den Mietbestandteil-NK summieren");
 assert.match(hohenloherMigration, /with \(security_invoker = true\)/, "Die korrigierte Monatsview muss RLS mit den Rechten des aufrufenden Benutzers anwenden");
@@ -156,4 +160,4 @@ assert.deepEqual(
   "Jede Supabase-Migration muss einen gültigen Zeitstempel tragen und reproduzierbar ausführbar sein",
 );
 
-console.log("75 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("78 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
