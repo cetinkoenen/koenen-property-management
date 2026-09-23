@@ -1071,7 +1071,10 @@ type NebenkostenOverviewStatus = "Offen" | "In Arbeit" | "In Prüfung" | "Freige
 
 type NebenkostenOverviewRecord = {
   id: string;
+  billingId: string;
   objectId: string;
+  propertyLabel: string;
+  unitLabel: string;
   year: number;
   status: NebenkostenOverviewStatus;
   isGarage: boolean;
@@ -1123,12 +1126,20 @@ function NebenkostenIndexPage() {
         for (const billing of extractBillingWorkspaceRecords(row.data, fallbackYear)) {
           const billingYear = Number(billing.workspace.meta.billingYear || fallbackYear);
           if (!Number.isFinite(billingYear) || billingYear < 2000) continue;
+          const objectId = String(row.object_id ?? "");
+          const isGarage = objectId === "rosenstein-str-25-tiefgarage"
+            || billing.workspace.meta.propertyCode === "rosenstein-str-25-tiefgarage";
+          const primaryUnit = billing.workspace.apartments.find((apartment) => apartment.id === billing.workspace.selectedApartmentId)
+            ?? billing.workspace.apartments[0];
           next.push({
-            id: `${row.object_id}:${billingYear}:${billing.id}`,
-            objectId: String(row.object_id ?? ""),
+            id: `${objectId}:${billingYear}:${billing.id}`,
+            billingId: billing.id,
+            objectId,
+            propertyLabel: billing.workspace.meta.propertyLabel || (isGarage ? "Rosensteinstr. 25" : objectId || "Immobilie nicht benannt"),
+            unitLabel: primaryUnit?.label || billing.name || "Abrechnung",
             year: billingYear,
             status: normalizeNebenkostenStatus(billing.workspace.meta.workflowStatus, billing.workspace.meta.locked),
-            isGarage: String(row.object_id ?? "") === "rosenstein-str-25-tiefgarage",
+            isGarage,
           });
         }
       }
@@ -1157,10 +1168,34 @@ function NebenkostenIndexPage() {
     for (const record of filteredWorkflowRecords) counts[record.status] += 1;
     return counts;
   }, [filteredWorkflowRecords]);
+  const recordsByStatus = useMemo(() => {
+    const grouped: Record<NebenkostenOverviewStatus, NebenkostenOverviewRecord[]> = {
+      Offen: [],
+      "In Arbeit": [],
+      "In Prüfung": [],
+      Freigegeben: [],
+      Korrigiert: [],
+    };
+    for (const record of filteredWorkflowRecords) grouped[record.status].push(record);
+    for (const records of Object.values(grouped)) {
+      records.sort((left, right) => left.propertyLabel.localeCompare(right.propertyLabel, "de") || left.unitLabel.localeCompare(right.unitLabel, "de"));
+    }
+    return grouped;
+  }, [filteredWorkflowRecords]);
   const totalCount = filteredWorkflowRecords.length;
   const apartmentCount = filteredWorkflowRecords.filter((record) => !record.isGarage).length;
   const garageCount = totalCount - apartmentCount;
   const selectedPeriodLabel = selectedYear === "all" ? "Alle Jahre" : `Abrechnungsjahr ${selectedYear}`;
+
+  function recordDetailUrl(record: NebenkostenOverviewRecord) {
+    if (record.isGarage) return "/nebenkosten/tiefgarage";
+    const params = new URLSearchParams({
+      object: record.objectId,
+      year: String(record.year),
+      billing: record.billingId,
+    });
+    return `/nebenkosten/wohnungen?${params.toString()}`;
+  }
 
   return (
     <div className="space-y-5">
@@ -1212,23 +1247,69 @@ function NebenkostenIndexPage() {
         </div>
 
         {!workflowLoading && !workflowError && totalCount > 0 ? (
-          <div className="mt-5 rounded-[20px] border border-slate-200 bg-slate-50/80 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-600">Statusverteilung</p>
-              <p className="text-xs font-bold text-slate-500">Basis: {totalCount} Abrechnungen</p>
+          <div className="mt-5 space-y-5">
+            <div className="rounded-[20px] border border-slate-200 bg-slate-50/80 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-600">Statusverteilung</p>
+                <p className="text-xs font-bold text-slate-500">Basis: {totalCount} Abrechnungen</p>
+              </div>
+              <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-200" aria-label="Grafische Statusverteilung">
+                {NEBENKOSTEN_STATUS_CONFIG.map(({ status, barClass }) => {
+                  const count = workflowCounts[status];
+                  return count > 0 ? <span key={status} className={barClass} style={{ width: `${(count / totalCount) * 100}%` }} title={`${status}: ${count}`} /> : null;
+                })}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+                {NEBENKOSTEN_STATUS_CONFIG.map(({ status, barClass }) => (
+                  <span key={status} className="inline-flex items-center gap-2 text-xs font-bold text-slate-600">
+                    <span className={`h-2.5 w-2.5 rounded-full ${barClass}`} />{status} · {workflowCounts[status]}
+                  </span>
+                ))}
+              </div>
             </div>
-            <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-200" aria-label="Grafische Statusverteilung">
-              {NEBENKOSTEN_STATUS_CONFIG.map(({ status, barClass }) => {
-                const count = workflowCounts[status];
-                return count > 0 ? <span key={status} className={barClass} style={{ width: `${(count / totalCount) * 100}%` }} title={`${status}: ${count}`} /> : null;
-              })}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
-              {NEBENKOSTEN_STATUS_CONFIG.map(({ status, barClass }) => (
-                <span key={status} className="inline-flex items-center gap-2 text-xs font-bold text-slate-600">
-                  <span className={`h-2.5 w-2.5 rounded-full ${barClass}`} />{status} · {workflowCounts[status]}
-                </span>
-              ))}
+
+            <div>
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">Objektzuordnung</p>
+                  <h3 className="mt-1 text-lg font-black text-slate-950">Immobilien und Einheiten je Status</h3>
+                </div>
+                <p className="text-xs font-bold text-slate-500">Eine Abrechnung auswählen, um sie direkt zu öffnen.</p>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                {NEBENKOSTEN_STATUS_CONFIG.map(({ status, barClass }) => {
+                  const statusRecords = recordsByStatus[status];
+                  return (
+                    <section key={status} className="min-w-0 rounded-[18px] border border-slate-200 bg-slate-50/70 p-3" aria-label={`${status}: zugeordnete Immobilien`}>
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                        <span className="inline-flex min-w-0 items-center gap-2 text-xs font-black uppercase tracking-[0.1em] text-slate-700">
+                          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${barClass}`} />
+                          <span className="truncate">{status}</span>
+                        </span>
+                        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-black tabular-nums text-slate-700 shadow-sm">{statusRecords.length}</span>
+                      </div>
+                      <div className="mt-3 grid gap-2">
+                        {statusRecords.length ? statusRecords.map((record) => (
+                          <Link
+                            key={record.id}
+                            to={recordDetailUrl(record)}
+                            className="group rounded-xl border border-slate-200 bg-white p-3 text-slate-800 no-underline shadow-sm transition hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md"
+                          >
+                            <span className="block truncate text-sm font-black text-slate-950" title={record.propertyLabel}>{record.propertyLabel}</span>
+                            <span className="mt-1 block truncate text-xs font-bold text-slate-500" title={record.unitLabel}>{record.unitLabel}</span>
+                            <span className="mt-2 flex flex-wrap items-center gap-1.5">
+                              <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-600">{record.isGarage ? "Tiefgarage" : "Wohnung"}</span>
+                              <span className="rounded-full bg-teal-50 px-2 py-1 text-[10px] font-black text-teal-700">{record.year}</span>
+                            </span>
+                          </Link>
+                        )) : (
+                          <div className="rounded-xl border border-dashed border-slate-200 bg-white/70 px-3 py-4 text-center text-xs font-bold text-slate-400">Keine Immobilie</div>
+                        )}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
             </div>
           </div>
         ) : null}
