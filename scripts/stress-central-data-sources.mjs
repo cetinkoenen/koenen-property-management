@@ -63,6 +63,9 @@ assert.match(rentMonth, /export function explicitRentYearMonth/, "Ein ausdrückl
 assert.match(rentOverview, /explicitRentYearMonth\(bookingReferenceText\(booking\)\)/, "Mieteingang muss nachträglich eingegangene Mieten dem dokumentierten Mietmonat zuordnen");
 assert.match(rentOverview, /daysInMonth - startDay \+ 1/, "Der erste untermonatige Mietzeitraum muss taggenau statt als voller Monat berechnet werden");
 assert.match(rentOverview, /activeAdjustmentAmount \?\? contractExpectedAmount \?\? rentalReference\.expectedAmount \?\? inferredOldAdjustmentAmount/, "Ein spaeterer Mietanpassungs-Altwert darf einen exakt datierten Vermietungszeitraum nicht uebersteuern");
+assert.match(rentOverview, /Mietkosten[\s\S]{0,500}?Gesamtmiete[\s\S]{0,300}?Kaltmiete[\s\S]{0,300}?Nebenkosten/, "Die Jahresübersicht muss Gesamtmiete, Kaltmiete und Nebenkosten filtern können");
+assert.match(rentOverview, /projectOverviewRowByRentCost[\s\S]{0,1800}?expectedColdRent[\s\S]{0,600}?expectedOperatingCosts/, "Der Mietkostenfilter muss Soll und Ist aus denselben zentralen Mietbestandteilen ableiten");
+assert.match(rentOverview, /portfolio_property_rentals"\)\.select\("id,property_id,unit_id,rent_type,rent_monthly,kaltmiete_laut_mietvertrag,nebenkosten,gesamt_mietkosten/, "Historische Mietbestandteile müssen aus der zentralen Vermietungszeitreihe geladen werden");
 for (const [source, label] of [[rentOverview, "Mieteingang"], [rentDevelopment, "Mietentwicklung"], [appData, "App-Datenquelle"], [consistency, "Konsistenzprüfung"], [cockpit, "Cockpit"]]) {
   assert.match(source, /rentPaymentCutoffDay/, `${label} muss die zentrale Mietmonatsregel verwenden`);
 }
@@ -71,6 +74,8 @@ assert.match(rentOverview, /Mietbeginn laut zentraler Stammdatenquelle/, "Monate
 assert.match(rentOverview, /adjustmentStartDates\[0\] \?\? contractStartDates\[0\] \?\? rentalStartDates\[0\]/, "Ein veralteter Vermietungszeitraum darf Mietanpassung oder Mietvertrag beim Mietbeginn nicht übersteuern");
 assert.match(rentOverview, /isRosensteinObject\(object\.label\)[\s\S]*rosensteinStartDates\[0\]/, "Rosenstein muss die Vorperiode aus dem frühesten zentralen Objekt-Vermietungsbeginn neutralisieren");
 assert.match(cockpit, /text\.includes\("mietbestandteil"\)/, "Das Cockpit muss separat gebuchte Mietbestandteile in der Gesamtmiete berücksichtigen");
+assert.match(cockpit, /isFuertherLabel\(objectLabel\)[\s\S]{0,300}?isGarageReference\(contractText\) === isGarageReference\(bookingText\)/, "Das Cockpit muss Fürther Wohnung und Garage bei Zahlungen strikt trennen");
+assert.match(cockpit, /cockpitUnitLabel[\s\S]{0,400}?"Garage" : "Wohnung"/, "Fürther muss im Cockpit mit lesbaren separaten Einheiten erscheinen");
 assert.match(hohenloherMigration, /v_koenen_object_bridge/, "Die Backend-Mietmonatsquelle muss die zentrale Objekt-Bridge verwenden");
 assert.match(hohenloherMigration, /mietbestandteil\[- _\]\?nk/, "Die Backend-Mietmonatsquelle muss den Mietbestandteil-NK summieren");
 assert.match(hohenloherMigration, /with \(security_invoker = true\)/, "Die korrigierte Monatsview muss RLS mit den Rechten des aufrufenden Benutzers anwenden");
@@ -151,4 +156,4 @@ assert.deepEqual(
   "Jede Supabase-Migration muss einen gültigen Zeitstempel tragen und reproduzierbar ausführbar sein",
 );
 
-console.log("70 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("75 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

@@ -240,6 +240,16 @@ function unitMatchesBookingText(row: FinanceRow, contract: ContractRow): boolean
   return text.includes(unit);
 }
 
+function isGarageReference(value: string | null | undefined): boolean {
+  const text = normalize(value);
+  return text.includes("garage") || text.includes("tiefgarage") || text.includes("stellplatz") || /(^|\s)tg(\s|$)/.test(text);
+}
+
+function isFuertherLabel(value: string | null | undefined): boolean {
+  const text = normalize(value);
+  return text.includes("fuerther") || text.includes("further");
+}
+
 function contractObjectKey(contract: ContractRow): string {
   return `${contract.property_id ?? ""}::${normalize(contract.object_code)}`;
 }
@@ -249,11 +259,37 @@ function parkingCode(value: string | null | undefined): string | null {
   return match?.[0] ?? null;
 }
 
-function bookingMatchesContract(row: FinanceRow, contract: ContractRow, requiresUnitMatch: boolean): boolean {
+function bookingMatchesContract(
+  row: FinanceRow,
+  contract: ContractRow,
+  requiresUnitMatch: boolean,
+  objectLabel: string,
+): boolean {
   const objectMatches = bookingHasContractObject(row, contract);
   if (!objectMatches) return false;
   if (!requiresUnitMatch) return true;
+
+  const bookingText = `${row.category ?? ""} ${row.note ?? ""}`;
+  const contractText = `${contract.unit_label ?? ""} ${contract.rent_type ?? ""}`;
+  const contractParkingCode = parkingCode(contractText);
+  const bookingParkingCode = parkingCode(bookingText);
+  if (contractParkingCode || bookingParkingCode) {
+    return Boolean(contractParkingCode && bookingParkingCode && contractParkingCode === bookingParkingCode);
+  }
+
+  // Fürther Str. besitzt eine Wohnung und eine separat vermietete Garage.
+  // Allgemeine Miettexte gehören zur Wohnung; nur explizite Garage-/TG-/
+  // Stellplatz-Referenzen dürfen der Garage zugeordnet werden.
+  if (isFuertherLabel(objectLabel)) {
+    return isGarageReference(contractText) === isGarageReference(bookingText);
+  }
+
   return unitMatchesBookingText(row, contract);
+}
+
+function cockpitUnitLabel(contract: ContractRow, objectLabel: string): string | null {
+  if (!isFuertherLabel(objectLabel)) return contract.unit_label;
+  return isGarageReference(`${contract.unit_label ?? ""} ${contract.rent_type ?? ""}`) ? "Garage" : "Wohnung";
 }
 
 function vacancyMatchesContract(vacancy: UnitVacancy, contract: ContractRow): boolean {
@@ -539,7 +575,7 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
     return Boolean(effectiveDate && effectiveDate >= period.start && effectiveDate <= period.end && isRentPayment(row));
   });
   const contractCountByObject = contracts.reduce<Record<string, number>>((result, contract) => {
-    const key = contractObjectKey(contract);
+    const key = objectLabels[contract.property_id ?? ""] || objectLabels[contract.object_code ?? ""] || contractObjectKey(contract);
     result[key] = (result[key] ?? 0) + 1;
     return result;
   }, {});
@@ -548,7 +584,9 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
     .map<OpenPostRow | null>((contract) => {
       const expectedAmount = expectedRent(contract);
       if (expectedAmount <= 0) return null;
-      const requiresUnitMatch = (contractCountByObject[contractObjectKey(contract)] ?? 0) > 1;
+      const objectLabel = objectLabels[contract.property_id ?? ""] || objectLabels[contract.object_code ?? ""] || contract.object_code || "Unbekanntes Objekt";
+      const objectGroupKey = objectLabels[contract.property_id ?? ""] || objectLabels[contract.object_code ?? ""] || contractObjectKey(contract);
+      const requiresUnitMatch = (contractCountByObject[objectGroupKey] ?? 0) > 1;
 
       const isVacant = vacancyRows.some(
         (vacancy) =>
@@ -558,7 +596,7 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
       const paidAmount = isVacant
         ? 0
         : payments
-            .filter((payment) => bookingMatchesContract(payment, contract, requiresUnitMatch))
+            .filter((payment) => bookingMatchesContract(payment, contract, requiresUnitMatch, objectLabel))
             .reduce((sum, payment) => sum + toMoney(payment.amount), 0);
       const openAmount = Math.max(expectedAmount - paidAmount, 0);
       const status: OpenPostStatus = isVacant
@@ -575,8 +613,8 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
         tenantName: tenantName(contract),
         propertyId: contract.property_id,
         objectCode: contract.object_code,
-        objectLabel: objectLabels[contract.property_id ?? ""] || objectLabels[contract.object_code ?? ""] || contract.object_code || "Unbekanntes Objekt",
-        unitLabel: contract.unit_label,
+        objectLabel,
+        unitLabel: cockpitUnitLabel(contract, objectLabel),
         expectedAmount,
         paidAmount,
         openAmount,

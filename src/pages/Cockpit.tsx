@@ -156,7 +156,7 @@ export default function Cockpit() {
             <Metric title="Monat" value={snapshot.periodLabel} sub={`Fälligkeit ${dateDE(snapshot.dueDate)}`} />
             <Metric title="Sollmiete" value={eur(snapshot.expectedTotal)} sub="ohne Leerstände" />
             <Metric title="Bezahlt" value={eur(snapshot.paidTotal)} sub={`${snapshot.paidCount} vollständig bezahlt`} tone="green" />
-            <Metric title="Offen" value={eur(snapshot.openTotal)} sub={`${snapshot.missingCount} offen · ${snapshot.partialCount} teilweise`} tone={snapshot.openTotal > 0 ? "red" : "green"} />
+            <Metric title="Offen" value={eur(snapshot.openTotal)} sub={`${snapshot.missingCount} offen · ${snapshot.partialCount} teilweise`} tone={snapshot.openTotal > 0 ? "red" : "gray"} />
             <Metric title="Leerstand" value={String(snapshot.vacantCount)} sub="aktuell dokumentiert" tone="gray" />
           </section>
 
@@ -222,7 +222,7 @@ export default function Cockpit() {
                           </td>
                           <td className="whitespace-nowrap px-4 py-4 text-right font-black tabular-nums text-slate-900">{row.status === "vacant" ? "—" : eur(row.expectedAmount)}</td>
                           <td className="whitespace-nowrap px-4 py-4 text-right font-black tabular-nums text-emerald-700">{eur(row.paidAmount)}</td>
-                          <td className="whitespace-nowrap px-5 py-4 text-right font-black tabular-nums text-rose-700">{row.status === "vacant" ? "Leerstand" : eur(row.openAmount)}</td>
+                          <td className={`whitespace-nowrap px-5 py-4 text-right font-black tabular-nums ${row.openAmount > 0 ? "text-rose-700" : "text-slate-500"}`}>{row.status === "vacant" ? "Leerstand" : eur(row.openAmount)}</td>
                         </tr>
                       ))
                     ) : (
@@ -316,7 +316,7 @@ function OpenPostCard({ row }: { row: OpenPostRow }) {
         </div>
         <div>
           <div className="text-[11px] font-black uppercase tracking-[0.1em] text-slate-500">Offen</div>
-          <div className="mt-1 whitespace-nowrap text-sm font-black tabular-nums text-rose-700">
+          <div className={`mt-1 whitespace-nowrap text-sm font-black tabular-nums ${row.openAmount > 0 ? "text-rose-700" : "text-slate-500"}`}>
             {row.status === "vacant" ? "Leerstand" : eur(row.openAmount)}
           </div>
         </div>

@@ -23,6 +23,7 @@ type TenantContractInfo = {
 };
 type RentStatus = "paid" | "partial" | "missing" | "inactive" | "vacant";
 type PeriodMode = "month" | "year";
+type RentCostFilter = "total" | "cold" | "operating";
 type OverviewRow = {
   objectId: string;
   objectCode: string | null;
@@ -33,6 +34,8 @@ type OverviewRow = {
   referenceLabel?: string;
   paidAmount: number;
   expectedAmount: number | null;
+  expectedColdRent: number | null;
+  expectedOperatingCosts: number | null;
   lastBookingDate: string | null;
   status: RentStatus;
   vacancyReason?: string | null;
@@ -183,6 +186,9 @@ type PortfolioRentalRow = {
   unit_type?: string | null;
   rent_type: string | null;
   rent_monthly: number | null;
+  kaltmiete_laut_mietvertrag: number | null;
+  nebenkosten: number | null;
+  gesamt_mietkosten: number | null;
   start_date: string | null;
   end_date: string | null;
   created_at?: string | null;
@@ -437,23 +443,36 @@ function expectedRentFromRentals(
   unit: UnitDefinition,
   start: string,
   end: string,
-): { expectedAmount: number | null; source: string; activeRentalCount: number } {
+): { expectedAmount: number | null; coldRent: number | null; operatingCosts: number | null; source: string; activeRentalCount: number } {
   const idSet = new Set(candidateIds);
   const matches = rentals.filter((rental) => idSet.has(String(rental.property_id)) && rentalOverlapsMonth(rental, start, end) && rentalMatchesUnit(rental, unit));
-  const amounts = matches.map((rental) => Number(rental.rent_monthly) || 0).filter((amount) => amount > 0);
+  const rentalTotal = (rental: PortfolioRentalRow) => Number(rental.gesamt_mietkosten ?? rental.rent_monthly) || 0;
+  const amounts = matches.map(rentalTotal).filter((amount) => amount > 0);
   let amount = 0;
+  let selectedRental: PortfolioRentalRow | undefined;
 
   if (unit.expectedMode === "sum") {
     amount = amounts.reduce((sum, value) => sum + value, 0);
+    const matchingRows = matches.filter((rental) => rentalTotal(rental) > 0);
+    const cold = matchingRows.reduce((sum, rental) => sum + (Number(rental.kaltmiete_laut_mietvertrag) || 0), 0);
+    const operating = matchingRows.reduce((sum, rental) => sum + (Number(rental.nebenkosten) || 0), 0);
+    return {
+      expectedAmount: amount > 0 ? amount : null,
+      coldRent: cold > 0 ? cold : amount > 0 && operating === 0 ? amount : null,
+      operatingCosts: operating >= 0 && matchingRows.length ? operating : null,
+      source: matches.length ? "Portfolio > Vermietungszeiträume" : "Kein aktiver Vermietungszeitraum",
+      activeRentalCount: matches.length,
+    };
   } else if (unit.expectedMode === "largest") {
     amount = Math.max(0, ...amounts);
+    selectedRental = matches.find((rental) => rentalTotal(rental) === amount);
   } else {
     // Einzelobjekte wie Lilienthaler Str. haben teils doppelte historische
     // Vermietungszeiträume. Für den Mieteingang zählt pro Monat genau der
     // fachlich gültige Zeitraum aus Portfolio -> Vermietungszeiträume, nicht
     // die Summe überlappender Korrektur-/Duplikatzeilen.
     const selected = [...matches]
-      .filter((rental) => Number(rental.rent_monthly) > 0)
+      .filter((rental) => rentalTotal(rental) > 0)
       .sort((a, b) => {
         const startCompare = String(b.start_date ?? "").localeCompare(String(a.start_date ?? ""));
         if (startCompare !== 0) return startCompare;
@@ -463,7 +482,8 @@ function expectedRentFromRentals(
         if (updatedCompare !== 0) return updatedCompare;
         return String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""));
       })[0];
-    amount = Number(selected?.rent_monthly) || 0;
+    selectedRental = selected;
+    amount = selected ? rentalTotal(selected) : 0;
     if (selected?.start_date && selected.start_date > start && selected.start_date <= end) {
       const startDay = Number(selected.start_date.slice(8, 10));
       const daysInMonth = new Date(Number(start.slice(0, 4)), Number(start.slice(5, 7)), 0).getDate();
@@ -473,8 +493,15 @@ function expectedRentFromRentals(
     }
   }
 
+  const explicitCold = selectedRental?.kaltmiete_laut_mietvertrag == null ? null : Number(selectedRental.kaltmiete_laut_mietvertrag);
+  const explicitOperating = selectedRental?.nebenkosten == null ? null : Number(selectedRental.nebenkosten);
+  const coldRent = explicitCold ?? (explicitOperating != null && amount > 0 ? Math.max(amount - explicitOperating, 0) : amount > 0 ? amount : null);
+  const operatingCosts = explicitOperating ?? (coldRent != null && amount > 0 ? Math.max(amount - coldRent, 0) : null);
+
   return {
     expectedAmount: amount > 0 ? amount : null,
+    coldRent,
+    operatingCosts,
     source: matches.length ? "Portfolio > Vermietungszeiträume" : "Kein aktiver Vermietungszeitraum",
     activeRentalCount: matches.length,
   };
@@ -576,6 +603,19 @@ function rentAdjustmentOldTotal(row: RentAdjustmentRow): number | null {
   return total > 0 ? total : null;
 }
 
+function rentAdjustmentParts(row: RentAdjustmentRow, oldValues = false): { coldRent: number | null; operatingCosts: number | null } {
+  const coldKeys = oldValues
+    ? ["old_cold_rent", "previous_cold_rent"]
+    : ["new_cold_rent", "cold_rent", "net_cold_rent", "kaltmiete", "new_net_rent"];
+  const operatingKeys = oldValues
+    ? ["old_operating_costs", "previous_operating_costs"]
+    : ["new_operating_costs", "operating_costs", "nebenkosten", "betriebskosten", "new_service_charges"];
+  return {
+    coldRent: moneyFromUnknown(valueFromRecord(row, coldKeys)),
+    operatingCosts: moneyFromUnknown(valueFromRecord(row, operatingKeys)),
+  };
+}
+
 function rentAdjustmentMatchesObject(
   row: RentAdjustmentRow,
   object: { id: string; code: string | null; label: string },
@@ -631,7 +671,7 @@ function expectedRentFromAdjustments(
   unit: UnitDefinition,
   start: string,
   end: string,
-): { expectedAmount: number | null; source: string; active: boolean; activeStartDate: string | null } {
+): { expectedAmount: number | null; coldRent: number | null; operatingCosts: number | null; source: string; active: boolean; activeStartDate: string | null } {
   const matched = adjustments
     .filter((row) => rentAdjustmentMatchesUnit(row, object, candidateIds, unit))
     .map((row) => ({ row, startDate: rentAdjustmentStartDate(row), endDate: rentAdjustmentEndDate(row) }))
@@ -642,13 +682,19 @@ function expectedRentFromAdjustments(
     .filter((item) => item.startDate <= end && (!item.endDate || item.endDate >= start))
     .sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
   const activeAmount = active ? rentAdjustmentTotal(active.row) : null;
-  if (activeAmount != null) return { expectedAmount: activeAmount, source: "Mietentwicklung > Mietanpassungen", active: true, activeStartDate: active.startDate };
+  if (activeAmount != null) {
+    const parts = rentAdjustmentParts(active.row);
+    return { expectedAmount: activeAmount, ...parts, source: "Mietentwicklung > Mietanpassungen", active: true, activeStartDate: active.startDate };
+  }
 
   const nextAdjustment = matched.find((item) => item.startDate > end);
   const oldAmount = nextAdjustment ? rentAdjustmentOldTotal(nextAdjustment.row) : null;
-  if (oldAmount != null) return { expectedAmount: oldAmount, source: "Mietentwicklung > Mietanpassungen (alter Stand)", active: false, activeStartDate: null };
+  if (oldAmount != null && nextAdjustment) {
+    const parts = rentAdjustmentParts(nextAdjustment.row, true);
+    return { expectedAmount: oldAmount, ...parts, source: "Mietentwicklung > Mietanpassungen (alter Stand)", active: false, activeStartDate: null };
+  }
 
-  return { expectedAmount: null, source: "Mietentwicklung > Mietanpassungen", active: false, activeStartDate: null };
+  return { expectedAmount: null, coldRent: null, operatingCosts: null, source: "Mietentwicklung > Mietanpassungen", active: false, activeStartDate: null };
 }
 
 function prorateMonthlyRentFromStart(amount: number | null, startDate: string | null, periodStart: string, periodEnd: string): number | null {
@@ -665,6 +711,70 @@ function prorateMonthlyRentFromStart(amount: number | null, startDate: string | 
 function expectedAmountForOpen(row: Pick<OverviewRow, "status" | "expectedAmount" | "paidAmount">): number {
   if (row.status === "inactive" || row.status === "vacant" || row.expectedAmount == null) return 0;
   return row.expectedAmount;
+}
+
+function normalizedRentParts(total: number | null, cold: number | null, operating: number | null) {
+  if (total == null || total <= 0) return { coldRent: null, operatingCosts: null };
+  const safeCold = cold != null && Number.isFinite(cold) && cold >= 0 ? cold : null;
+  const safeOperating = operating != null && Number.isFinite(operating) && operating >= 0 ? operating : null;
+  if (safeCold != null && safeOperating != null) {
+    const partsTotal = safeCold + safeOperating;
+    if (partsTotal > 0 && Math.abs(partsTotal - total) > 0.01) {
+      const coldRent = roundCurrency(total * safeCold / partsTotal);
+      return { coldRent, operatingCosts: roundCurrency(total - coldRent) };
+    }
+    return { coldRent: safeCold, operatingCosts: safeOperating };
+  }
+  if (safeCold != null) {
+    const coldRent = Math.min(safeCold, total);
+    return { coldRent, operatingCosts: roundCurrency(total - coldRent) };
+  }
+  if (safeOperating != null) {
+    const operatingCosts = Math.min(safeOperating, total);
+    return { coldRent: roundCurrency(total - operatingCosts), operatingCosts };
+  }
+  // Stellplatz- und Altverträge ohne NK-Komponente gelten vollständig als
+  // Kaltmiete. Es wird keine zweite, parallele Mietquelle geschätzt.
+  return { coldRent: total, operatingCosts: 0 };
+}
+
+function roundCurrency(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function projectOverviewRowByRentCost(row: OverviewRow, filter: RentCostFilter): OverviewRow {
+  if (filter === "total") return row;
+  const totalExpected = expectedAmountForOpen(row);
+  const componentExpected = filter === "cold" ? row.expectedColdRent : row.expectedOperatingCosts;
+  const componentLabel = filter === "cold" ? "Kaltmiete" : "Nebenkosten";
+
+  if (row.status === "inactive" || row.status === "vacant") {
+    return { ...row, paidAmount: 0, expectedAmount: null };
+  }
+  if (componentExpected == null || componentExpected <= 0 || totalExpected <= 0) {
+    return {
+      ...row,
+      paidAmount: 0,
+      expectedAmount: null,
+      status: "inactive",
+      lastBookingDate: null,
+      expectedSource: `${componentLabel}: kein Betrag in der zentralen Mietquelle vereinbart`,
+    };
+  }
+
+  // Cent-Toleranzen der Gesamtmiete dürfen beim Aufteilen nicht als künstliche
+  // Differenz in Kaltmiete oder NK erneut auftauchen. Ist die Gesamtmiete als
+  // bezahlt bewertet, gilt auch der gespeicherte Bestandteil exakt als bezahlt.
+  const paidAmount = row.status === "paid"
+    ? componentExpected
+    : roundCurrency(row.paidAmount * componentExpected / totalExpected);
+  return {
+    ...row,
+    paidAmount,
+    expectedAmount: componentExpected,
+    status: resolveRentStatus(paidAmount, componentExpected, false),
+    expectedSource: `${row.expectedSource} · ${componentLabel}`,
+  };
 }
 
 function bookingReferenceText(booking: FinanceEntry): string {
@@ -1391,6 +1501,8 @@ export default function Mietuebersicht({
   const [status, setStatus] = useState<Record<string, string>>({});
   const [objectFilter, setObjectFilter] = useState(embeddedAnnualReport ? reportObjectId ?? "" : "");
   const [statusFilter, setStatusFilter] = useState<RentStatus | "all">("all");
+  const [rentCostFilter, setRentCostFilter] = useState<RentCostFilter>("total");
+  const rentCostFilterLabel = rentCostFilter === "cold" ? "Kaltmiete" : rentCostFilter === "operating" ? "Nebenkosten" : "Gesamtmiete";
 
   const sourceObjects = useMemo(() => {
     if (appData.objects.length) return appData.objects.map((object) => ({ id: object.id, code: object.code, label: object.label }));
@@ -1407,7 +1519,7 @@ export default function Mietuebersicht({
         const [propertiesRes, unitsRes, rentalsRes] = await Promise.all([
           supabase.from("portfolio_properties").select("id,name,core_property_id"),
           supabase.from("portfolio_units").select("id,name,unit_type,property_id"),
-          supabase.from("portfolio_property_rentals").select("id,property_id,unit_id,rent_type,rent_monthly,start_date,end_date,created_at,updated_at"),
+          supabase.from("portfolio_property_rentals").select("id,property_id,unit_id,rent_type,rent_monthly,kaltmiete_laut_mietvertrag,nebenkosten,gesamt_mietkosten,start_date,end_date,created_at,updated_at"),
         ]);
         if (propertiesRes.error) throw propertiesRes.error;
         if (unitsRes.error) throw unitsRes.error;
@@ -1431,6 +1543,9 @@ export default function Mietuebersicht({
           unit_type: portfolioUnit?.unit_type ?? null,
           rent_type: row.rent_type ?? null,
           rent_monthly: row.rent_monthly == null ? null : Number(row.rent_monthly),
+          kaltmiete_laut_mietvertrag: row.kaltmiete_laut_mietvertrag == null ? null : Number(row.kaltmiete_laut_mietvertrag),
+          nebenkosten: row.nebenkosten == null ? null : Number(row.nebenkosten),
+          gesamt_mietkosten: row.gesamt_mietkosten == null ? null : Number(row.gesamt_mietkosten),
           start_date: row.start_date ?? null,
           end_date: row.end_date ?? null,
           created_at: row.created_at ?? null,
@@ -1690,12 +1805,27 @@ export default function Mietuebersicht({
             const activeAdjustmentAmount = adjustmentReference.active ? adjustmentReference.expectedAmount : null;
             const inferredOldAdjustmentAmount = adjustmentReference.active ? null : adjustmentReference.expectedAmount;
             const fullExpectedAmount = activeAdjustmentAmount ?? contractExpectedAmount ?? rentalReference.expectedAmount ?? inferredOldAdjustmentAmount;
+            const rawColdRent = activeAdjustmentAmount !== null
+              ? adjustmentReference.coldRent
+              : contractExpectedAmount !== null
+                ? tenantContract?.coldRent ?? null
+                : rentalReference.expectedAmount !== null
+                  ? rentalReference.coldRent
+                  : adjustmentReference.coldRent;
+            const rawOperatingCosts = activeAdjustmentAmount !== null
+              ? adjustmentReference.operatingCosts
+              : contractExpectedAmount !== null
+                ? tenantContract?.operatingCosts ?? null
+                : rentalReference.expectedAmount !== null
+                  ? rentalReference.operatingCosts
+                  : adjustmentReference.operatingCosts;
             const expectedStartDate = activeAdjustmentAmount !== null
               ? adjustmentReference.activeStartDate
               : contractExpectedAmount !== null
                 ? dateKeyFromValue(periodContract?.start_date)
                 : null;
             const expectedAmountBeforeVacancy = prorateMonthlyRentFromStart(fullExpectedAmount, expectedStartDate, period.start, period.end);
+            const rentParts = normalizedRentParts(expectedAmountBeforeVacancy, rawColdRent, rawOperatingCosts);
             const expectedSourceBeforeVacancy = activeAdjustmentAmount !== null
               ? adjustmentReference.source
               : contractExpectedAmount !== null
@@ -1774,6 +1904,8 @@ export default function Mietuebersicht({
               referenceLabel: units.length > 1 ? unit.ref : undefined,
               paidAmount,
               expectedAmount,
+              expectedColdRent: vacancy || inactive ? null : rentParts.coldRent,
+              expectedOperatingCosts: vacancy || inactive ? null : rentParts.operatingCosts,
               lastBookingDate: vacancy || inactive ? null : lastBookingDate,
               status: vacancy ? "vacant" : resolveRentStatus(paidAmount, expectedAmount, inactive),
               vacancyReason: vacancy?.reason ?? vacancy?.notes ?? null,
@@ -1790,15 +1922,20 @@ export default function Mietuebersicht({
   );
 
   const filteredRows = useMemo(() => {
-    return rows.filter((row) => {
+    const displayedRows = annualOverviewMode
+      ? rows.map((row) => projectOverviewRowByRentCost(row, rentCostFilter))
+      : rows;
+    return displayedRows.filter((row) => {
       const objectMatches = !objectFilter || row.objectId === objectFilter;
       const statusMatches = statusFilter === "all" || row.status === statusFilter;
       return objectMatches && statusMatches;
     });
-  }, [rows, objectFilter, statusFilter]);
+  }, [annualOverviewMode, rows, objectFilter, rentCostFilter, statusFilter]);
 
   const annualRows = useMemo<AnnualOverviewRow[]>(() => {
-    const objectFilteredRows = rows.filter((row) => !objectFilter || row.objectId === objectFilter);
+    const objectFilteredRows = rows
+      .map((row) => projectOverviewRowByRentCost(row, rentCostFilter))
+      .filter((row) => !objectFilter || row.objectId === objectFilter);
     const map = new Map<string, AnnualOverviewRow>();
 
     for (const row of objectFilteredRows) {
@@ -1838,7 +1975,7 @@ export default function Mietuebersicht({
     return [...map.values()]
       .filter((row) => statusFilter === "all" || row.months.some((monthRow) => monthRow?.status === statusFilter))
       .sort((a, b) => `${a.label} ${a.unitLabel ?? ""}`.localeCompare(`${b.label} ${b.unitLabel ?? ""}`, "de"));
-  }, [objectFilter, rows, statusFilter]);
+  }, [objectFilter, rentCostFilter, rows, statusFilter]);
 
   const annualPropertyTotals = useMemo<RentAnnualPropertyTotal[]>(() => {
     const totalsByObject = new Map<string, RentAnnualPropertyTotal>();
@@ -1978,7 +2115,7 @@ export default function Mietuebersicht({
       <button class="no-print" onclick="window.print()" style="margin-bottom:16px;padding:8px 12px">Als PDF speichern / drucken</button>
       <img class="brand-logo" src="${brandLogo}" alt="Koenen Property Management Logo" />
       <h1>Mieteingang ${escapeHtml(month.label)}</h1>
-      <div class="meta">Filter: Objekt "${escapeHtml(objectFilter || "Alle")}" · Status "${escapeHtml(statusFilter === "all" ? "Alle" : statusLabel(statusFilter))}"</div>
+      <div class="meta">Filter: Objekt "${escapeHtml(objectFilter || "Alle")}" · Status "${escapeHtml(statusFilter === "all" ? "Alle" : statusLabel(statusFilter))}"${annualOverviewMode ? ` · Mietkosten "${escapeHtml(rentCostFilterLabel)}"` : ""}</div>
       <div class="kpis">
         <div class="kpi">Bezahlt<b>${stats.paid}</b></div>
         <div class="kpi">Teilweise<b>${stats.partial}</b></div>
@@ -2040,7 +2177,7 @@ export default function Mietuebersicht({
           <div className="tenant-card-head">
             <div>
               <h2>{annualOverviewMode ? `Zahlungskalender ${selectedPeriod.year}` : effectivePeriodMode === "year" ? `Mieteingänge ${selectedPeriod.year}` : `Mieteingänge ${month.label}`}</h2>
-              <p>Soll: Mietentwicklung/Mietanpassungen. Ist: Buchungen. Leerstand: Seite Leerstand. Teilweise = weniger oder mehr als Sollmiete.</p>
+              <p>Soll: Mietentwicklung/Mietanpassungen. Ist: Buchungen. Leerstand: Seite Leerstand. Teilweise = weniger oder mehr als Sollmiete.{annualOverviewMode ? " Kaltmiete und Nebenkosten werden aus derselben gültigen Mietquelle wie die Gesamtmiete aufgeteilt." : ""}</p>
               {!annualOverviewMode ? (
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                   <button type="button" onClick={() => shiftSelectedMonth(-1)} className="tenant-mini-button">← Vormonat</button>
@@ -2097,7 +2234,16 @@ export default function Mietuebersicht({
                   </select>
                 </label>
               </>
-            ) : null}
+            ) : (
+              <label>
+                Mietkosten
+                <select value={rentCostFilter} onChange={(event) => setRentCostFilter(event.target.value as RentCostFilter)}>
+                  <option value="total">Gesamtmiete</option>
+                  <option value="cold">Kaltmiete</option>
+                  <option value="operating">Nebenkosten</option>
+                </select>
+              </label>
+            )}
             <label>
               Jahr
               <input
@@ -2128,6 +2274,10 @@ export default function Mietuebersicht({
           {!appData.loading && annualOverviewMode && (
             <div className="space-y-4">
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">Ausgewertete Mietkosten</span>
+                  <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-black text-slate-800">{rentCostFilterLabel}</span>
+                </div>
                 <div className="flex flex-wrap gap-2 text-xs font-black">
                   <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800">1.-5. Tag · {annualKpis["1.-5. Tag"]}</span>
                   <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-teal-800">6.-10. Tag · {annualKpis["6.-10. Tag"]}</span>
