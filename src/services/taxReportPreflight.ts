@@ -202,7 +202,12 @@ export function buildTaxReportPreflight(input: {
       .sort((left, right) => text(right.effective_date).localeCompare(text(left.effective_date)));
     const latest = matchingAdjustments[0];
     const cold = numberOrNull(contract.cold_rent ?? contract.kaltmiete_laut_mietvertrag) ?? numberOrNull(latest?.new_cold_rent);
-    const operating = numberOrNull(contract.operating_costs ?? contract.nebenkosten) ?? numberOrNull(latest?.new_operating_costs);
+    const storedOperating = numberOrNull(contract.operating_costs ?? contract.nebenkosten) ?? numberOrNull(latest?.new_operating_costs);
+    const totalRent = numberOrNull(contract.total_rent ?? contract.gesamt_mietkosten ?? contract.rent_monthly);
+    const derivedParkingOperating = parking && storedOperating === null && cold !== null && totalRent !== null && totalRent >= cold
+      ? Math.round((totalRent - cold) * 100) / 100
+      : null;
+    const operating = storedOperating ?? derivedParkingOperating;
     const unit = units.find((row) => objectFor(row)?.id === object.id && (row.id === contract.unit_id || row.name === contract.unit_label));
     const profile = Object.assign({}, ...extraRows.filter((row) => aliasesById.get(object.id)?.has(text(row.property_id))).map((row) => row.wealth_profile ?? {}));
     const area = numberOrNull(unit?.area_sqm) ?? numberOrNull(object.livingAreaM2) ?? numberOrNull((profile as ReportRecord).livingArea) ?? numberOrNull((profile as ReportRecord).totalArea);
@@ -213,7 +218,10 @@ export function buildTaxReportPreflight(input: {
       calculatedValues += 1;
       issues.push({ id: `cold-history-${contract.id}`, severity: "info", objectLabel: object.label, title: "Kaltmiete aus historischer Mietanpassung übernommen", detail: `${unitLabel} · ${tenant}: ${cold.toFixed(2)} EUR ab ${text(latest.effective_date).slice(0, 10)}. Der Vertragswert wurde nicht überschrieben.` });
     }
-    if (operating === null) {
+    if (derivedParkingOperating !== null) {
+      calculatedValues += 1;
+      issues.push({ id: `nk-derived-${contract.id}`, severity: "info", objectLabel: object.label, title: "Nebenkostenvorauszahlung exakt abgeleitet", detail: `${unitLabel} · ${tenant}: ${derivedParkingOperating.toFixed(2)} EUR aus Gesamtmiete ${totalRent?.toFixed(2)} EUR minus Kaltmiete ${cold?.toFixed(2)} EUR. Der Vertragswert wurde nicht überschrieben.` });
+    } else if (operating === null) {
       issues.push({ id: `nk-${contract.id}`, severity: "blocker", objectLabel: object.label, title: "Nebenkostenvorauszahlung fehlt", detail: `${unitLabel} · ${tenant}: Kein Wert im Mietvertrag oder in einer gültigen Mietanpassung. Ein echter Wert 0,00 EUR ist zulässig, ein leeres Feld nicht.` });
     }
     if (!parking && (area === null || area <= 0)) {

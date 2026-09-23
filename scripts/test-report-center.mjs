@@ -79,9 +79,9 @@ const rosensteinSources={
   portfolio_units:rosensteinUnits,
   tenant_profiles:[{id:'t250',first_name:'Steffen',last_name:'Aicher'},{id:'t253',first_name:'Lena',last_name:'Huhn'},{id:'t254',first_name:'Sebastian',last_name:'Pilsl'}],
   tenant_contracts:[
-    {id:'c250',tenant_id:'t250',property_id:'rosen-core',unit_label:'P250 - E008440000121',start_date:'2025-11-14',status:'active',cold_rent:75,operating_costs:0,total_rent:75},
+    {id:'c250',tenant_id:'t250',property_id:'rosen-core',unit_label:'P250 - E008440000121',start_date:'2025-11-14',status:'active',cold_rent:75,operating_costs:null,total_rent:75},
     {id:'c253',tenant_id:'t253',property_id:'rosen-core',unit_label:'P253 - E008440000122',start_date:'2025-11-14',status:'active',cold_rent:85,operating_costs:0,total_rent:85},
-    {id:'c254',tenant_id:'t254',property_id:'rosen-core',unit_label:'P254 - E008440000123',start_date:'2025-11-14',status:'active',cold_rent:90,operating_costs:0,total_rent:90},
+    {id:'c254',tenant_id:'t254',property_id:'rosen-core',unit_label:'P254 - E008440000123',start_date:'2025-11-14',status:'active',cold_rent:90,operating_costs:null,total_rent:90},
   ],
   property_loan_ledger:[{property_id:'rosen-core',year:2025,interest:500,principal:700,balance:52000,source:'Gesamtdarlehen ohne Einheitenbeleg'}],
   mileage_trips:[
@@ -122,6 +122,8 @@ assert.match(String(p253Module('vacancy').tables[0].rows[0][1]),/P253/);
 const allRosensteinReport=buildReportCenter({objects:[rosensteinObject],entries:rosensteinEntries,loans:[],sources:rosensteinSources,rent:rosensteinRent,from:'2025-01-01',to:'2025-12-31',objectId:'rosen-core',today:'2026-09-23'});
 assert.equal(allRosensteinReport.find(module=>module.id==='tenants').tables[0].rows.length,3,'Gesamtreport muss alle drei Rosenstein-Stellplätze enthalten');
 assert.equal(allRosensteinReport.find(module=>module.id==='journal').tables[0].rows.length,5,'Gesamtreport darf direkte Rosenstein-Buchungen nicht verlieren');
+assert.equal(allRosensteinReport.find(module=>module.id==='validation').metrics.find(metric=>metric.label==='Blocker')?.value,'0','Exakt als Gesamtmiete minus Kaltmiete ableitbare TG-Nebenkosten dürfen den Export nicht blockieren');
+assert.match(allRosensteinReport.find(module=>module.id==='validation').tables[0].rows.map(row=>row.join(' ')).join(' '),/Nebenkostenvorauszahlung exakt abgeleitet/);
 
 // Colmarer 2025: Mieterwechsel, Mietaufteilung, Kautionsrückgabe und NK-Abrechnung.
 const colmarerObjects=[{id:'colmarer-core',code:'COL',label:'Colmarer Str. 45',livingAreaM2:36,aliases:['colmarer-billing']}];
