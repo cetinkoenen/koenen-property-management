@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 import EditableLoanLedgerTable from "@/components/EditableLoanLedgerTable";
-import { useIncome } from "@/features/property-detail/hooks/useIncome";
-import { calculateYearlyFinanceMetrics } from "@/services/financeService";
+import { loadLoanDscrYearMetrics, type LoanDscrYearMetric } from "@/services/loanDscrService";
 import {
   generatePropertyLoanLedgerProjection,
   loadCanonicalPropertyLoanSnapshots,
@@ -27,6 +26,7 @@ type PropertyRowNormalized = {
   lastBalance: number;
   principalTotal: number;
   interestTotal: number;
+  dscrMetrics: LoanDscrYearMetric[];
 };
 
 const styles: Record<string, CSSProperties> = {
@@ -286,8 +286,8 @@ function PropertyLoanCard(props: {
   dashboardBalance: number;
   dashboardPrincipalTotal: number;
   dashboardInterestTotal: number;
+  dscrMetrics: LoanDscrYearMetric[];
 }) {
-  const { propertyIncome, yearlyIncome, yearlyCapex, isLoading: incomeLoading, error: incomeError } = useIncome(props.propertyId);
   const [ledgerRows, setLedgerRows] = useState<LoanLedgerRow[]>([]);
   const [ledgerLoading, setLedgerLoading] = useState<boolean>(false);
   const [ledgerLoaded, setLedgerLoaded] = useState<boolean>(false);
@@ -377,32 +377,18 @@ function PropertyLoanCard(props: {
     return () => window.clearTimeout(initialLoad);
   }, [planSummaryLoaded, planSummaryLoading, planSummaryOpen, reloadPlanSummary]);
 
-  const yearlyMetrics = useMemo(() => {
-    return calculateYearlyFinanceMetrics({
-      ledger: ledgerRows.map((row) => ({
-        year: row.year,
-        interestPayment: row.interest,
-        principalPayment: row.principal,
-        remainingBalance: row.balance,
-        source: row.source,
-      })),
-      yearlyIncome,
-      yearlyCapex,
-      propertyIncome,
-    });
-  }, [ledgerRows, yearlyIncome, yearlyCapex, propertyIncome]);
-
-
-
   const latestBalance = ledgerRows.length > 0 ? ledgerRows[ledgerRows.length - 1].balance : props.dashboardBalance;
   const visibleDebtService = ledgerRows.length > 0
     ? ledgerRows.reduce((sum, row) => sum + row.interest + row.principal, 0)
     : props.dashboardInterestTotal + props.dashboardPrincipalTotal;
-  const visibleDscr = yearlyMetrics.length > 0
-    ? yearlyMetrics.reduce((sum, row) => sum + (row.dscr ?? 0), 0) / yearlyMetrics.length
-    : null;
   const yearlyWarnings = ledgerRows.some((row, index) => index > 0 && row.balance > ledgerRows[index - 1].balance + 1);
   const currentYear = new Date().getFullYear();
+  const summaryDscrMetric = useMemo(() => {
+    const validMetrics = props.dscrMetrics
+      .filter((row) => row.debtService > 0 && row.dscr !== null)
+      .sort((left, right) => right.year - left.year);
+    return validMetrics.find((row) => row.year < currentYear) ?? validMetrics[0] ?? null;
+  }, [currentYear, props.dscrMetrics]);
   const displayedPlanYears = useMemo(() => {
     const firstYear = 2024;
     const years = Array.from({ length: Math.max(1, currentYear - firstYear + 1) }, (_, index) => firstYear + index);
@@ -421,7 +407,10 @@ function PropertyLoanCard(props: {
           <div style={styles.summaryGrid}>
             <FinanceSummary label="Aktuelle Restschuld" value={formatCurrency(latestBalance)} />
             <FinanceSummary label="Debt Service gesamt" value={visibleDebtService > 0 ? formatCurrency(visibleDebtService) : "—"} />
-            <FinanceSummary label="DSCR Ø" value={visibleDscr !== null ? formatNumber(visibleDscr) : "—"} />
+            <FinanceSummary
+              label={summaryDscrMetric ? `DSCR ${summaryDscrMetric.year}` : "DSCR"}
+              value={summaryDscrMetric ? formatNumber(summaryDscrMetric.dscr) : "—"}
+            />
           </div>
           <div style={{ marginTop: 10, fontSize: 10, lineHeight: 1.4, color: "#94a3b8", fontWeight: 700 }}>
             Ref.* Darlehenswerte und Qualitätsangaben sind zentral im Datenbestand hinterlegt.
@@ -498,9 +487,8 @@ function PropertyLoanCard(props: {
 
       {open ? (
         <div style={styles.body}>
-          {ledgerLoading || incomeLoading ? <div style={styles.loadingBox}>Daten werden geladen…</div> : null}
+          {ledgerLoading ? <div style={styles.loadingBox}>Daten werden geladen…</div> : null}
           {!ledgerLoading && ledgerError ? <div style={styles.errorBox}>{ledgerError}</div> : null}
-          {!incomeLoading && incomeError ? <div style={styles.errorBox}>{incomeError}</div> : null}
 
           {!ledgerLoading && !ledgerError ? (
             <>
@@ -523,40 +511,44 @@ function PropertyLoanCard(props: {
                 {projectionStatus ? <div style={{ ...styles.mutedText, marginTop: 10, fontWeight: 800 }}>{projectionStatus}</div> : null}
               </div>
 
-              <h3 style={styles.sectionTitle}>Finance pro Jahr</h3>
+              <h3 style={styles.sectionTitle}>DSCR pro Jahr</h3>
+              <div style={{ ...styles.mutedText, marginBottom: 12 }}>
+                DSCR = operativer Nettoertrag (NOI) ÷ (Zinsen + Tilgung). Quelle: aktive Buchungen und zentrales Darlehens-Ledger.
+              </div>
               <div style={styles.tableWrap}>
-                <table style={styles.table}>
+                <table style={{ ...styles.table, minWidth: 980 }}>
                   <thead>
                     <tr>
                       <th style={styles.th}>Jahr</th>
-                      <th style={styles.th}>Income</th>
-                      <th style={styles.th}>Capex</th>
+                      <th style={styles.th}>Operative Einnahmen</th>
+                      <th style={styles.th}>Betriebsausgaben</th>
+                      <th style={styles.th}>NOI</th>
                       <th style={styles.th}>Zinsen</th>
                       <th style={styles.th}>Tilgung</th>
-                      <th style={styles.th}>Steuer</th>
                       <th style={styles.th}>Debt Service</th>
-                      <th style={styles.th}>Cashflow</th>
                       <th style={styles.th}>DSCR</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {yearlyMetrics.length === 0 ? (
+                    {props.dscrMetrics.length === 0 ? (
                       <tr>
-                        <td colSpan={9} style={styles.td}>
+                        <td colSpan={8} style={styles.td}>
                           <div style={styles.mutedText}>Noch keine Jahresdaten vorhanden.</div>
                         </td>
                       </tr>
                     ) : (
-                      yearlyMetrics.map((row) => (
+                      props.dscrMetrics.map((row) => (
                         <tr key={row.year}>
-                          <td style={styles.td}>{row.year}</td>
-                          <td style={styles.td}>{formatCurrency(row.income)}</td>
-                          <td style={styles.td}>{formatCurrency(row.capex)}</td>
+                          <td style={{ ...styles.td, fontWeight: 850 }}>
+                            {row.year}
+                            {row.year === currentYear ? <span style={{ marginLeft: 8, color: "#047857", fontSize: 10 }}>LAUFEND</span> : null}
+                          </td>
+                          <td style={styles.td}>{formatCurrency(row.operatingIncome)}</td>
+                          <td style={styles.td}>{formatCurrency(row.operatingExpenses)}</td>
+                          <td style={{ ...styles.td, fontWeight: 850 }}>{formatCurrency(row.noi)}</td>
                           <td style={styles.td}>{formatCurrency(row.interest)}</td>
                           <td style={styles.td}>{formatCurrency(row.principal)}</td>
-                          <td style={styles.td}>Zinsen ja · Tilgung nein</td>
                           <td style={styles.td}>{formatCurrency(row.debtService)}</td>
-                          <td style={styles.td}>{formatCurrency(row.cashflow)}</td>
                           <td style={styles.td}>{formatNumber(row.dscr)}</td>
                         </tr>
                       ))
@@ -614,8 +606,17 @@ export default function Darlehensuebersicht({ lockedPropertyId, lockedPropertyLa
       if (queryError) throw queryError;
 
       const sourceRows = (data ?? []) as PropertyRow[];
-      const snapshots = await loadCanonicalPropertyLoanSnapshots(sourceRows.map((row) => row.property_id));
+      const [snapshots, dscrMetrics] = await Promise.all([
+        loadCanonicalPropertyLoanSnapshots(sourceRows.map((row) => row.property_id)),
+        loadLoanDscrYearMetrics(),
+      ]);
       const snapshotByProperty = new Map(snapshots.map((snapshot) => [snapshot.propertyId, snapshot]));
+      const dscrByProperty = new Map<string, LoanDscrYearMetric[]>();
+      for (const metric of dscrMetrics) {
+        const current = dscrByProperty.get(metric.propertyId) ?? [];
+        current.push(metric);
+        dscrByProperty.set(metric.propertyId, current);
+      }
 
       const nextRows = sourceRows.map((row) => {
         const propertyId = String(row.property_id ?? "");
@@ -627,6 +628,7 @@ export default function Darlehensuebersicht({ lockedPropertyId, lockedPropertyLa
           lastBalance: snapshot.balance,
           principalTotal: snapshot.principalTotal,
           interestTotal: snapshot.interestTotal,
+          dscrMetrics: dscrByProperty.get(propertyId) ?? [],
         };
       });
 
@@ -834,6 +836,7 @@ export default function Darlehensuebersicht({ lockedPropertyId, lockedPropertyLa
               dashboardBalance={row.lastBalance}
               dashboardPrincipalTotal={row.principalTotal}
               dashboardInterestTotal={row.interestTotal}
+              dscrMetrics={row.dscrMetrics}
             />
           ))
         : null}

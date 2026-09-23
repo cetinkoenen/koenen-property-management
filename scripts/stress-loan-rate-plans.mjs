@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [migration, chfMigration, chfRules, service, ledgerService, entryAdd, loanPage, wealthPage, taxCenter, taxEngine, appData, reports, backup] = await Promise.all([
+const [migration, chfMigration, dscrMigration, chfRules, service, dscrService, ledgerService, entryAdd, loanPage, wealthPage, taxCenter, taxEngine, appData, reports, backup] = await Promise.all([
   readFile(new URL("../supabase/migrations/20260831193000_monthly_loan_rate_plans.sql", import.meta.url), "utf8"),
   readFile(new URL("../supabase/migrations/20260911113000_apply_confirmed_chf_loan_split_rules.sql", import.meta.url), "utf8"),
+  readFile(new URL("../supabase/migrations/20260923213000_canonical_property_loan_dscr.sql", import.meta.url), "utf8"),
   readFile(new URL("../src/lib/chfLoanSplit.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/services/loanRatePlanService.ts", import.meta.url), "utf8"),
+  readFile(new URL("../src/services/loanDscrService.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/services/propertyLoanLedgerService.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/EntryAdd.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/pages/Darlehensuebersicht.tsx", import.meta.url), "utf8"),
@@ -67,6 +69,17 @@ assert.match(entryAdd, /chfLoanRule[\s\S]*CHF-Darlehen: Tilgung fest[\s\S]*Boole
 assert.match(service, /calculateChfLoanSplit\(Number\(selected\.amount[\s\S]*chfSplit\?\.interestEur[\s\S]*chfSplit\?\.principalEur/, "Ein erneuter Planimport darf die bestätigte CHF-Buchungsregel nicht überschreiben");
 assert.match(chfMigration, /abs\(f\.amount\) - rule\.principal_amount[\s\S]*loan_split_source = rule\.split_source[\s\S]*tax_relevant = false/, "Bestandsbuchungen müssen ohne Änderung der Gesamtrate auf die CHF-Regel umgestellt werden");
 
+assert.match(dscrMigration, /security_invoker = true/, "Die zentrale DSCR-View muss mit den Rechten des angemeldeten Benutzers laufen");
+assert.match(dscrMigration, /revoke all on public\.v_property_loan_dscr_yearly from public, anon/, "Anonyme DSCR-Zugriffe müssen gesperrt sein");
+assert.match(dscrMigration, /grant select on public\.v_property_loan_dscr_yearly to authenticated, service_role/, "Nur autorisierte Rollen dürfen DSCR lesen");
+assert.match(dscrMigration, /category !~ '\(kreditrate\|darlehen\|tilgung\|zins\|kaution\|erwerb\|anschaffung\|capex/, "Finanzierung, Kaution und Investitionen dürfen den NOI nicht verfälschen");
+assert.match(dscrMigration, /coalesce\(bookings\.operating_income, 0\)[\s\S]*- coalesce\(bookings\.operating_expenses, 0\)[\s\S]*\/ \(coalesce\(loan\.interest, 0\) \+ coalesce\(loan\.principal, 0\)\)/, "DSCR muss NOI durch Zins plus Tilgung teilen");
+assert.match(dscrService, /from\("v_property_loan_dscr_yearly"\)/, "Die UI muss die zentrale DSCR-Quelle laden");
+assert.match(loanPage, /loadLoanDscrYearMetrics/, "Die Darlehensseite muss den zentralen DSCR-Lader verwenden");
+assert.doesNotMatch(loanPage, /useIncome|calculateYearlyFinanceMetrics/, "Die Darlehensseite darf keine veraltete zweite DSCR-Quelle verwenden");
+assert.match(loanPage, /row\.year < currentYear/, "Die Kopfkennzahl muss das letzte abgeschlossene Geschäftsjahr bevorzugen");
+assert.match(loanPage, /DSCR = operativer Nettoertrag \(NOI\) ÷ \(Zinsen \+ Tilgung\)/, "Die DSCR-Definition muss transparent angezeigt werden");
+
 for (const source of [taxCenter, appData, reports]) {
   assert.match(source, /loan_interest_amount/, "Steuer- und Berichtsdaten müssen den gebuchten Zinsanteil lesen");
   assert.match(source, /loan_principal_amount/, "Steuer- und Berichtsdaten müssen den gebuchten Tilgungsanteil lesen");
@@ -78,4 +91,4 @@ assert.match(taxEngine, /wurden nicht ohne Beleg auf P250, P253 und P254 verteil
 assert.match(reports, /bookedSplits/, "Berichte & Exporte muss gebuchte Monatsaufteilungen priorisieren");
 assert.match(backup, /property_loan_rate_plan/, "Die neue Hauptquelle muss im App-Backup enthalten sein");
 
-console.log("49 Stressfälle für Tilgungsplan-Import, CHF-Regeln, zentrale Restschuld, kompakte Jahresübersicht, Buchungsaufteilung, Steuerberichte und Sicherheit bestanden.");
+console.log("59 Stressfälle für Tilgungsplan-Import, CHF-Regeln, zentrale Restschuld und DSCR, Buchungsaufteilung, Steuerberichte und Sicherheit bestanden.");
