@@ -121,6 +121,10 @@ assert.match(billingService, /garageRecordToWorkspaceRecord/, "Tiefgaragen-Abrec
 assert.match(utilitiesPage, /requestedObjectCode[\s\S]{0,1500}?requestedBillingId/, "Die Nebenkosten-Hauptseite muss Objekt, Jahr und Abrechnung aus dem KPI-Link übernehmen");
 assert.match(utilitiesPage, /return summarizeBillingWorkspace\(target\)/, "Hauptseite und KPI-Dashboard müssen dieselbe Kosten-/Saldoformel verwenden");
 assert.match(billingService, /const balance = roundMoney\(advance - tenantTotal\)/, "Die zentrale Nebenkostenformel muss Guthaben und Nachzahlung centgenau aus Vorauszahlung minus Kosten berechnen");
+assert.match(app, /extractBillingWorkspaceRecords\(row\.data, fallbackYear\)/, "Die Nebenkosten-Übersicht muss Wohnungen und Tiefgaragen aus derselben zentralen Abrechnungsquelle auswerten");
+assert.match(app, /selectedYear === "all" \? workflowRecords : workflowRecords\.filter/, "Die Nebenkosten-Übersicht muss ihre KPIs nach Abrechnungsjahr filtern");
+assert.match(app, /"Offen" \| "In Arbeit" \| "In Prüfung" \| "Freigegeben" \| "Korrigiert"/, "Der NK-Workflow muss alle fünf fachlichen Statuswerte vollständig abbilden");
+assert.match(app, /Statusverteilung/, "Die gefilterten NK-Statuswerte müssen zusätzlich professionell visualisiert werden");
 assert.match(await readFile("src/pages/NebenkostenWohnungen.tsx", "utf8"), /Vorauszahlungen im Abrechnungszeitraum \(€\)[\s\S]*monatliche NK-Vorauszahlung × Belegungsmonate/, "Die Eingabe muss eindeutig den Periodengesamtbetrag statt eines Monatswerts verlangen");
 assert.match(await readFile("src/pages/NebenkostenWohnungen.tsx", "utf8"), /settlementStatus[\s\S]*Nachzahlung ausgeglichen[\s\S]*settlementReference/, "Ausgeglichene NK-Nachzahlungen müssen mit Buchungsreferenz sichtbar bleiben");
 assert.match(await readFile("src/pages/Mietuebersicht.tsx", "utf8"), /prorateMonthlyRentFromStart[\s\S]*occupiedDays[\s\S]*zeitanteilig ab/, "Untermonatiger Mietbeginn muss das Monats-Soll taggenau reduzieren");

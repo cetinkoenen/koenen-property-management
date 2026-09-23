@@ -93,6 +93,7 @@ import {
 } from "./services/documentArchiveService";
 import { portfolioGalleryItems } from "./data/portfolioGallery";
 import { buildRepairCapexSummary, isAcquisitionAdjacentCostEntry } from "./lib/repairCapex";
+import { extractBillingWorkspaceRecords } from "./services/billingWorkspaceService";
 import {
   buildLoanInterestReportCsv,
   buildLoanInterestReportExcelHtml,
@@ -1066,27 +1067,100 @@ function ProtectedAppShell() {
   );
 }
 
+type NebenkostenOverviewStatus = "Offen" | "In Arbeit" | "In Prüfung" | "Freigegeben" | "Korrigiert";
+
+type NebenkostenOverviewRecord = {
+  id: string;
+  objectId: string;
+  year: number;
+  status: NebenkostenOverviewStatus;
+  isGarage: boolean;
+};
+
+const NEBENKOSTEN_STATUS_CONFIG: Array<{
+  status: NebenkostenOverviewStatus;
+  icon: LucideIcon;
+  tone: "slate" | "blue" | "amber" | "green" | "violet";
+  barClass: string;
+}> = [
+  { status: "Offen", icon: ClipboardList, tone: "slate", barClass: "bg-slate-400" },
+  { status: "In Arbeit", icon: Settings2, tone: "blue", barClass: "bg-sky-500" },
+  { status: "In Prüfung", icon: ListChecks, tone: "amber", barClass: "bg-amber-500" },
+  { status: "Freigegeben", icon: CalendarCheck, tone: "green", barClass: "bg-emerald-500" },
+  { status: "Korrigiert", icon: BookOpenCheck, tone: "violet", barClass: "bg-violet-500" },
+];
+
+function normalizeNebenkostenStatus(value: unknown, locked: boolean | undefined): NebenkostenOverviewStatus {
+  const normalized = String(value ?? "").trim().toLocaleLowerCase("de-DE");
+  if (normalized.includes("korrigiert")) return "Korrigiert";
+  if (locked || normalized.includes("freigegeben")) return "Freigegeben";
+  if (normalized.includes("prüfung") || normalized.includes("prufung")) return "In Prüfung";
+  if (normalized.includes("arbeit")) return "In Arbeit";
+  return "Offen";
+}
+
 function NebenkostenIndexPage() {
-  const [workflowCounts, setWorkflowCounts] = useState<Record<string, number>>({});
+  const currentYear = new Date().getFullYear();
+  const [workflowRecords, setWorkflowRecords] = useState<NebenkostenOverviewRecord[]>([]);
   const [workflowLoading, setWorkflowLoading] = useState(true);
+  const [workflowError, setWorkflowError] = useState("");
+  const [selectedYear, setSelectedYear] = useState(String(currentYear));
 
   useEffect(() => {
     let active = true;
-    supabase.from("apartment_billing_workspaces").select("data").then(({ data, error }) => {
+    supabase.from("apartment_billing_workspaces").select("object_id,year,data").order("year", { ascending: false }).then(({ data, error }) => {
       if (!active) return;
-      if (error) { setWorkflowLoading(false); return; }
-      const next: Record<string, number> = { offen: 0, "In Arbeit": 0, "in Prüfung": 0, Freigegeben: 0, Korrigiert: 0 };
+      if (error) {
+        setWorkflowRecords([]);
+        setWorkflowError(`Nebenkosten-KPIs konnten nicht geladen werden: ${error.message}`);
+        setWorkflowLoading(false);
+        return;
+      }
+      const next: NebenkostenOverviewRecord[] = [];
       for (const row of data ?? []) {
-        const payload = row.data as { billings?: Array<{ workspace?: { meta?: { workflowStatus?: string; locked?: boolean } } }> } | null;
-        for (const billing of payload?.billings ?? []) {
-          const status = billing.workspace?.meta?.workflowStatus ?? (billing.workspace?.meta?.locked ? "Freigegeben" : "offen");
-          next[status] = (next[status] ?? 0) + 1;
+        const rawYear = Number(row.year);
+        const fallbackYear = Number.isFinite(rawYear) && rawYear >= 2000 ? rawYear : currentYear;
+        for (const billing of extractBillingWorkspaceRecords(row.data, fallbackYear)) {
+          const billingYear = Number(billing.workspace.meta.billingYear || fallbackYear);
+          if (!Number.isFinite(billingYear) || billingYear < 2000) continue;
+          next.push({
+            id: `${row.object_id}:${billingYear}:${billing.id}`,
+            objectId: String(row.object_id ?? ""),
+            year: billingYear,
+            status: normalizeNebenkostenStatus(billing.workspace.meta.workflowStatus, billing.workspace.meta.locked),
+            isGarage: String(row.object_id ?? "") === "rosenstein-str-25-tiefgarage",
+          });
         }
       }
-      setWorkflowCounts(next); setWorkflowLoading(false);
+      next.sort((left, right) => right.year - left.year || left.objectId.localeCompare(right.objectId));
+      setWorkflowRecords(next);
+      const availableYears = Array.from(new Set(next.map((record) => record.year))).sort((a, b) => b - a);
+      setSelectedYear((previous) => {
+        if (previous === "all" || availableYears.includes(Number(previous))) return previous;
+        return String(availableYears.includes(currentYear) ? currentYear : availableYears[0] ?? currentYear);
+      });
+      setWorkflowLoading(false);
     });
     return () => { active = false; };
-  }, []);
+  }, [currentYear]);
+
+  const availableYears = useMemo(
+    () => Array.from(new Set(workflowRecords.map((record) => record.year))).sort((a, b) => b - a),
+    [workflowRecords],
+  );
+  const filteredWorkflowRecords = useMemo(
+    () => selectedYear === "all" ? workflowRecords : workflowRecords.filter((record) => record.year === Number(selectedYear)),
+    [selectedYear, workflowRecords],
+  );
+  const workflowCounts = useMemo(() => {
+    const counts = Object.fromEntries(NEBENKOSTEN_STATUS_CONFIG.map(({ status }) => [status, 0])) as Record<NebenkostenOverviewStatus, number>;
+    for (const record of filteredWorkflowRecords) counts[record.status] += 1;
+    return counts;
+  }, [filteredWorkflowRecords]);
+  const totalCount = filteredWorkflowRecords.length;
+  const apartmentCount = filteredWorkflowRecords.filter((record) => !record.isGarage).length;
+  const garageCount = totalCount - apartmentCount;
+  const selectedPeriodLabel = selectedYear === "all" ? "Alle Jahre" : `Abrechnungsjahr ${selectedYear}`;
 
   return (
     <div className="space-y-5">
@@ -1095,16 +1169,76 @@ function NebenkostenIndexPage() {
         title="Nebenkosten"
         description="Zentrale Auswahl fuer Wohnungs- und Tiefgaragenabrechnungen. Berechnungen und Eingaben bleiben in den bestehenden Fachseiten."
         meta={[
-          { label: "Quelle", value: "Buchhaltung + NK-Seiten" },
-          { label: "Modus", value: "Bestand erhalten" },
+          { label: "Quelle", value: "Zentrale NK-Abrechnungen" },
+          { label: "Zeitraum", value: selectedPeriodLabel },
         ]}
-      />
+      >
+        <label className="grid min-w-56 gap-2">
+          <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Abrechnungsjahr</span>
+          <select
+            value={selectedYear}
+            onChange={(event) => setSelectedYear(event.target.value)}
+            disabled={workflowLoading || availableYears.length === 0}
+            className="min-h-12 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 shadow-sm disabled:cursor-not-allowed disabled:bg-slate-100"
+          >
+            {availableYears.map((year) => <option key={year} value={year}>{year}{year === currentYear ? " · aktuelles Jahr" : ""}</option>)}
+            {availableYears.length > 1 ? <option value="all">Alle Jahre</option> : null}
+          </select>
+        </label>
+      </PageHeader>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Nebenkosten-Workflowstatus">
-        {["offen", "In Arbeit", "in Prüfung", "Freigegeben", "Korrigiert"].map((status) => (
-          <KpiCard key={status} label={status} value={workflowLoading ? "…" : workflowCounts[status] ?? 0} detail="Wohnungsabrechnungen" icon={ClipboardList} tone={status === "Freigegeben" ? "green" : status === "in Prüfung" ? "amber" : "slate"} />
-        ))}
-      </section>
+      {workflowError ? <div role="alert" className="rounded-[22px] border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-800">{workflowError}</div> : null}
+
+      <SectionPanel
+        eyebrow="Workflow-Monitor"
+        title={selectedPeriodLabel}
+        description={workflowLoading ? "Nebenkostenabrechnungen werden geladen…" : `${totalCount} Abrechnungen · ${apartmentCount} Wohnungen · ${garageCount} Tiefgaragenstellplätze`}
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label={`Nebenkosten-Workflowstatus ${selectedPeriodLabel}`}>
+          {NEBENKOSTEN_STATUS_CONFIG.map(({ status, icon, tone }) => {
+            const count = workflowCounts[status];
+            const percentage = totalCount > 0 ? Math.round((count / totalCount) * 100) : 0;
+            return (
+              <KpiCard
+                key={status}
+                label={status}
+                value={workflowLoading ? "…" : count}
+                detail={workflowLoading ? "Wird berechnet" : totalCount > 0 ? `${percentage} % der Auswahl` : "Keine Abrechnung"}
+                icon={icon}
+                tone={tone}
+              />
+            );
+          })}
+        </div>
+
+        {!workflowLoading && !workflowError && totalCount > 0 ? (
+          <div className="mt-5 rounded-[20px] border border-slate-200 bg-slate-50/80 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-600">Statusverteilung</p>
+              <p className="text-xs font-bold text-slate-500">Basis: {totalCount} Abrechnungen</p>
+            </div>
+            <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-slate-200" aria-label="Grafische Statusverteilung">
+              {NEBENKOSTEN_STATUS_CONFIG.map(({ status, barClass }) => {
+                const count = workflowCounts[status];
+                return count > 0 ? <span key={status} className={barClass} style={{ width: `${(count / totalCount) * 100}%` }} title={`${status}: ${count}`} /> : null;
+              })}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+              {NEBENKOSTEN_STATUS_CONFIG.map(({ status, barClass }) => (
+                <span key={status} className="inline-flex items-center gap-2 text-xs font-bold text-slate-600">
+                  <span className={`h-2.5 w-2.5 rounded-full ${barClass}`} />{status} · {workflowCounts[status]}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {!workflowLoading && !workflowError && totalCount === 0 ? (
+          <div className="mt-5 rounded-[20px] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm font-bold text-slate-600">
+            Für {selectedPeriodLabel.toLocaleLowerCase("de-DE")} ist noch keine Nebenkostenabrechnung gespeichert.
+          </div>
+        ) : null}
+      </SectionPanel>
 
       <section className="grid gap-4 md:grid-cols-2">
         <ModuleCard
