@@ -4,6 +4,7 @@ import type { AppObject, FinanceEntry } from "../state/AppDataContext";
 import { parseLocaleNumber } from "../utils/numberParser";
 import { masterNamesMatch } from "./masterDataService";
 import type { ReportModule, ReportRecord, ReportSources } from "./reportCenterEngine";
+import { detectRosensteinTaxUnit, isRosensteinLabel, type RosensteinTaxUnitCode } from "../lib/rosensteinTaxUnit";
 
 export type TaxPreflightSeverity = "blocker" | "review" | "info";
 
@@ -83,6 +84,7 @@ export function buildTaxReportPreflight(input: {
   from: string;
   to: string;
   objectId?: string;
+  rosensteinUnit?: RosensteinTaxUnitCode;
 }): TaxPreflightResult {
   const aliasesById = new Map(input.objects.map((object) => [object.id, propertyAliases(object, input.sources)]));
   const objectFor = (row: ReportRecord | FinanceEntry): AppObject | undefined => input.objects.find((object) => {
@@ -97,7 +99,12 @@ export function buildTaxReportPreflight(input: {
   const inScope = (entry: FinanceEntry) => {
     const date = text(entry.booking_date).slice(0, 10);
     if (date < input.from || date > input.to) return false;
-    return !input.objectId || objectFor(entry)?.id === input.objectId;
+    const object = objectFor(entry);
+    if (input.objectId && object?.id !== input.objectId) return false;
+    if (!input.rosensteinUnit) return true;
+    const directUnit = detectRosensteinTaxUnit(entry.objekt_code, entry.category, entry.note);
+    if (directUnit) return directUnit === input.rosensteinUnit;
+    return entry.entry_type === "expense" && isRosensteinLabel(object?.label);
   };
   const issues: TaxPreflightIssue[] = [];
   let calculatedValues = 0;
@@ -135,10 +142,15 @@ export function buildTaxReportPreflight(input: {
     && contract.status !== "planned"
     && overlaps(contract, input.from, input.to)
     && (!input.objectId || objectFor(contract)?.id === input.objectId)
+    && (!input.rosensteinUnit || detectRosensteinTaxUnit(contract.unit_label, contract.object_code, contract.objekt_code) === input.rosensteinUnit)
   ));
   const rentalPeriods = (input.sources.portfolio_property_rentals ?? []).filter((rental) => (
     overlaps(rental,input.from,input.to)
     && (!input.objectId || objectFor(rental)?.id === input.objectId)
+    && (!input.rosensteinUnit || detectRosensteinTaxUnit(
+      rental.unit_label,
+      (input.sources.portfolio_units ?? []).find((unit) => unit.id === rental.unit_id)?.name,
+    ) === input.rosensteinUnit)
   ));
   const rentSources = [
     ...contracts,
