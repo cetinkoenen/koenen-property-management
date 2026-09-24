@@ -4,7 +4,7 @@ import type { AppObject, FinanceEntry } from "../state/AppDataContext";
 import { parseLocaleNumber } from "../utils/numberParser";
 import { masterNamesMatch } from "./masterDataService";
 import type { ReportModule, ReportRecord, ReportSources } from "./reportCenterEngine";
-import { detectRosensteinTaxUnit, isRosensteinLabel, type RosensteinTaxUnitCode } from "../lib/rosensteinTaxUnit";
+import { detectRosensteinTaxUnit, detectRosensteinTaxUnits, isRosensteinLabel, type RosensteinTaxUnitCode } from "../lib/rosensteinTaxUnit";
 
 export type TaxPreflightSeverity = "blocker" | "review" | "info";
 
@@ -102,7 +102,8 @@ export function buildTaxReportPreflight(input: {
     const object = objectFor(entry);
     if (input.objectId && object?.id !== input.objectId) return false;
     if (!input.rosensteinUnit) return true;
-    const directUnit = detectRosensteinTaxUnit(entry.objekt_code, entry.category, entry.note);
+    const mentionedUnits = detectRosensteinTaxUnits(entry.objekt_code, entry.category, entry.note);
+    const directUnit = mentionedUnits.length === 1 ? mentionedUnits[0] : null;
     if (directUnit) return directUnit === input.rosensteinUnit;
     return entry.entry_type === "expense" && isRosensteinLabel(object?.label);
   };

@@ -85,13 +85,14 @@ assert.match(reportCenter, /euro\(c\.deposit_amount\)/, "Der Steuerberater-Repor
 assert.match(reportCenter, /Kaution \(vereinbart\)/, "Die vereinbarte Kaution muss im Vertragsdaten-Report sichtbar sein");
 assert.match(reportCenter, /tenant_contracts\.deposit_amount[\s\S]*Historische Berichtsjahre/, "Die Kautionsquelle und ihre jahresbezogene Vertragslogik müssen im Report dokumentiert sein");
 assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'validation'[\s\S]*'cover'/, "Datenprüfung und Management Summary müssen den Steuerberater-Report eröffnen");
+assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'objects'[\s\S]*'acquisition'[\s\S]*'tenants'/, "Anschaffungskosten müssen im Steuerberater-Report verbindlich nach den Objektdaten folgen");
 assert.match(reportCenterPage, /taxPreflightBlocked[\s\S]*Export gesperrt: Die Datenprüfung enthält blockierende Punkte/, "Blockierende Datenfehler müssen den Export sichtbar verhindern");
 assert.match(rosensteinTaxUnit, /P250[\s\S]*E008440000121[\s\S]*P253[\s\S]*E008440000122[\s\S]*P254[\s\S]*E008440000123/, "Die drei Rosenstein-Steuerobjekte brauchen eine zentrale Einheitenreferenz");
 assert.match(reportCenterPage, /Rosenstein TG-Stellplatz[\s\S]*Alle TG-Stellplätze \(P250, P253, P254\)/, "Der Steuerberater-Report muss Gesamt- und Einzelwahl für Rosenstein anbieten");
 assert.match(reportCenterPage, /setRosensteinUnit\('all'\)/, "Beim Immobilienwechsel muss der Rosenstein-Einheitenfilter sicher zurückgesetzt werden");
 assert.match(reportCenterPage, /rosensteinUnit:selectedRosensteinUnit/, "Die ausgewählte TG-Einheit muss an die zentrale Report-Engine übergeben werden");
-assert.match(reportCenter, /amount: roundMoney\(entry\.amount \/ 3\)[\s\S]*gemeinsamer Beleg, Anteil 1\/3/, "Gemeinsame Rosenstein-Ausgaben müssen im Einzelreport transparent gedrittelt werden");
-assert.match(reportCenter, /Nicht eindeutig auf einen Stellplatz aufgeteilte Darlehenswerte werden nicht geschätzt/, "Gesamtdarlehen dürfen nicht ohne Beleg einer einzelnen Garage zugerechnet werden");
+assert.match(reportCenter, /amount: allocateRosensteinThird\(entry\.amount, input\.rosensteinUnit\)[\s\S]*gemeinsamer Beleg, Anteil 1\/3/, "Gemeinsame Rosenstein-Ausgaben müssen im Einzelreport transparent und centgenau gedrittelt werden");
+assert.match(reportCenter, /Gemeinsame Darlehenswerte des Gesamtobjekts werden centgenau zu einem Drittel verteilt/, "Gesamtdarlehen müssen nachvollziehbar und summenerhaltend auf die drei Garagen verteilt werden");
 assert.match(taxPreflight, /rosensteinUnit[\s\S]*detectRosensteinTaxUnit/, "Die Steuer-Vorprüfung muss denselben TG-Einheitenfilter verwenden");
 assert.match(taxClassification, /entryType === "income" && canonicalCategory === "Verwaltungskosten"[\s\S]*taxRelevant: true[\s\S]*locked: false/, "Hausverwaltungs-Gutschriften muessen steuerlich als Kostenminderung freigegeben bleiben");
 assert.match(taxEngine, /category === "Verwaltungskosten"[\s\S]*categoryName: "Nicht umlagefähige Kosten \/ Verwaltung"[\s\S]*expenseAmount: -value/, "Hausverwaltungs-Gutschriften muessen die Verwaltungskosten im Anlage-V-Bericht mindern");

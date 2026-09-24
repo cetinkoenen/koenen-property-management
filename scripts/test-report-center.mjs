@@ -77,13 +77,23 @@ const rosensteinUnits=[
 ];
 const rosensteinSources={
   portfolio_units:rosensteinUnits,
+  property_extra:[{property_id:'rosen-core',wealth_profile:{totalArea:'7',purchasePrice:57000,buildingPurchasePrice:39900,landPurchasePrice:17100}}],
   tenant_profiles:[{id:'t250',first_name:'Steffen',last_name:'Aicher'},{id:'t253',first_name:'Lena',last_name:'Huhn'},{id:'t254',first_name:'Sebastian',last_name:'Pilsl'}],
   tenant_contracts:[
-    {id:'c250',tenant_id:'t250',property_id:'rosen-core',unit_label:'P250 - E008440000121',start_date:'2025-11-14',status:'active',cold_rent:75,operating_costs:null,total_rent:75},
-    {id:'c253',tenant_id:'t253',property_id:'rosen-core',unit_label:'P253 - E008440000122',start_date:'2025-11-14',status:'active',cold_rent:85,operating_costs:0,total_rent:85},
-    {id:'c254',tenant_id:'t254',property_id:'rosen-core',unit_label:'P254 - E008440000123',start_date:'2025-11-14',status:'active',cold_rent:90,operating_costs:null,total_rent:90},
+    {id:'c250',tenant_id:'t250',property_id:'rosen-core',unit_label:'P250 - E008440000121',start_date:'2026-03-01',status:'active',cold_rent:85,operating_costs:0,total_rent:85},
+    {id:'c253',tenant_id:'t253',property_id:'rosen-core',unit_label:'P253 - E008440000122',start_date:'2026-01-01',status:'active',cold_rent:85,operating_costs:0,total_rent:85},
+    {id:'c254',tenant_id:'t254',property_id:'rosen-core',unit_label:'P254 - E008440000123',start_date:'2026-01-01',end_date:'2026-05-31',status:'ended',cold_rent:90,operating_costs:0,total_rent:90},
   ],
-  property_loan_ledger:[{property_id:'rosen-core',year:2025,interest:500,principal:700,balance:52000,source:'Gesamtdarlehen ohne Einheitenbeleg'}],
+  portfolio_property_rentals:[
+    {id:'r250',property_id:'rosen-core',unit_id:'u250',start_date:'2025-11-14',end_date:'2025-12-31',kaltmiete_laut_mietvertrag:75,nebenkosten:0,gesamt_mietkosten:75,rent_monthly:75},
+    {id:'r253',property_id:'rosen-core',unit_id:'u253',start_date:'2025-11-14',end_date:'2025-12-31',kaltmiete_laut_mietvertrag:85,nebenkosten:0,gesamt_mietkosten:85,rent_monthly:85},
+    {id:'r254',property_id:'rosen-core',unit_id:'u254',start_date:'2025-11-14',end_date:'2025-12-31',kaltmiete_laut_mietvertrag:90,nebenkosten:0,gesamt_mietkosten:90,rent_monthly:90},
+  ],
+  property_loan_ledger:[{property_id:'rosen-core',year:2025,interest:853.45,principal:355.30,balance:59949.70,source:'Gesamtdarlehen'}],
+  property_loan_rate_plan:[
+    {id:'plan-nov',property_id:'rosen-core',plan_date:'2025-11-30',payment_amount:305,interest_amount:0,principal_amount:305,fee_amount:0,opening_balance:59695,closing_balance:59390,source_file:'Rosenstein-Tilgungsplan.csv'},
+    {id:'plan-dec',property_id:'rosen-core',plan_date:'2025-12-31',payment_amount:305,interest_amount:559.70,principal_amount:-254.70,fee_amount:0,opening_balance:59390,closing_balance:59949.70,source_file:'Rosenstein-Tilgungsplan.csv'},
+  ],
   mileage_trips:[
     {property_id:'rosen-core',datum:'2025-12-12',grund:'Belegprüfung P250',distanz_km:4,berechneter_betrag:1.2},
     {property_id:'rosen-core',datum:'2025-12-13',grund:'Belegprüfung P253',distanz_km:6,berechneter_betrag:1.8},
@@ -99,9 +109,15 @@ const rosensteinEntries=[
   {id:'p254-rent',object_id:'rosen-core',booking_date:'2025-12-03',entry_type:'income',category:'Miete Garage',amount:45.90,note:'P254 - E008440000123 · Mietmonat November'},
   {id:'p253-cost',object_id:'rosen-core',booking_date:'2025-12-10',entry_type:'expense',category:'Grundsteuer',amount:3,note:'P253 - E008440000122',nk_relevant:true},
   {id:'shared-cost',object_id:'rosen-core',booking_date:'2025-12-11',entry_type:'expense',category:'Verwaltungskosten',amount:30,note:'Rosenstein gemeinsame Verwaltung',nk_relevant:false},
+  {id:'notar-1',object_id:'rosen-core',booking_date:'2025-09-22',entry_type:'expense',category:'Erwerbsnebenkosten',amount:1173.06,note:'Rechnung Notar R20252087 TT',tax_relevant:false},
+  {id:'makler',object_id:'rosen-core',booking_date:'2025-09-29',entry_type:'expense',category:'Erwerbsnebenkosten',amount:2713.20,note:'Rechnung Immobilienmakler Rosenstein Str. 25, TG Stellplätze P250-253-254',tax_relevant:false},
+  {id:'grundbuch',object_id:'rosen-core',booking_date:'2025-10-13',entry_type:'expense',category:'Erwerbsnebenkosten',amount:333,note:'Rechnung 2547528109538 Grundbucheintragung',tax_relevant:false},
+  {id:'notar-2',object_id:'rosen-core',booking_date:'2025-12-15',entry_type:'expense',category:'Erwerbsnebenkosten',amount:225.01,note:'Rechnung R20252787 TT',tax_relevant:false},
+  {id:'rate-nov',object_id:'rosen-core',booking_date:'2025-11-03',entry_type:'expense',category:'Kreditrate',amount:305,note:'Rosenstein Darlehensrate November',loan_interest_amount:0,loan_principal_amount:305,loan_rate_plan_id:'plan-nov',loan_split_source:'Tilgungsplan'},
+  {id:'rate-dec',object_id:'rosen-core',booking_date:'2025-12-01',entry_type:'expense',category:'Kreditrate',amount:305,note:'Rosenstein Darlehensrate Dezember',loan_interest_amount:559.70,loan_principal_amount:-254.70,loan_rate_plan_id:'plan-dec',loan_split_source:'Tilgungsplan'},
 ];
 const rosensteinRent={year:2025,objectFilter:'rosen-core',rows:[
-  {key:'p250',objectId:'rosen-core',objectLabel:'Rosenstein Str. 25',unitLabel:'P250 - E008440000121',tenantName:'Steffen Aicher',months:Array.from({length:12},(_,i)=>({month:i+1,expected:i===10?42.5:0,paid:i===10?42.5:0,open:0,status:i===10?'paid':'inactive'}))},
+  {key:'p250',objectId:'rosen-core',objectLabel:'Rosenstein Str. 25',unitLabel:'P250 - E008440000121',tenantName:'Miriam Frommer',months:Array.from({length:12},(_,i)=>({month:i+1,expected:i===10?42.5:0,paid:i===10?42.5:0,open:0,status:i===10?'paid':'inactive'}))},
   {key:'p253',objectId:'rosen-core',objectLabel:'Rosenstein Str. 25',unitLabel:'P253 - E008440000122',tenantName:'Lena Huhn',months:Array.from({length:12},(_,i)=>({month:i+1,expected:i===10?42.5:0,paid:i===10?42.5:0,open:0,status:i===10?'paid':'inactive'}))},
   {key:'p254',objectId:'rosen-core',objectLabel:'Rosenstein Str. 25',unitLabel:'P254 - E008440000123',tenantName:'Sebastian Pilsl',months:Array.from({length:12},(_,i)=>({month:i+1,expected:i===10?45.9:0,paid:i===10?45.9:0,open:0,status:i===10?'paid':'inactive'}))},
 ],totals:{},propertyTotals:[],kpis:{}};
@@ -109,21 +125,40 @@ const p253Report=buildReportCenter({objects:[rosensteinObject],entries:rosenstei
 const p253Module=id=>p253Report.find(module=>module.id===id);
 assert.equal(p253Module('tenants').tables[0].rows.length,1,'P253-Einzelreport darf nur den P253-Mietvertrag enthalten');
 assert.match(String(p253Module('tenants').tables[0].rows[0][1]),/P253/);
+assert.equal(p253Module('tenants').tables[0].rows[0][2],'Lena Huhn','Historischer Mieter muss aus Mietkonto und Vermietungszeitraum stammen');
+assert.equal(p253Module('tenants').tables[0].rows[0][3],'2025-11-14');
+assert.equal(p253Module('tenants').tables[0].rows[0][4],'2025-12-31');
+assert.equal(p253Module('tenants').tables[0].rows[0][9],'7','Stellplatzfläche muss aus Immobilienvermögen übernommen werden');
 assert.equal(p253Module('tenants').tables[1].rows.length,1,'P253-Einzelreport darf nur die P253-Zahlungsmatrix enthalten');
-assert.equal(p253Module('journal').tables[0].rows.length,3,'P253 enthält direkte Einnahme, direkte Ausgabe und 1/3 der gemeinsamen Ausgabe');
-assert.equal(p253Module('journal').tables[0].rows.find(row=>String(row[5]).includes('Anteil 1/3'))?.[7],'10,00 €','Gemeinsame Rosenstein-Ausgabe muss nachvollziehbar zu einem Drittel erscheinen');
-assert.equal(p253Module('loan-interest').tables[0].rows.length,0,'Unbelegtes Gesamtdarlehen darf nicht vollständig P253 zugerechnet werden');
-assert.match(p253Module('loan-interest').paragraphs.join(' '),/Nicht eindeutig auf einen Stellplatz aufgeteilte Darlehenswerte werden nicht geschätzt/);
+assert.ok(p253Module('journal').tables[0].rows.length>=7,'P253 enthält direkte Buchungen sowie gemeinsame Erwerbs- und Kreditbuchungen anteilig');
+assert.equal(p253Module('journal').tables[0].rows.find(row=>String(row[5]).includes('gemeinsame Verwaltung'))?.[7],'10,00 €','Gemeinsame Rosenstein-Ausgabe muss nachvollziehbar zu einem Drittel erscheinen');
+assert.equal(p253Module('objects').tables[3].rows[0][3],'7','Einheitendetail muss die gepflegte TG-Fläche zeigen');
+assert.equal(p253Module('acquisition').tables[0].rows[0][2],'19.000,00 €','Gesamtkaufpreis muss exakt zu einem Drittel zugeordnet werden');
+assert.equal(p253Module('acquisition').tables[1].rows.find(row=>String(row[2]).includes('R20252087'))?.[5],'391,02 €','Notarrechnung muss mit Rechnungsnummer und exaktem Anteil erscheinen');
+assert.equal(p253Module('acquisition').tables[1].rows.find(row=>String(row[2]).includes('Immobilienmakler'))?.[5],'904,40 €','Maklerrechnung mit allen Stellplatzcodes ist ein gemeinsamer Beleg');
+assert.equal(p253Module('loan-interest').tables[0].rows.length,1,'Gesamtdarlehen muss anteilig P253 zugeordnet werden');
+assert.equal(p253Module('loan-interest').tables[0].rows[0][2],'284,48 €');
+assert.equal(p253Module('loan-interest').tables[2].rows.find(row=>row[1]==='2025-11')?.[3],'101,67 €','November-Kreditrate muss anteilig erscheinen');
+assert.equal(p253Module('loan-interest').tables[2].rows.find(row=>row[1]==='2025-12')?.[4],'186,57 €','Dezember-Zins muss anteilig erscheinen');
+assert.match(p253Module('loan-interest').paragraphs.join(' '),/centgenau zu einem Drittel verteilt/);
 assert.match(p253Module('cover').paragraphs.join(' '),/Berichtseinheit: TG-Stellplatz P253/,'Deckblatt muss den gewählten Stellplatz eindeutig ausweisen');
 assert.equal(p253Module('mileage').tables[0].rows.length,1,'Fahrtkosten im P253-Einzelreport müssen stellplatzbezogen gefiltert sein');
 assert.match(String(p253Module('mileage').tables[0].rows[0][2]),/P253/);
 assert.equal(p253Module('vacancy').tables[0].rows.length,1,'Leerstände im P253-Einzelreport müssen stellplatzbezogen gefiltert sein');
 assert.match(String(p253Module('vacancy').tables[0].rows[0][1]),/P253/);
+const individualRosensteinReports=['P250','P253','P254'].map(rosensteinUnit=>buildReportCenter({objects:[rosensteinObject],entries:rosensteinEntries,loans:[],sources:rosensteinSources,rent:rosensteinRent,from:'2025-01-01',to:'2025-12-31',objectId:'rosen-core',rosensteinUnit,today:'2026-09-23'}));
+const parseEuro=value=>Number(String(value).replace(/[^0-9,\-]/g,'').replace(',','.'));
+const invoiceShares=individualRosensteinReports.map(report=>parseEuro(report.find(module=>module.id==='acquisition').tables[1].rows.find(row=>String(row[2]).includes('R20252787'))[5]));
+assert.equal(invoiceShares.reduce((sum,value)=>sum+value,0).toFixed(2),'225.01','Drei Einzelreports müssen den gemeinsamen Beleg centgenau reproduzieren');
+const novemberRates=individualRosensteinReports.map(report=>parseEuro(report.find(module=>module.id==='loan-interest').tables[2].rows.find(row=>row[1]==='2025-11')[3]));
+assert.equal(novemberRates.reduce((sum,value)=>sum+value,0).toFixed(2),'305.00','Drei Einzelreports müssen die November-Kreditrate centgenau reproduzieren');
+const decemberInterest=individualRosensteinReports.map(report=>parseEuro(report.find(module=>module.id==='loan-interest').tables[2].rows.find(row=>row[1]==='2025-12')[4]));
+assert.equal(decemberInterest.reduce((sum,value)=>sum+value,0).toFixed(2),'559.70','Drei Einzelreports müssen den Dezember-Zins centgenau reproduzieren');
 const allRosensteinReport=buildReportCenter({objects:[rosensteinObject],entries:rosensteinEntries,loans:[],sources:rosensteinSources,rent:rosensteinRent,from:'2025-01-01',to:'2025-12-31',objectId:'rosen-core',today:'2026-09-23'});
 assert.equal(allRosensteinReport.find(module=>module.id==='tenants').tables[0].rows.length,3,'Gesamtreport muss alle drei Rosenstein-Stellplätze enthalten');
-assert.equal(allRosensteinReport.find(module=>module.id==='journal').tables[0].rows.length,5,'Gesamtreport darf direkte Rosenstein-Buchungen nicht verlieren');
+assert.equal(allRosensteinReport.find(module=>module.id==='journal').tables[0].rows.length,11,'Gesamtreport darf direkte oder gemeinsame Rosenstein-Buchungen nicht verlieren');
 assert.equal(allRosensteinReport.find(module=>module.id==='validation').metrics.find(metric=>metric.label==='Blocker')?.value,'0','Exakt als Gesamtmiete minus Kaltmiete ableitbare TG-Nebenkosten dürfen den Export nicht blockieren');
-assert.match(allRosensteinReport.find(module=>module.id==='validation').tables[0].rows.map(row=>row.join(' ')).join(' '),/Nebenkostenvorauszahlung exakt abgeleitet/);
+assert.match(allRosensteinReport.find(module=>module.id==='validation').tables[0].rows.map(row=>row.join(' ')).join(' '),/7\.00 m²/,'Vorprüfung muss die zentrale Stellplatzfläche verwenden');
 
 // Colmarer 2025: Mieterwechsel, Mietaufteilung, Kautionsrückgabe und NK-Abrechnung.
 const colmarerObjects=[{id:'colmarer-core',code:'COL',label:'Colmarer Str. 45',livingAreaM2:36,aliases:['colmarer-billing']}];
@@ -197,7 +232,7 @@ assert.match(pdfSource, /class="report-chart"/, 'Tilgung-und-Zins-Diagramme müs
 assert.match(pdfSource, /class="\$\{isSummaryRow\(row\) \? "summary-row" : ""\}"/, 'Summen- und Ergebniszeilen müssen im PDF eigens markiert werden');
 assert.match(pdfSource, /tr\.summary-row td[\s\S]*font-weight: 950;[\s\S]*border-bottom: 4px double/, 'Summenzeilen müssen fett und mit doppelter Abschlusslinie formatiert sein');
 assert.match(pageSource, /taxAdvisorReportIds\.filter\(id=>selected\.includes\(id\)\)/, 'Der Steuerberaterbericht muss die fachlich definierte Modulreihenfolge verwenden');
-assert.match(pageSource, /id==='objects'\|\|id==='loan-interest'/, 'Objektübersicht und Finanzierungsabschluss müssen verbindlich bleiben');
+assert.match(pageSource, /id==='objects'\|\|id==='acquisition'\|\|id==='loan-interest'/, 'Objektübersicht, Anschaffungskosten und Finanzierungsabschluss müssen verbindlich bleiben');
 assert.match(mileageSource, /"Immobilienmakler"[\s\S]*"Besichtigungstermin"/, 'Beide neuen Fahrtgründe müssen aus der zentralen Optionsliste kommen');
 assert.match(taxAdvisorMigration, /property_mileage_trips_grund_check[\s\S]*'Immobilienmakler'[\s\S]*'Besichtigungstermin'/, 'Die Datenbank muss dieselben Fahrtgründe akzeptieren');
 assert.match(taxAdvisorMigration, /tenant_profiles[\s\S]*'wolfgang'[\s\S]*'stange'[\s\S]*tenant_contracts/, 'Die Fürther Garage muss mit dem vorhandenen Mieter Wolfgang Stange verknüpft werden');
