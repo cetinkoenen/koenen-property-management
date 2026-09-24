@@ -183,15 +183,48 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     return records(ws.apartments).filter(a => a.active !== false && text(a.tenantName)).map(a => ({ object, tenant: text(a.tenantName), unit: text(a.label), from: periodFrom, to: periodTo, area: a.area, advancePayments: n(a.advancePayments), occupancyMonths: n(a.occupancyMonths), source: 'Nebenkostenabrechnung' as const, workspace: ws }));
   }).filter(p => (!input.objectId || p.object?.id === input.objectId) && (!input.rosensteinUnit || detectRosensteinTaxUnit(p.unit) === input.rosensteinUnit) && p.from <= to && p.to >= from);
   const contractPeriods: TenantPeriod[] = contracts.map(c => ({ object: objectFor(c), tenant: name(c), unit: text(c.unit_label), from: text(c.start_date || '0000-01-01').slice(0,10), to: text(c.end_date || '9999-12-31').slice(0,10), area: areaForUnit(objectFor(c),c.unit_label), source: 'Mietvertrag' as const }));
+  const meaningfulTenant = (value: unknown) => {
+    const normalized = normalizePerson(value);
+    return normalized && !['nicht gepflegt','nicht zugeordnet','nicht eindeutig zugeordnet'].includes(normalized) && normalized !== '';
+  };
+  const nextDay = (value: unknown) => {
+    const date = new Date(`${text(value).slice(0,10)}T00:00:00Z`);
+    if (Number.isNaN(date.getTime())) return '';
+    date.setUTCDate(date.getUTCDate()+1);
+    return date.toISOString().slice(0,10);
+  };
+  const tenantForRental = (rental: ReportRecord, fallback: unknown) => {
+    const object = objectFor(rental);
+    const unit = rentalUnitLabel(rental);
+    const rentalFrom = text(rental.start_date || '0000-01-01').slice(0,10);
+    const rentalTo = text(rental.end_date || '9999-12-31').slice(0,10);
+    const unitContracts = contracts.filter(contract => objectFor(contract)?.id === object?.id && sameUnit(contract.unit_label,unit));
+    const overlapping = unitContracts.find(contract => overlaps(contract,rentalFrom,rentalTo));
+    if (overlapping) return name(overlapping);
+    // Historische Vermietungszeiträume besitzen keine eigene Mieter-ID. Wenn der
+    // zentrale Mietvertrag am direkt folgenden Tag beginnt, ist dies derselbe
+    // belegte Mieterwechsel und keine unsichere Namensschätzung.
+    const adjacent = unitContracts.find(contract => text(contract.start_date).slice(0,10) === nextDay(rentalTo));
+    if (adjacent) return name(adjacent);
+    return meaningfulTenant(fallback) ? text(fallback) : 'Nicht gepflegt';
+  };
   const rentPeriods: TenantPeriod[] = rentRows.flatMap(row => rentalHistory
     .filter(r => objectFor(r)?.id === row.objectId && sameUnit(rentalUnitLabel(r),row.unitLabel))
-    .map(r => ({ object: objectFor(r), tenant: row.tenantName || 'Nicht gepflegt', unit: row.unitLabel, from: text(r.start_date || '0000-01-01').slice(0,10), to: text(r.end_date || '9999-12-31').slice(0,10), area: areaForUnit(objectFor(r),row.unitLabel), source: 'Mietkonto/Vermietungszeitraum' as const })));
+    .map(r => ({ object: objectFor(r), tenant: tenantForRental(r,row.tenantName), unit: row.unitLabel, from: text(r.start_date || '0000-01-01').slice(0,10), to: text(r.end_date || '9999-12-31').slice(0,10), area: areaForUnit(objectFor(r),row.unitLabel), source: 'Mietkonto/Vermietungszeitraum' as const })));
   const tenancyPeriods = [
     ...billingPeriods,
     ...contractPeriods.filter(c => !billingPeriods.some(b => b.object?.id === c.object?.id && normalizePerson(b.tenant) === normalizePerson(c.tenant) && b.from <= c.to && b.to >= c.from)),
     ...rentPeriods.filter(r => ![...billingPeriods,...contractPeriods].some(existing => existing.object?.id === r.object?.id && sameUnit(existing.unit,r.unit) && existing.from <= r.to && existing.to >= r.from)),
   ];
   const periodsFor = (r: ReportRecord) => tenancyPeriods.filter(p => p.object?.id === objectFor(r)?.id);
+  const tenantForRentRow = (row: RentAnnualReportSnapshot['rows'][number]) => {
+    const names = tenancyPeriods
+      .filter(period => period.object?.id === row.objectId && sameUnit(period.unit,row.unitLabel) && period.from <= to && period.to >= from && meaningfulTenant(period.tenant))
+      .sort((left,right) => left.from.localeCompare(right.from))
+      .map(period => period.tenant)
+      .filter((tenant,index,all) => all.indexOf(tenant) === index);
+    return names.join(' / ') || (meaningfulTenant(row.tenantName) ? row.tenantName : 'Nicht gepflegt');
+  };
   const tenantForDate = (r: ReportRecord, date: string, unitCode = recordUnit(r)) => periodsFor(r).find(p => p.from <= date && p.to >= date && (!unitCode || detectRosensteinTaxUnit(p.unit) === unitCode))?.tenant;
   const tenantForEntry = (e: FinanceEntry) => {
     const mentionedUnits = detectRosensteinTaxUnits(e.objekt_code,e.category,e.note);
@@ -218,7 +251,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const table = (title: string, headers: string[], rows: PdfReportTable['rows'], subtitle?: string): PdfReportTable => ({ title, headers, rows, subtitle });
   const module = (id: string, tables: PdfReportTable[], paragraphs: string[] = []): ReportModule => ({ id, title: reportNames.find(r => r[0] === id)![1], tables, paragraphs });
   const rentNote = 'Soll/Ist folgt dem zentralen Mietkonto nach Mietmonat. Bei Teilmonaten wird der vollständige betroffene Mietmonat gezeigt. Künftige Monate sind neutral; Rückstände berücksichtigen nur fällige Monate.';
-  const arrears = rentRows.map(r => [r.objectLabel, r.unitLabel, r.tenantName, euro(r.months.filter(m => m.month >= firstMonth && m.month <= lastMonth && `${from.slice(0,4)}-${String(m.month).padStart(2,'0')}-01` <= today).reduce((v,m) => v + rentBalancePart(m.expected,m.paid,'open'),0))]);
+  const arrears = rentRows.map(r => [r.objectLabel, r.unitLabel, tenantForRentRow(r), euro(r.months.filter(m => m.month >= firstMonth && m.month <= lastMonth && `${from.slice(0,4)}-${String(m.month).padStart(2,'0')}-01` <= today).reduce((v,m) => v + rentBalancePart(m.expected,m.paid,'open'),0))]);
   const incomeGroups = new Map<string, number>(['Kaltmiete','Nebenkostenzahlungen','Nebenkostennachzahlungen','Mahngebühren'].map(k => [k,0]));
   const addIncome = (key: string, amount: number) => incomeGroups.set(key, roundMoney((incomeGroups.get(key) ?? 0) + amount));
   const splitGenericRent = (e: FinanceEntry): { cold: number; nk: number } | null => {
@@ -317,7 +350,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     contractRows.push([period.object?.label ?? 'Nicht zugeordnet',period.unit,period.tenant,period.from,period.to,euro(coldRent),euro(operatingCosts),totalRent != null&&coldRent != null&&operatingCosts != null?euro(n(totalRent)-n(coldRent)-n(operatingCosts)):'Nicht gepflegt',euro(totalRent),str(period.area),n(period.area)>0&&coldRent!=null?euro(n(coldRent)/n(period.area)):'—','Nicht gepflegt']);
   }
   contractRows.sort((left,right)=>String(left[0]).localeCompare(String(right[0]),'de')||String(left[1]).localeCompare(String(right[1]),'de')||String(left[3]).localeCompare(String(right[3])));
-  const matrix = table('Zahlungsmatrix · Ist / Soll',['Objekt','Einheit','Mieter',...Array.from({length:12},(_,i) => new Date(2025,i,1).toLocaleDateString('de-DE',{month:'short'}))],rentRows.map(r => [r.objectLabel,r.unitLabel,r.tenantName,...r.months.map(m => {
+  const matrix = table('Zahlungsmatrix · Ist / Soll',['Objekt','Einheit','Mieter',...Array.from({length:12},(_,i) => new Date(2025,i,1).toLocaleDateString('de-DE',{month:'short'}))],rentRows.map(r => [r.objectLabel,r.unitLabel,tenantForRentRow(r),...r.months.map(m => {
     if (m.month < firstMonth || m.month > lastMonth) return '—';
     const monthStart = `${from.slice(0,4)}-${String(m.month).padStart(2,'0')}-01`;
     return `${euro(m.paid)} / ${euro(m.expected)} · ${paymentMatrixStatus(m, monthStart, today)}`;
@@ -373,7 +406,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     ['Vermietungsquote im Zeitraum', reportingUnits.length ? percent(rented/reportingUnits.length*100) : '—'],
   ]);
   const areaStatus = objects.map(o => { const area=areaForObject(o); const parkingOnly=/rosenstein/i.test(o.label); return [o.label,str(area),area?'Vollständig':'Fehlt',parkingOnly?'Immobilienvermögen · Stellplatzfläche je TG-Einheit':'Immobilienvermögen · property_extra_info']; });
-  const unitDetails = reportingUnits.map(({object,row}) => { const parking=isParkingText(row.unitLabel); const area=areaForUnit(object,row.unitLabel); const activeInPeriod=row.months.some(m=>m.month>=firstMonth&&m.month<=lastMonth&&m.expected>0); return [row.objectLabel,row.unitLabel,parking?'Stellplatz / Garage':'Wohnung',str(area),activeInPeriod?'Vermietet im Zeitraum':'Ohne Soll-Miete im Zeitraum',row.tenantName||'—']; });
+  const unitDetails = reportingUnits.map(({object,row}) => { const parking=isParkingText(row.unitLabel); const area=areaForUnit(object,row.unitLabel); const activeInPeriod=row.months.some(m=>m.month>=firstMonth&&m.month<=lastMonth&&m.expected>0); return [row.objectLabel,row.unitLabel,parking?'Stellplatz / Garage':'Wohnung',str(area),activeInPeriod?'Vermietet im Zeitraum':'Ohne Soll-Miete im Zeitraum',tenantForRentRow(row)]; });
   const objectModule = module('objects',[table('Datenvollständigkeit Fläche',['Objekt','Fläche m²','Status','Hauptquelle'],areaStatus),table('Eckdaten · Stand zum Periodenende',['Objekt','Einheiten','Wohnen','Gewerbe','Garagen / Stellplätze','Unklassifiziert','Fläche m²','Nutzfläche m²','Kalt monatlich','NK monatlich','Gesamt monatlich','Kalt €/m²','Vermietungsquote'],objectRows),table('Einheiten-Details aus dem Mietkonto',['Objekt','Einheit','Art','Fläche m²','Status','Mieter'],unitDetails)],['Einheiten und Belegungsstatus stammen aus dem zentralen Mietkonto. Flächen werden direkt aus Immobilienvermögen/property_extra_info übernommen; sie werden nicht in einer zweiten Report-Datenquelle gespeichert. Bei Rosenstein gilt die dort gepflegte Fläche je TG-Stellplatz.']);
   objectModule.tables?.unshift(portfolioStats);
   const rentalHistoryRows = rentalHistory.map(r => {

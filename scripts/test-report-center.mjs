@@ -78,8 +78,9 @@ const rosensteinUnits=[
 const rosensteinSources={
   portfolio_units:rosensteinUnits,
   property_extra:[{property_id:'rosen-core',wealth_profile:{totalArea:'7',purchasePrice:57000,buildingPurchasePrice:39900,landPurchasePrice:17100}}],
-  tenant_profiles:[{id:'t250',first_name:'Steffen',last_name:'Aicher'},{id:'t253',first_name:'Lena',last_name:'Huhn'},{id:'t254',first_name:'Sebastian',last_name:'Pilsl'}],
+  tenant_profiles:[{id:'t250-old',first_name:'Miriam',last_name:'Frommer'},{id:'t250',first_name:'Steffen',last_name:'Aicher'},{id:'t253',first_name:'Lena',last_name:'Huhn'},{id:'t254',first_name:'Sebastian',last_name:'Pilsl'}],
   tenant_contracts:[
+    {id:'c250-old',tenant_id:'t250-old',property_id:'rosen-core',unit_label:'P250 - E008440000121',start_date:'2026-01-01',end_date:'2026-01-31',status:'ended',cold_rent:75,operating_costs:0,total_rent:75},
     {id:'c250',tenant_id:'t250',property_id:'rosen-core',unit_label:'P250 - E008440000121',start_date:'2026-03-01',status:'active',cold_rent:85,operating_costs:0,total_rent:85},
     {id:'c253',tenant_id:'t253',property_id:'rosen-core',unit_label:'P253 - E008440000122',start_date:'2026-01-01',status:'active',cold_rent:85,operating_costs:0,total_rent:85},
     {id:'c254',tenant_id:'t254',property_id:'rosen-core',unit_label:'P254 - E008440000123',start_date:'2026-01-01',end_date:'2026-05-31',status:'ended',cold_rent:90,operating_costs:0,total_rent:90},
@@ -117,9 +118,9 @@ const rosensteinEntries=[
   {id:'rate-dec',object_id:'rosen-core',booking_date:'2025-12-01',entry_type:'expense',category:'Kreditrate',amount:305,note:'Rosenstein Darlehensrate Dezember',loan_interest_amount:559.70,loan_principal_amount:-254.70,loan_rate_plan_id:'plan-dec',loan_split_source:'Tilgungsplan'},
 ];
 const rosensteinRent={year:2025,objectFilter:'rosen-core',rows:[
-  {key:'p250',objectId:'rosen-core',objectLabel:'Rosenstein Str. 25',unitLabel:'P250 - E008440000121',tenantName:'Miriam Frommer',months:Array.from({length:12},(_,i)=>({month:i+1,expected:i===10?42.5:0,paid:i===10?42.5:0,open:0,status:i===10?'paid':'inactive'}))},
-  {key:'p253',objectId:'rosen-core',objectLabel:'Rosenstein Str. 25',unitLabel:'P253 - E008440000122',tenantName:'Lena Huhn',months:Array.from({length:12},(_,i)=>({month:i+1,expected:i===10?42.5:0,paid:i===10?42.5:0,open:0,status:i===10?'paid':'inactive'}))},
-  {key:'p254',objectId:'rosen-core',objectLabel:'Rosenstein Str. 25',unitLabel:'P254 - E008440000123',tenantName:'Sebastian Pilsl',months:Array.from({length:12},(_,i)=>({month:i+1,expected:i===10?45.9:0,paid:i===10?45.9:0,open:0,status:i===10?'paid':'inactive'}))},
+  {key:'p250',objectId:'rosen-core',objectLabel:'Rosenstein Str. 25',unitLabel:'P250 - E008440000121',tenantName:'—',months:Array.from({length:12},(_,i)=>({month:i+1,expected:i===10?42.5:0,paid:i===10?42.5:0,open:0,status:i===10?'paid':'inactive'}))},
+  {key:'p253',objectId:'rosen-core',objectLabel:'Rosenstein Str. 25',unitLabel:'P253 - E008440000122',tenantName:'—',months:Array.from({length:12},(_,i)=>({month:i+1,expected:i===10?42.5:0,paid:i===10?42.5:0,open:0,status:i===10?'paid':'inactive'}))},
+  {key:'p254',objectId:'rosen-core',objectLabel:'Rosenstein Str. 25',unitLabel:'P254 - E008440000123',tenantName:'—',months:Array.from({length:12},(_,i)=>({month:i+1,expected:i===10?45.9:0,paid:i===10?45.9:0,open:0,status:i===10?'paid':'inactive'}))},
 ],totals:{},propertyTotals:[],kpis:{}};
 const p253Report=buildReportCenter({objects:[rosensteinObject],entries:rosensteinEntries,loans:[],sources:rosensteinSources,rent:rosensteinRent,from:'2025-01-01',to:'2025-12-31',objectId:'rosen-core',rosensteinUnit:'P253',today:'2026-09-23'});
 const p253Module=id=>p253Report.find(module=>module.id===id);
@@ -130,6 +131,7 @@ assert.equal(p253Module('tenants').tables[0].rows[0][3],'2025-11-14');
 assert.equal(p253Module('tenants').tables[0].rows[0][4],'2025-12-31');
 assert.equal(p253Module('tenants').tables[0].rows[0][9],'7','Stellplatzfläche muss aus Immobilienvermögen übernommen werden');
 assert.equal(p253Module('tenants').tables[1].rows.length,1,'P253-Einzelreport darf nur die P253-Zahlungsmatrix enthalten');
+assert.equal(p253Module('tenants').tables[1].rows[0][2],'Lena Huhn','Zahlungsmatrix muss den zeitlich passenden historischen Mieter statt eines Platzhalters zeigen');
 assert.ok(p253Module('journal').tables[0].rows.length>=7,'P253 enthält direkte Buchungen sowie gemeinsame Erwerbs- und Kreditbuchungen anteilig');
 assert.equal(p253Module('journal').tables[0].rows.find(row=>String(row[5]).includes('gemeinsame Verwaltung'))?.[7],'10,00 €','Gemeinsame Rosenstein-Ausgabe muss nachvollziehbar zu einem Drittel erscheinen');
 assert.equal(p253Module('objects').tables[3].rows[0][3],'7','Einheitendetail muss die gepflegte TG-Fläche zeigen');
@@ -147,6 +149,7 @@ assert.match(String(p253Module('mileage').tables[0].rows[0][2]),/P253/);
 assert.equal(p253Module('vacancy').tables[0].rows.length,1,'Leerstände im P253-Einzelreport müssen stellplatzbezogen gefiltert sein');
 assert.match(String(p253Module('vacancy').tables[0].rows[0][1]),/P253/);
 const individualRosensteinReports=['P250','P253','P254'].map(rosensteinUnit=>buildReportCenter({objects:[rosensteinObject],entries:rosensteinEntries,loans:[],sources:rosensteinSources,rent:rosensteinRent,from:'2025-01-01',to:'2025-12-31',objectId:'rosen-core',rosensteinUnit,today:'2026-09-23'}));
+assert.deepEqual(individualRosensteinReports.map(report=>report.find(module=>module.id==='tenants').tables[0].rows[0][2]),['Miriam Frommer','Lena Huhn','Sebastian Pilsl'],'Alle drei Einzelreports müssen den aus dem anschließenden zentralen Mietvertrag belegten historischen Mieter zeigen');
 const parseEuro=value=>Number(String(value).replace(/[^0-9,\-]/g,'').replace(',','.'));
 const invoiceShares=individualRosensteinReports.map(report=>parseEuro(report.find(module=>module.id==='acquisition').tables[1].rows.find(row=>String(row[2]).includes('R20252787'))[5]));
 assert.equal(invoiceShares.reduce((sum,value)=>sum+value,0).toFixed(2),'225.01','Drei Einzelreports müssen den gemeinsamen Beleg centgenau reproduzieren');
