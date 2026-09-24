@@ -87,7 +87,7 @@ const rosensteinSources={
   ],
   portfolio_property_rentals:[
     {id:'r250',property_id:'rosen-core',unit_id:'u250',start_date:'2025-11-14',end_date:'2025-12-31',kaltmiete_laut_mietvertrag:75,nebenkosten:0,gesamt_mietkosten:75,rent_monthly:75},
-    {id:'r253',property_id:'rosen-core',unit_id:'u253',start_date:'2025-11-14',end_date:'2025-12-31',kaltmiete_laut_mietvertrag:85,nebenkosten:0,gesamt_mietkosten:85,rent_monthly:85},
+    {id:'r253',property_id:'rosen-core',unit_id:null,start_date:'2025-11-14',end_date:'2025-12-31',kaltmiete_laut_mietvertrag:85,nebenkosten:0,gesamt_mietkosten:85,rent_monthly:85},
     {id:'r254',property_id:'rosen-core',unit_id:'u254',start_date:'2025-11-14',end_date:'2025-12-31',kaltmiete_laut_mietvertrag:90,nebenkosten:0,gesamt_mietkosten:90,rent_monthly:90},
   ],
   property_loan_ledger:[{property_id:'rosen-core',year:2025,interest:853.45,principal:355.30,balance:59949.70,source:'Gesamtdarlehen'}],

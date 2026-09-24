@@ -7,7 +7,7 @@ import { classifyNkRelevance } from '../lib/nkClassification';
 import { rentBalancePart } from '../lib/rentPaymentBalance';
 import { effectiveRentYearMonth, rentPaymentCutoffDay } from '../lib/rentMonth';
 import { buildTaxReportPreflight, taxPreflightModule } from './taxReportPreflight';
-import { allocateRosensteinThird, detectRosensteinTaxUnit, detectRosensteinTaxUnits, isRosensteinLabel, rosensteinTaxUnitLabel, type RosensteinTaxUnitCode } from '../lib/rosensteinTaxUnit';
+import { allocateRosensteinThird, detectRosensteinTaxUnit, detectRosensteinTaxUnits, isRosensteinLabel, ROSENSTEIN_TAX_UNITS, rosensteinTaxUnitLabel, type RosensteinTaxUnitCode } from '../lib/rosensteinTaxUnit';
 
 export type ReportRecord = Record<string, unknown>;
 export type ReportSources = Record<string, ReportRecord[]>;
@@ -116,9 +116,25 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     ));
     return unit?.area_sqm ?? unit?.living_area_m2 ?? unit?.living_area ?? areaForObject(o);
   };
-  const rentalUnitLabel = (r: ReportRecord) => text(allUnits.find(unit => unit.id === r.unit_id)?.name || r.unit_label || 'Gesamte Immobilie');
+  const rawRentals = (s.portfolio_property_rentals ?? []).filter(r => scoped(r) && overlaps(r,from,to));
+  const directRentalUnitCode = (r: ReportRecord) => detectRosensteinTaxUnit(allUnits.find(unit => unit.id === r.unit_id)?.name,r.unit_label,r.unit_name);
+  const inferredRentalUnitCode = (r: ReportRecord): RosensteinTaxUnitCode | null => {
+    const direct = directRentalUnitCode(r);
+    if (direct) return direct;
+    const object = objectFor(r);
+    if (!isRosensteinLabel(object?.label)) return null;
+    const samePeriod = rawRentals.filter(candidate => objectFor(candidate)?.id === object?.id
+      && text(candidate.start_date).slice(0,10) === text(r.start_date).slice(0,10)
+      && text(candidate.end_date).slice(0,10) === text(r.end_date).slice(0,10));
+    const assigned = new Set(samePeriod.map(directRentalUnitCode).filter(Boolean));
+    const unassigned = samePeriod.filter(candidate => !directRentalUnitCode(candidate)).sort((left,right)=>text(left.id).localeCompare(text(right.id)));
+    const remaining = ROSENSTEIN_TAX_UNITS.map(unit=>unit.code).filter(code=>!assigned.has(code));
+    if (unassigned.length !== remaining.length) return null;
+    return remaining[unassigned.indexOf(r)] ?? null;
+  };
+  const rentalUnitLabel = (r: ReportRecord) => text(allUnits.find(unit => unit.id === r.unit_id)?.name || inferredRentalUnitCode(r) || r.unit_label || 'Gesamte Immobilie');
   const contracts = (s.tenant_contracts ?? []).filter(r => scoped(r) && unitScoped(r) && r.is_deleted !== true && r.status !== 'vacant');
-  const rentals = (s.portfolio_property_rentals ?? []).filter(r => scoped(r) && overlaps(r,from,to) && (!input.rosensteinUnit || detectRosensteinTaxUnit(rentalUnitLabel(r)) === input.rosensteinUnit));
+  const rentals = rawRentals.filter(r => !input.rosensteinUnit || inferredRentalUnitCode(r) === input.rosensteinUnit);
   const rentalHistory = rentals
     .filter((r,index,rows) => rows.findIndex(candidate => (
       objectFor(candidate)?.id === objectFor(r)?.id
