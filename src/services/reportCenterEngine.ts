@@ -24,6 +24,7 @@ export const reportNames = [
   ['vacancy', 'Leerstand Bericht'],
   ['utilities', 'Nebenkostenabrechnung'],
   ['proofs', 'Inserat-Nachweise für Leerstände'],
+  ['wealth-statement', 'Aufstellung Ihres Immobilienvermögens'],
   ['register', 'Immobilien-Stammdaten (Portfolio-Register)'],
   ['acquisition', 'Anschaffungskosten & AfA-Basis'],
   ['loans', 'Immobilien-Eigenschaften & Darlehen'],
@@ -46,7 +47,7 @@ export const taxAdvisorReportIds = [
   'proofs',
   'loan-interest',
 ] as const;
-export const portfolioReportIds = ['register', 'acquisition', 'loans', 'arrears', 'cashflow', 'loan-interest'] as const;
+export const portfolioReportIds = ['wealth-statement', 'register', 'acquisition', 'loans', 'arrears', 'cashflow', 'loan-interest'] as const;
 export const euro = (v: unknown) => v == null || v === '' ? 'Nicht gepflegt' : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(parseLocaleNumber(v, 0));
 const percent = (v: number, digits = 1) => `${new Intl.NumberFormat('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v)} %`;
 const n = (v: unknown) => parseLocaleNumber(v, 0);
@@ -103,7 +104,15 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const label = (r: ReportRecord) => objectFor(r)?.label ?? (text(r.object_label || r.property_label || r.property_name) || 'Nicht zugeordnet / Portfolio');
   const recordUnit = (r: ReportRecord) => detectRosensteinTaxUnit(r.unit_label, r.unit_name, r.name, r.reference, r.object_code, r.objekt_code, r.note, r.notes, r.title, r.file_name, r.grund);
   const unitScoped = (r: ReportRecord) => !input.rosensteinUnit || recordUnit(r) === input.rosensteinUnit;
-  const profiles = (o: AppObject): ReportRecord => Object.assign({}, ...(s.property_extra ?? []).filter(r => aliases(o).has(text(r.property_id))).map(r => ({...record(r.wealth_profile), livingArea: r.living_area ?? record(r.wealth_profile).livingArea ?? record(r.wealth_profile).totalArea})));
+  const profiles = (o: AppObject): ReportRecord => Object.assign(
+    {},
+    ...(s.portfolio_properties ?? [])
+      .filter(r => [r.id,r.core_property_id,r.name,r.property_name,r.address].filter(Boolean).some(value => aliases(o).has(text(value)) || masterNamesMatch(value,o.label)))
+      .map(r => ({...r,...record(r.wealth_profile)})),
+    ...(s.property_extra ?? [])
+      .filter(r => aliases(o).has(text(r.property_id)))
+      .map(r => ({...record(r.wealth_profile), livingArea: r.living_area ?? record(r.wealth_profile).livingArea ?? record(r.wealth_profile).totalArea})),
+  );
   const areaForObject = (o: AppObject | undefined): unknown => o ? o.livingAreaM2 ?? profiles(o).livingArea ?? profiles(o).totalArea : undefined;
   const allUnits = (s.portfolio_units ?? []).filter(r => r.is_active !== false && scoped(r));
   const areaForUnit = (o: AppObject | undefined, unitLabel: unknown): unknown => {
@@ -464,6 +473,105 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     }
   }
   const proofs = module('proofs',[docTable(docs.filter(r=>/leerstand|inserat|vermietungsbem|vacancy/i.test(JSON.stringify([r.title,r.notes,r.meta]))))]);
+  const statementMoney = (value: unknown) => value == null || value === '' ? 'Nicht gepflegt' : euro(value);
+  const statementArea = (value: unknown, suffix = 'm²') => value == null || value === '' || !Number.isFinite(n(value)) ? 'Nicht gepflegt' : `${new Intl.NumberFormat('de-DE',{maximumFractionDigits:2}).format(n(value))} ${suffix}`;
+  const statementPercent = (value: unknown) => value == null || value === '' ? 'Nicht gepflegt' : /%/.test(text(value)) ? text(value) : `${text(value)} %`;
+  const statementAddress = (object: AppObject, profile: ReportRecord) => {
+    const street = [profile.street,profile.houseNumber].filter(Boolean).map(text).join(' ').trim();
+    const city = [profile.postalCode,profile.city].filter(Boolean).map(text).join(' ').trim();
+    return [street || text(profile.address) || object.label,city].filter(Boolean).join(', ');
+  };
+  const wealthTables: PdfReportTable[] = [];
+  const statementValues: Array<{market:number;debt:number}> = [];
+  objects.forEach((object,index) => {
+    const profile = profiles(object);
+    const objectUnits = allUnits.filter(unit => objectFor(unit)?.id === object.id);
+    const unitCount = n(profile.unitCount) || objectUnits.length || 1;
+    const parkingOnly = isRosensteinLabel(object.label) || isParkingText(profile.propertyType) || isParkingText(profile.usageType);
+    const centralArea = n(areaForObject(object));
+    const totalResidentialArea = parkingOnly ? 0 : centralArea;
+    const usableAreaRaw = profile.usableArea ?? profile.commercialArea ?? profile.nutzflaeche;
+    const usableArea = parkingOnly && centralArea > 0 ? centralArea * unitCount : usableAreaRaw;
+    const objectContracts = active.filter(contract => objectFor(contract)?.id === object.id);
+    const contractUnits = new Set(objectContracts.map(contract => text(contract.unit_label) || 'Gesamte Immobilie'));
+    const objectRentals = activeRentals.filter(rental => objectFor(rental)?.id === object.id && !Array.from(contractUnits).some(unit => sameUnit(unit,rentalUnitLabel(rental))));
+    const occupiedUnits = [
+      ...objectContracts.map(contract => ({unit:text(contract.unit_label) || 'Gesamte Immobilie',cold:n(currentRent(contract,'cold_rent'))})),
+      ...objectRentals.map(rental => ({unit:rentalUnitLabel(rental),cold:n(rental.kaltmiete_laut_mietvertrag)})),
+    ];
+    const residentialUnits = occupiedUnits.filter(row => !isParkingText(row.unit));
+    const rentedResidentialArea = isOwnerOccupied(object) ? 0 : residentialUnits.length
+      ? Array.from(new Set(residentialUnits.map(row=>row.unit))).reduce((sum,unit)=>sum+n(areaForUnit(object,unit)),0)
+      : 0;
+    const currentColdRent = isOwnerOccupied(object) ? null : occupiedUnits.reduce((sum,row)=>sum+row.cold,0);
+    const propertyType = text(profile.propertyType) || (parkingOnly ? 'Tiefgaragenstellplätze' : 'Nicht gepflegt');
+    const marketValueRaw = profile.marketValue ?? profile.estimatedMarketValue;
+    const marketValue = marketValueRaw == null || marketValueRaw === '' ? 0 : n(marketValueRaw);
+    const objectLedger = (s.property_loan_ledger ?? [])
+      .filter(row => objectFor(row)?.id === object.id && Number(row.year) <= Number(to.slice(0,4)))
+      .sort((left,right)=>Number(left.year)-Number(right.year));
+    const ledgerCurrent = objectLedger.at(-1);
+    const dashboardLoan = input.loans.find(row => aliases(object).has(text(row.property_id)));
+    const remainingDebtRaw = ledgerCurrent?.balance ?? dashboardLoan?.last_balance ?? profile.remainingDebt;
+    const remainingDebt = remainingDebtRaw == null || remainingDebtRaw === '' ? 0 : n(remainingDebtRaw);
+    const objectPlans = (s.property_loan_rate_plan ?? [])
+      .filter(row => objectFor(row)?.id === object.id && text(row.plan_date).slice(0,10) <= referenceDate)
+      .sort((left,right)=>text(left.plan_date).localeCompare(text(right.plan_date)));
+    const currentPlan = objectPlans.at(-1);
+    const monthlyRateRaw = currentPlan?.payment_amount ?? profile.currentMonthlyRate;
+    const principalPartRaw = currentPlan?.principal_amount;
+    const areaSource = 'Immobilienvermögen · property_extra_info';
+    const tenancySource = isOwnerOccupied(object) ? 'Immobilienvermögen · Nutzungstyp Eigennutzung' : 'Mieterregister · tenant_contracts / Vermietungszeiträume';
+    const loanBalanceSource = ledgerCurrent ? `Darlehen · property_loan_ledger (${ledgerCurrent.year})` : dashboardLoan ? 'Darlehen · zentrale Restschuld' : 'Immobilienvermögen · Darlehensprofil';
+    const rateSource = currentPlan ? `Darlehen · property_loan_rate_plan (${text(currentPlan.plan_date).slice(0,7)})` : 'Immobilienvermögen · Darlehensprofil';
+    statementValues.push({market:marketValue,debt:remainingDebt});
+    wealthTables.push({
+      title:`${object.label} · Angaben zum Objekt`,
+      subtitle:`Aktueller Datenstand zum ${referenceDate}. Fehlende Werte werden nicht geschätzt.`,
+      pageBreakBefore:index>0,
+      headers:['Feld','Aktueller Wert','Verbindliche Hauptquelle'],
+      rows:[
+        ['Objektart',propertyType,areaSource],
+        ['Adresse des Objekts',statementAddress(object,profile),areaSource],
+        ['Gesamte Wohnfläche',statementArea(totalResidentialArea),areaSource],
+        ['Davon vermietete Wohnfläche',parkingOnly?'Nicht zutreffend (TG-Stellplätze)':isOwnerOccupied(object)?'0 m² · Eigennutzung':statementArea(rentedResidentialArea),tenancySource],
+        ['Nutz-/Stellplatzfläche',parkingOnly&&centralArea>0?`${statementArea(usableArea)} · ${unitCount} × ${statementArea(centralArea)}`:statementArea(usableAreaRaw),areaSource],
+        ['Baujahr',str(profile.equipmentYear),areaSource],
+        ['Kaufpreis',statementMoney(profile.purchasePrice),areaSource],
+        ['Geschätzter Wert heute',statementMoney(marketValueRaw),areaSource],
+        ['Nettokaltmiete pro Monat',isOwnerOccupied(object)?'Nicht zutreffend · Eigennutzung':statementMoney(currentColdRent),tenancySource],
+        ['Anzahl Einheiten',String(unitCount),objectUnits.length?'Immobilienvermögen · portfolio_units':areaSource],
+      ],
+    });
+    wealthTables.push({
+      title:`${object.label} · Verbindlichkeiten`,
+      subtitle:'Restschuld und Rate werden nicht im Report gespeichert, sondern bei jeder Erstellung direkt aus Darlehen geladen.',
+      headers:['Feld','Aktueller Wert','Verbindliche Hauptquelle'],
+      rows:[
+        ['Darlehensgeber',str(profile.lender),'Immobilienvermögen · Darlehensprofil'],
+        ['Ursprüngliche Darlehenssumme / Grundschuld',statementMoney(profile.originalLoanAmount),'Immobilienvermögen · Darlehensprofil'],
+        ['Darlehensstand zum Stichtag',statementMoney(remainingDebtRaw),loanBalanceSource],
+        ['Sollzinssatz',statementPercent(profile.interestRate),'Immobilienvermögen · Darlehensprofil'],
+        ['Tilgungsanteil der aktuellen Rate',statementMoney(principalPartRaw),currentPlan ? rateSource : 'Nicht gepflegt'],
+        ['Sollzinsbindung',str(profile.interestBinding),'Immobilienvermögen · Darlehensprofil'],
+        ['Monatliche Darlehensrate',statementMoney(monthlyRateRaw),rateSource],
+        ['Tilgungsersatz / Lebensversicherung',str(profile.lifeInsuranceContribution),'Immobilienvermögen · Darlehensprofil'],
+      ],
+    });
+  });
+  const wealthMarketTotal = roundMoney(statementValues.reduce((sum,row)=>sum+row.market,0));
+  const wealthDebtTotal = roundMoney(statementValues.reduce((sum,row)=>sum+row.debt,0));
+  const wealthStatement = module('wealth-statement',wealthTables,[
+    'Die Struktur orientiert sich an der Vorlage „Aufstellung Ihres Immobilienvermögens“. Statt anonymer Nummern wird jede Immobilie mit ihrem echten Namen ausgewiesen.',
+    'Single Source of Truth: Objekt-, Flächen-, Kaufpreis- und Wertangaben stammen aus Immobilienvermögen. Mieten und Vermietungsflächen stammen aus den zum Stichtag gültigen Mietverträgen beziehungsweise Vermietungszeiträumen. Restschuld, Rate und Tilgungsanteil stammen aus Darlehen.',
+    'Nicht gespeicherte Werte bleiben ausdrücklich als „Nicht gepflegt“ sichtbar; Werte aus der hochgeladenen Vorlage werden nicht als zweite Datenquelle übernommen.',
+  ]);
+  wealthStatement.metrics = [
+    {label:'Immobilien',value:String(objects.length)},
+    {label:'Marktwert gesamt',value:euro(wealthMarketTotal),hint:'Nur gepflegte Marktwerte'},
+    {label:'Restschuld gesamt',value:euro(wealthDebtTotal),hint:`Stand bis ${to.slice(0,4)}`},
+    {label:'Rechnerisches Nettovermögen',value:euro(wealthMarketTotal-wealthDebtTotal),hint:'Marktwert minus Restschuld'},
+  ];
   const register = module('register',[table('Portfolio-Register',['Objekt-ID','Immobilie','Straße','PLZ / Ort','Nutzung','Baujahr','Fläche','Kaufdatum'],objects.map(o=>{const p=profiles(o);return [o.code??o.id,o.label,str(p.street),`${text(p.postalCode)} ${text(p.city)}`,str(p.usageType),str(p.equipmentYear),str(p.totalArea??o.livingAreaM2),str(p.purchaseDate)];}))]);
   const acquisitionValue = (value: unknown) => input.rosensteinUnit && value != null && value !== '' ? allocateRosensteinThird(n(value),input.rosensteinUnit) : value;
   const acquisitionEntries = expenses.filter(e=>/anschaffung|erwerbsneben|kaufpreis|grundbuch|notar|immobilienmakler|makler/i.test(`${text(e.category)} ${text(e.note)}`));
@@ -567,5 +675,5 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
       {label:'Tilgung',values:chartPrincipal,color:'#c9972b'},
     ],
   }]:[];
-  return [taxPreflightModule(preflight),cover,eur,tenants,journal,objectModule,changeModule,mileage,vacancy,utilities,proofs,register,acquisition,loans,module('arrears',[table('Offene Zahlungen',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears),matrix],[rentNote]),cashflow,loanInterest];
+  return [taxPreflightModule(preflight),cover,eur,tenants,journal,objectModule,changeModule,mileage,vacancy,utilities,proofs,wealthStatement,register,acquisition,loans,module('arrears',[table('Offene Zahlungen',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears),matrix],[rentNote]),cashflow,loanInterest];
 }

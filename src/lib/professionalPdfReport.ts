@@ -9,6 +9,7 @@ export type PdfReportMetric = {
 export type PdfReportTable = {
   title: string;
   subtitle?: string;
+  pageBreakBefore?: boolean;
   headers: string[];
   rows: Array<Array<string | number | null | undefined>>;
 };
@@ -122,7 +123,7 @@ function tableHtml(table: PdfReportTable) {
   };
   const isSummaryRow = (row: PdfReportTable["rows"][number]): boolean => /^(summe|gesamt(?:summe|betrag|kosten|einnahmen|ausgaben)?|ergebnis|überschuss|saldo)\b/i.test(String(row[0] ?? "").trim());
   return `
-    <div class="table-block">
+    <div class="table-block${table.pageBreakBefore ? " page-break-before" : ""}">
       <div class="table-title">${escapeHtml(table.title)}</div>
       ${table.subtitle ? `<div class="table-subtitle">${escapeHtml(table.subtitle)}</div>` : ""}
       <table>
@@ -493,6 +494,7 @@ export function buildProfessionalPdfReportHtml(options: PdfReportOptions) {
         border-radius: 0;
       }
       .table-block { break-inside: auto; }
+      .table-block.page-break-before { break-before: page; }
       .section-head, .table-title { break-after: avoid; }
       thead { display: table-header-group; }
       tr { break-inside: avoid; }
