@@ -36,6 +36,9 @@ assert.equal(module('wealth-statement').tables[0].rows.find(row=>row[0]==='Anzah
 assert.equal(module('wealth-statement').tables[1].rows.find(row=>row[0]==='Darlehensstand zum Stichtag')?.[1],'92.700,00 €','Restschuld muss aus dem Darlehens-Ledger des ausgewählten Jahres stammen');
 assert.equal(module('wealth-statement').tables[1].rows.find(row=>row[0]==='Monatliche Darlehensrate')?.[1],'400,00 €','Aktuelle Rate muss aus dem Darlehensplan stammen');
 assert.match(module('wealth-statement').paragraphs.join(' '),/Single Source of Truth/);
+const migratedWealth=buildReportCenter({...input,sources:{...sources,tenant_profiles:[...sources.tenant_profiles,{id:'t0',first_name:'Alt',last_name:'Mieter'}],tenant_contracts:[{id:'legacy-open',tenant_id:'t0',property_id:'core-1',unit_label:'Gesamte Immobilie',start_date:'2024-01-01',end_date:null,status:'active',cold_rent:500,operating_costs:150,total_rent:650},...sources.tenant_contracts]}}).find(m=>m.id==='wealth-statement');
+assert.equal(migratedWealth.tables[0].rows.find(row=>row[0]==='Nettokaltmiete pro Monat')?.[1],'800,00 €','Ein offener historischer Altvertrag darf die aktuelle Kaltmiete nicht verdoppeln');
+assert.equal(migratedWealth.tables[0].rows.find(row=>row[0]==='Davon vermietete Wohnfläche')?.[1],'50 m²','Ein offener historischer Altvertrag darf die aktuelle Wohnfläche nicht verdoppeln');
 assert.equal(module('journal').tables[0].rows.at(-1).at(-1),'2.750,00 €');
 assert.equal(row('cover','Einheiten mit Soll-Miete / Mietkonto-Zeilen')[1],'1/1');
 assert.match(module('tenants').tables[1].rows[0][4],/teilweise$/);

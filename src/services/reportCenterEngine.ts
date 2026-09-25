@@ -492,18 +492,20 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     const usableAreaRaw = profile.usableArea ?? profile.commercialArea ?? profile.nutzflaeche;
     const objectContracts = active.filter(contract => objectFor(contract)?.id === object.id);
     const objectRentals = activeRentals.filter(rental => objectFor(rental)?.id === object.id);
-    type StatementOccupancy = { unit:string; cold:number; tenant:string; sourcePriority:number };
+    type StatementOccupancy = { unit:string; cold:number; tenant:string; startDate:string; sourcePriority:number };
     const occupancyCandidates: StatementOccupancy[] = [
       ...objectContracts.map(contract => ({
         unit:text(contract.unit_label) || 'Gesamte Immobilie',
         cold:n(currentRent(contract,'cold_rent')),
         tenant:name(contract),
+        startDate:text(contract.start_date),
         sourcePriority:2,
       })),
       ...objectRentals.map(rental => ({
         unit:rentalUnitLabel(rental),
         cold:n(rental.kaltmiete_laut_mietvertrag),
         tenant:text(rental.tenant_name),
+        startDate:text(rental.start_date),
         sourcePriority:1,
       })),
     ];
@@ -511,13 +513,12 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
       const parkingCode = detectRosensteinTaxUnit(row.unit);
       if (parkingCode) return `parking:${parkingCode}`;
       if (isParkingText(row.unit)) return `parking:${normalizePerson(row.unit)}`;
-      const normalizedUnit = normalizePerson(row.unit);
-      const tenantKey = normalizePerson(row.tenant);
-      // Bei migrierten Datensätzen unterscheiden sich die Bezeichnungen
-      // (z. B. „Gesamte Immobilie“ vs. Straßenname), Mieter und Betrag aber
-      // nicht. Diese fachliche Identität ist stabiler als das Legacy-Label.
-      if (tenantKey || row.cold > 0) return `residential:${tenantKey || 'belegt'}:${roundMoney(row.cold)}`;
-      return `residential:${normalizedUnit || 'unbekannt'}`;
+      // Das aktuelle Portfolio führt je Vermögensobjekt genau eine
+      // Wohnhaupteinheit. Parallel migrierte Vertragszeilen (alter und neuer
+      // Mieter oder abweichende Legacy-Bezeichnung) dürfen deshalb nicht als
+      // zusätzliche Wohnung summiert werden. Separat geführte Stellplätze
+      // wurden oben bereits über ihren Einheitencode getrennt.
+      return 'residential:primary';
     };
     // Historische Migrationen können denselben aktiven Vertrag sowohl in
     // tenant_contracts als auch in portfolio_property_rentals enthalten. Für
@@ -525,7 +526,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     // bleibt dabei die vorrangige Mietquelle.
     const occupiedByUnit = new Map<string,StatementOccupancy>();
     occupancyCandidates
-      .sort((left,right)=>right.sourcePriority-left.sourcePriority)
+      .sort((left,right)=>right.startDate.localeCompare(left.startDate) || right.sourcePriority-left.sourcePriority)
       .forEach(row => {
         const key = occupancyKey(row);
         if (!occupiedByUnit.has(key)) occupiedByUnit.set(key,row);
