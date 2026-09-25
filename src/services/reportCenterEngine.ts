@@ -486,19 +486,56 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   objects.forEach((object,index) => {
     const profile = profiles(object);
     const objectUnits = allUnits.filter(unit => objectFor(unit)?.id === object.id);
-    const unitCount = n(profile.unitCount) || objectUnits.length || 1;
     const parkingOnly = isRosensteinLabel(object.label) || isParkingText(profile.propertyType) || isParkingText(profile.usageType);
     const centralArea = n(areaForObject(object));
     const totalResidentialArea = parkingOnly ? 0 : centralArea;
     const usableAreaRaw = profile.usableArea ?? profile.commercialArea ?? profile.nutzflaeche;
-    const usableArea = parkingOnly && centralArea > 0 ? centralArea * unitCount : usableAreaRaw;
     const objectContracts = active.filter(contract => objectFor(contract)?.id === object.id);
-    const contractUnits = new Set(objectContracts.map(contract => text(contract.unit_label) || 'Gesamte Immobilie'));
-    const objectRentals = activeRentals.filter(rental => objectFor(rental)?.id === object.id && !Array.from(contractUnits).some(unit => sameUnit(unit,rentalUnitLabel(rental))));
-    const occupiedUnits = [
-      ...objectContracts.map(contract => ({unit:text(contract.unit_label) || 'Gesamte Immobilie',cold:n(currentRent(contract,'cold_rent'))})),
-      ...objectRentals.map(rental => ({unit:rentalUnitLabel(rental),cold:n(rental.kaltmiete_laut_mietvertrag)})),
+    const objectRentals = activeRentals.filter(rental => objectFor(rental)?.id === object.id);
+    type StatementOccupancy = { unit:string; cold:number; tenant:string; sourcePriority:number };
+    const occupancyCandidates: StatementOccupancy[] = [
+      ...objectContracts.map(contract => ({
+        unit:text(contract.unit_label) || 'Gesamte Immobilie',
+        cold:n(currentRent(contract,'cold_rent')),
+        tenant:name(contract),
+        sourcePriority:2,
+      })),
+      ...objectRentals.map(rental => ({
+        unit:rentalUnitLabel(rental),
+        cold:n(rental.kaltmiete_laut_mietvertrag),
+        tenant:text(rental.tenant_name),
+        sourcePriority:1,
+      })),
     ];
+    const occupancyKey = (row: StatementOccupancy) => {
+      const parkingCode = detectRosensteinTaxUnit(row.unit);
+      if (parkingCode) return `parking:${parkingCode}`;
+      if (isParkingText(row.unit)) return `parking:${normalizePerson(row.unit)}`;
+      const normalizedUnit = normalizePerson(row.unit);
+      const tenantKey = normalizePerson(row.tenant);
+      // Bei migrierten Datensätzen unterscheiden sich die Bezeichnungen
+      // (z. B. „Gesamte Immobilie“ vs. Straßenname), Mieter und Betrag aber
+      // nicht. Diese fachliche Identität ist stabiler als das Legacy-Label.
+      if (tenantKey || row.cold > 0) return `residential:${tenantKey || 'belegt'}:${roundMoney(row.cold)}`;
+      return `residential:${normalizedUnit || 'unbekannt'}`;
+    };
+    // Historische Migrationen können denselben aktiven Vertrag sowohl in
+    // tenant_contracts als auch in portfolio_property_rentals enthalten. Für
+    // den Bericht zählt jede logische Einheit genau einmal; tenant_contracts
+    // bleibt dabei die vorrangige Mietquelle.
+    const occupiedByUnit = new Map<string,StatementOccupancy>();
+    occupancyCandidates
+      .sort((left,right)=>right.sourcePriority-left.sourcePriority)
+      .forEach(row => {
+        const key = occupancyKey(row);
+        if (!occupiedByUnit.has(key)) occupiedByUnit.set(key,row);
+      });
+    const occupiedUnits = Array.from(occupiedByUnit.values());
+    const inferredUnitCount = isOwnerOccupied(object) ? 1 : occupiedUnits.length;
+    const unitCount = parkingOnly
+      ? Math.max(inferredUnitCount, new Set(objectUnits.map(unit=>detectRosensteinTaxUnit(unit.name,unit.id)).filter(Boolean)).size, 1)
+      : Math.max(inferredUnitCount, 1);
+    const usableArea = parkingOnly && centralArea > 0 ? centralArea * unitCount : usableAreaRaw;
     const residentialUnits = occupiedUnits.filter(row => !isParkingText(row.unit));
     const rentedResidentialArea = isOwnerOccupied(object) ? 0 : residentialUnits.length
       ? Array.from(new Set(residentialUnits.map(row=>row.unit))).reduce((sum,unit)=>sum+n(areaForUnit(object,unit)),0)
@@ -520,6 +557,9 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     const currentPlan = objectPlans.at(-1);
     const monthlyRateRaw = currentPlan?.payment_amount ?? profile.currentMonthlyRate;
     const principalPartRaw = currentPlan?.principal_amount;
+    const originalLoanRaw = profile.originalLoanAmount;
+    const originalLoanImplausible = originalLoanRaw != null && originalLoanRaw !== '' && remainingDebt > 0
+      && n(originalLoanRaw) < remainingDebt * 0.1;
     const areaSource = 'Immobilienvermögen · property_extra_info';
     const tenancySource = isOwnerOccupied(object) ? 'Immobilienvermögen · Nutzungstyp Eigennutzung' : 'Mieterregister · tenant_contracts / Vermietungszeiträume';
     const loanBalanceSource = ledgerCurrent ? `Darlehen · property_loan_ledger (${ledgerCurrent.year})` : dashboardLoan ? 'Darlehen · zentrale Restschuld' : 'Immobilienvermögen · Darlehensprofil';
@@ -549,7 +589,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
       headers:['Feld','Aktueller Wert','Verbindliche Hauptquelle'],
       rows:[
         ['Darlehensgeber',str(profile.lender),'Immobilienvermögen · Darlehensprofil'],
-        ['Ursprüngliche Darlehenssumme / Grundschuld',statementMoney(profile.originalLoanAmount),'Immobilienvermögen · Darlehensprofil'],
+        ['Ursprüngliche Darlehenssumme / Grundschuld',originalLoanImplausible?`Plausibilitätsprüfung erforderlich · gespeichert: ${euro(originalLoanRaw)}`:statementMoney(originalLoanRaw),'Immobilienvermögen · Darlehensprofil'],
         ['Darlehensstand zum Stichtag',statementMoney(remainingDebtRaw),loanBalanceSource],
         ['Sollzinssatz',statementPercent(profile.interestRate),'Immobilienvermögen · Darlehensprofil'],
         ['Tilgungsanteil der aktuellen Rate',statementMoney(principalPartRaw),currentPlan ? rateSource : 'Nicht gepflegt'],
