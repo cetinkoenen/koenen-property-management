@@ -566,46 +566,50 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     const loanBalanceSource = ledgerCurrent ? `Darlehen · property_loan_ledger (${ledgerCurrent.year})` : dashboardLoan ? 'Darlehen · zentrale Restschuld' : 'Immobilienvermögen · Darlehensprofil';
     const rateSource = currentPlan ? `Darlehen · property_loan_rate_plan (${text(currentPlan.plan_date).slice(0,7)})` : 'Immobilienvermögen · Darlehensprofil';
     statementValues.push({market:marketValue,debt:remainingDebt});
+    const objectStatementRows = [
+      ['Objektart',propertyType,areaSource],
+      ['Adresse des Objekts',statementAddress(object,profile),areaSource],
+      ['Gesamte Wohnfläche',statementArea(totalResidentialArea),areaSource],
+      ['Davon vermietete Wohnfläche',parkingOnly?'Nicht zutreffend (TG-Stellplätze)':isOwnerOccupied(object)?'0 m² · Eigennutzung':statementArea(rentedResidentialArea),tenancySource],
+      ['Nutz-/Stellplatzfläche',parkingOnly&&centralArea>0?`${statementArea(usableArea)} · ${unitCount} × ${statementArea(centralArea)}`:statementArea(usableAreaRaw),areaSource],
+      ['Baujahr',str(profile.equipmentYear),areaSource],
+      ['Kaufpreis',statementMoney(profile.purchasePrice),areaSource],
+      ['Geschätzter Wert heute',statementMoney(marketValueRaw),areaSource],
+      ['Nettokaltmiete pro Monat',isOwnerOccupied(object)?'Nicht zutreffend · Eigennutzung':statementMoney(currentColdRent),tenancySource],
+      ['Anzahl Einheiten',String(unitCount),objectUnits.length?'Immobilienvermögen · portfolio_units':areaSource],
+    ];
     wealthTables.push({
       title:`${object.label} · Angaben zum Objekt`,
       subtitle:`Aktueller Datenstand zum ${referenceDate}. Fehlende Werte werden nicht geschätzt.`,
       pageBreakBefore:index>0,
-      headers:['Feld','Aktueller Wert','Verbindliche Hauptquelle'],
-      rows:[
-        ['Objektart',propertyType,areaSource],
-        ['Adresse des Objekts',statementAddress(object,profile),areaSource],
-        ['Gesamte Wohnfläche',statementArea(totalResidentialArea),areaSource],
-        ['Davon vermietete Wohnfläche',parkingOnly?'Nicht zutreffend (TG-Stellplätze)':isOwnerOccupied(object)?'0 m² · Eigennutzung':statementArea(rentedResidentialArea),tenancySource],
-        ['Nutz-/Stellplatzfläche',parkingOnly&&centralArea>0?`${statementArea(usableArea)} · ${unitCount} × ${statementArea(centralArea)}`:statementArea(usableAreaRaw),areaSource],
-        ['Baujahr',str(profile.equipmentYear),areaSource],
-        ['Kaufpreis',statementMoney(profile.purchasePrice),areaSource],
-        ['Geschätzter Wert heute',statementMoney(marketValueRaw),areaSource],
-        ['Nettokaltmiete pro Monat',isOwnerOccupied(object)?'Nicht zutreffend · Eigennutzung':statementMoney(currentColdRent),tenancySource],
-        ['Anzahl Einheiten',String(unitCount),objectUnits.length?'Immobilienvermögen · portfolio_units':areaSource],
-      ],
+      headers:['Objektdaten','Aktueller Bestand'],
+      rows:objectStatementRows.map(([field,value])=>[field,value]),
+      sourceReferences:objectStatementRows.map(([field,,source])=>({field:String(field),source:String(source)})),
     });
+    const loanStatementRows = [
+      ['Darlehensgeber',str(profile.lender),'Immobilienvermögen · Darlehensprofil'],
+      ['Ursprüngliche Darlehenssumme / Grundschuld',originalLoanImplausible?`Plausibilitätsprüfung erforderlich · gespeichert: ${euro(originalLoanRaw)}`:statementMoney(originalLoanRaw),'Immobilienvermögen · Darlehensprofil'],
+      ['Darlehensstand zum Stichtag',statementMoney(remainingDebtRaw),loanBalanceSource],
+      ['Sollzinssatz',statementPercent(profile.interestRate),'Immobilienvermögen · Darlehensprofil'],
+      ['Tilgungsanteil der aktuellen Rate',statementMoney(principalPartRaw),currentPlan ? rateSource : 'Nicht gepflegt'],
+      ['Sollzinsbindung',str(profile.interestBinding),'Immobilienvermögen · Darlehensprofil'],
+      ['Monatliche Darlehensrate',statementMoney(monthlyRateRaw),rateSource],
+      ['Tilgungsersatz / Lebensversicherung',str(profile.lifeInsuranceContribution),'Immobilienvermögen · Darlehensprofil'],
+    ];
     wealthTables.push({
       title:`${object.label} · Verbindlichkeiten`,
-      subtitle:'Restschuld und Rate werden nicht im Report gespeichert, sondern bei jeder Erstellung direkt aus Darlehen geladen.',
-      headers:['Feld','Aktueller Wert','Verbindliche Hauptquelle'],
-      rows:[
-        ['Darlehensgeber',str(profile.lender),'Immobilienvermögen · Darlehensprofil'],
-        ['Ursprüngliche Darlehenssumme / Grundschuld',originalLoanImplausible?`Plausibilitätsprüfung erforderlich · gespeichert: ${euro(originalLoanRaw)}`:statementMoney(originalLoanRaw),'Immobilienvermögen · Darlehensprofil'],
-        ['Darlehensstand zum Stichtag',statementMoney(remainingDebtRaw),loanBalanceSource],
-        ['Sollzinssatz',statementPercent(profile.interestRate),'Immobilienvermögen · Darlehensprofil'],
-        ['Tilgungsanteil der aktuellen Rate',statementMoney(principalPartRaw),currentPlan ? rateSource : 'Nicht gepflegt'],
-        ['Sollzinsbindung',str(profile.interestBinding),'Immobilienvermögen · Darlehensprofil'],
-        ['Monatliche Darlehensrate',statementMoney(monthlyRateRaw),rateSource],
-        ['Tilgungsersatz / Lebensversicherung',str(profile.lifeInsuranceContribution),'Immobilienvermögen · Darlehensprofil'],
-      ],
+      subtitle:`Finanzierungsstand zum ${referenceDate}. Beträge werden bei jeder Erstellung stichtagsbezogen aktualisiert.`,
+      headers:['Finanzierung','Aktueller Stand'],
+      rows:loanStatementRows.map(([field,value])=>[field,value]),
+      sourceReferences:loanStatementRows.map(([field,,source])=>({field:String(field),source:String(source)})),
     });
   });
   const wealthMarketTotal = roundMoney(statementValues.reduce((sum,row)=>sum+row.market,0));
   const wealthDebtTotal = roundMoney(statementValues.reduce((sum,row)=>sum+row.debt,0));
   const wealthStatement = module('wealth-statement',wealthTables,[
-    'Die Struktur orientiert sich an der Vorlage „Aufstellung Ihres Immobilienvermögens“. Statt anonymer Nummern wird jede Immobilie mit ihrem echten Namen ausgewiesen.',
-    'Single Source of Truth: Objekt-, Flächen-, Kaufpreis- und Wertangaben stammen aus Immobilienvermögen. Mieten und Vermietungsflächen stammen aus den zum Stichtag gültigen Mietverträgen beziehungsweise Vermietungszeiträumen. Restschuld, Rate und Tilgungsanteil stammen aus Darlehen.',
-    'Nicht gespeicherte Werte bleiben ausdrücklich als „Nicht gepflegt“ sichtbar; Werte aus der hochgeladenen Vorlage werden nicht als zweite Datenquelle übernommen.',
+    'Diese Aufstellung zeigt den aktuellen Immobilienbestand mit Objekt-, Miet-, Wert- und Finanzierungsdaten – übersichtlich nach Immobilien gegliedert.',
+    `Bewertungs-, Miet- und Darlehenswerte beziehen sich auf den gewählten Stichtag ${referenceDate}.`,
+    'Noch nicht hinterlegte Angaben werden transparent als „Nicht gepflegt“ ausgewiesen.',
   ]);
   wealthStatement.metrics = [
     {label:'Immobilien',value:String(objects.length)},

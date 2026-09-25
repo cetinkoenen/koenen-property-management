@@ -10,6 +10,8 @@ export type PdfReportTable = {
   title: string;
   subtitle?: string;
   pageBreakBefore?: boolean;
+  /** Internal SSOT provenance. Intentionally excluded from every visible export. */
+  sourceReferences?: Array<{ field: string; source: string }>;
   headers: string[];
   rows: Array<Array<string | number | null | undefined>>;
 };
