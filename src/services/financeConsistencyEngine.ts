@@ -150,6 +150,8 @@ function appObjectsToTaxOptions(objects: AppObject[]): TaxReportObjectOption[] {
     label: object.label,
     aliases: object.aliases,
     livingAreaM2: object.livingAreaM2,
+    buildingAfaBasis: object.buildingAfaBasis,
+    acquisitionDate: object.acquisitionDate,
   }));
 }
 

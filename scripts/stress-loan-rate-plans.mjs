@@ -87,7 +87,8 @@ for (const source of [taxCenter, appData, reports]) {
 assert.match(taxCenter, /Gebuchte Monatsraten/, "Der Steuer-Report muss gebuchte Monatsaufteilungen priorisieren");
 assert.match(taxCenter, /listLoanRatePlanRowsForYear/, "Historische Steuerjahre müssen auf die Monatspläne der Darlehensseite zurückfallen können");
 assert.match(taxEngine, /unallocatedRosensteinLoanInterest/, "Nicht belegbar aufgeteilte Rosenstein-Zinsen müssen erkannt werden");
-assert.match(taxEngine, /wurden nicht ohne Beleg auf P250, P253 und P254 verteilt/, "Der Steuerbericht muss vor einer unbelegten Rosenstein-Aufteilung warnen");
+assert.match(taxEngine, /allocateRosensteinThird\(unallocatedRosensteinInterest, rosensteinUnit\)/, "Bestätigte Rosenstein-Gesamtzinsen müssen centgenau auf P250, P253 und P254 verteilt werden");
+assert.match(taxEngine, /centgenauer 1\/3-Anteil des Rosenstein-Gesamtdarlehens/, "Der Steuerbericht muss die nachvollziehbare Rosenstein-Zinsaufteilung dokumentieren");
 assert.match(reports, /bookedSplits/, "Berichte & Exporte muss gebuchte Monatsaufteilungen priorisieren");
 assert.match(backup, /property_loan_rate_plan/, "Die neue Hauptquelle muss im App-Backup enthalten sein");
 

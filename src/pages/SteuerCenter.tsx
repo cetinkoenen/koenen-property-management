@@ -29,6 +29,8 @@ type ObjectOption = {
   objekt_code: string;
   label: string;
   livingAreaM2: number | null;
+  buildingAfaBasis: number | null;
+  acquisitionDate: string | null;
 };
 
 type EntryRow = {
@@ -1094,6 +1096,8 @@ export default function SteuerCenter() {
         objekt_code: String(object.code ?? object.id),
         label: object.label,
         livingAreaM2: object.livingAreaM2 ?? null,
+        buildingAfaBasis: object.buildingAfaBasis ?? null,
+        acquisitionDate: object.acquisitionDate ?? null,
       }))
       .filter((row) => row.objekt_code && row.label);
 
@@ -1427,6 +1431,8 @@ export default function SteuerCenter() {
       objekt_code: String(object.code ?? object.id),
       label: object.label,
       livingAreaM2: object.livingAreaM2 ?? null,
+      buildingAfaBasis: object.buildingAfaBasis ?? null,
+      acquisitionDate: object.acquisitionDate ?? null,
     })).filter((row) => row.objekt_code && row.label));
   }, [appData.objects]);
 
@@ -1603,6 +1609,8 @@ export default function SteuerCenter() {
       label: object.label,
       aliases: [object.objekt_code, object.label],
       livingAreaM2: object.livingAreaM2,
+      buildingAfaBasis: object.buildingAfaBasis,
+      acquisitionDate: object.acquisitionDate,
     })),
   }), [classifiedRows, filteredMileageTrips, loanTaxRows, objects, year]);
 

@@ -156,6 +156,12 @@ assert.match(taxEngine, /coldRentIncome[\s\S]*operatingCostAdvanceIncome[\s\S]*s
 assert.match(taxEngine, /davon tatsächlich zugeflossene Kaltmiete[\s\S]*davon Nebenkostenvorauszahlungen[\s\S]*Nachzahlungen abzüglich Erstattungen/, "Der EÜR-PDF-Inhalt muss die Einnahmenarten getrennt darstellen");
 assert.match(app, /Read-only Steuerberater-Paket/, "Das Paket muss seine schreibgeschützte Auswertungsarchitektur dokumentieren");
 assert.match(taxEngine, /key: "rosenstein-p250"[\s\S]*acquisitionPrice: 0[\s\S]*afaRate: 0/, "Für Rosenstein darf ohne bestätigte Gebäudeaufteilung keine AfA geschätzt werden");
+assert.match(taxEngine, /sourceObjectForProfile[\s\S]*buildingAfaBasis/, "Die AfA-Basis muss aus der zentralen Immobilienvermögen-Hauptquelle gelesen werden");
+assert.match(taxEngine, /sourceBasis > 0 && profile\.usage === "rented_parking" \? 0\.02 : profile\.afaRate/, "Der Rosenstein-AfA-Satz darf erst bei bestätigter zentraler Gebäudebasis aktiviert werden");
+assert.match(taxEngine, /allocateRosensteinThird\(roundCurrency\(totalSourceBasis \* profile\.afaRate \* monthFactor\), unitCode\)/, "Die Rosenstein-AfA muss centgenau auf P250, P253 und P254 verteilt werden");
+assert.match(taxEngine, /allocateRosensteinThird\(unallocatedRosensteinInterest, rosensteinUnit\)/, "Die Rosenstein-Schuldzinsen müssen centgenau auf P250, P253 und P254 verteilt werden");
+assert.match(appData, /const buildingAfaBasis = matchingExtras[\s\S]*wealth_profile\?\.buildingPurchasePrice/, "Die AfA-Basis muss aus Immobilienvermögen/property_extra_info geladen werden");
+assert.match(appData, /const acquisitionDate = matchingExtras[\s\S]*wealth_profile\?\.purchaseDate/, "Das Kaufdatum muss aus derselben Immobilienvermögen-Hauptquelle geladen werden");
 assert.match(app, /acquisitionRowsForObject[\s\S]*!financingKeyword\.test/, "Finanzierungskosten dürfen nicht doppelt als Anschaffungskosten erscheinen");
 
 assert.match(app, /dashboard\/vermoegen-cashflow/, "Das Vermögens- und Cashflow-Dashboard muss erreichbar und navigierbar sein");

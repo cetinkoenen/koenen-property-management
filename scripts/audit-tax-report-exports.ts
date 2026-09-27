@@ -155,12 +155,20 @@ const objects: TaxReportObjectOption[] = objectRows
       return identities.some((item) => item === identity || identity.includes(item) || item.includes(identity));
     });
     const extraArea = matchingExtras.map(positiveArea).find((area): area is number => area != null);
+    const buildingAfaBasis = matchingExtras
+      .map((extra) => Number(extra.wealth_profile?.buildingPurchasePrice ?? 0))
+      .find((value) => Number.isFinite(value) && value > 0);
+    const acquisitionDate = matchingExtras
+      .map((extra) => String(extra.wealth_profile?.purchaseDate ?? "").trim())
+      .find(Boolean);
     return {
       id: row.object_id ?? row.value,
       code: row.objekt_code,
       label: row.label ?? row.objekt_code ?? row.value ?? "Unbekannt",
       aliases,
       livingAreaM2: extraArea ?? null,
+      buildingAfaBasis: buildingAfaBasis ?? null,
+      acquisitionDate: acquisitionDate || null,
     };
   });
 
@@ -251,6 +259,35 @@ for (const year of YEARS) {
     if (!closeMoney(report.income, expectedIncome)) add(year, "error", "income_sum", `${report.profile.reportLabel}: ${report.income} != ${expectedIncome}`);
     const expectedNet = money(report.income - report.buildingAfa - report.inventoryAfa - report.loanInterest - report.moneyProcurementCosts - report.maintenance - report.runningCosts - report.administrationCosts);
     if (!closeMoney(report.net, expectedNet)) add(year, "error", "net_sum", `${report.profile.reportLabel}: ${report.net} != ${expectedNet}`);
+  }
+
+  const rosensteinReports = dashboard.AnlageVReports.filter((report) => report.profile.key.startsWith("rosenstein-"));
+  if (rosensteinReports.length) {
+    const rosensteinSource = objects.find((object) => normalize(object.label).includes("rosenstein"));
+    const buildingBasis = money(rosensteinSource?.buildingAfaBasis);
+    const acquisitionDate = String(rosensteinSource?.acquisitionDate ?? "");
+    const acquisitionYear = Number(acquisitionDate.slice(0, 4));
+    const acquisitionMonth = Number(acquisitionDate.slice(5, 7));
+    const monthFactor = acquisitionYear === year && acquisitionMonth >= 1 && acquisitionMonth <= 12
+      ? (13 - acquisitionMonth) / 12
+      : 1;
+    const expectedAfa = money(buildingBasis * 0.02 * monthFactor);
+    const actualAfa = money(rosensteinReports.reduce((sum, report) => sum + report.buildingAfa, 0));
+    if (!closeMoney(actualAfa, expectedAfa)) {
+      add(year, "error", "rosenstein_afa_split", `Rosenstein-AfA ${actualAfa} != zentrale Gebäude-AfA ${expectedAfa}.`);
+    }
+
+    const sharedLoanInterest = money(loans
+      .filter((loan) => normalize(`${loan.property_name ?? ""} ${loan.property_label ?? ""} ${loan.property_id ?? ""}`).includes("rosenstein"))
+      .filter((loan) => !/p250|p253|p254|e008440000121|e008440000122|e008440000123/.test(normalize(`${loan.property_name ?? ""} ${loan.property_label ?? ""} ${loan.property_id ?? ""}`)))
+      .reduce((sum, loan) => sum + Number(loan.interest ?? loan.interest_total ?? 0), 0));
+    const allocatedLoanInterest = money(rosensteinReports
+      .flatMap((report) => report.bookingRows)
+      .filter((row) => row.recordType === "Darlehenszins")
+      .reduce((sum, row) => sum + row.expenseAmount, 0));
+    if (!closeMoney(allocatedLoanInterest, sharedLoanInterest)) {
+      add(year, "error", "rosenstein_interest_split", `Rosenstein-Zinsanteile ${allocatedLoanInterest} != Gesamtdarlehen ${sharedLoanInterest}.`);
+    }
   }
 
   for (const entry of dashboard.section35aReport.entries) {

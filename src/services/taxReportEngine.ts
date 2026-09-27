@@ -5,6 +5,7 @@ import { isTelecommunicationCategory, parseTelecommunicationTaxDetails } from ".
 import { isAllocatablePortfolioExpenseEntry, isPortfolioGeneralEntry } from "../lib/portfolioExpense";
 import { splitSection35aTripCosts, TRAVEL_RATE_EUR as MILEAGE_RATE_EUR } from "../lib/travelTax";
 import type { MileageTripRow } from "./mileageTripService";
+import { allocateRosensteinThird, detectRosensteinTaxUnit } from "../lib/rosensteinTaxUnit";
 
 export type TaxObjectUsage = "rented_residential" | "rented_parking" | "self_used_weg";
 
@@ -60,6 +61,8 @@ export type TaxReportObjectOption = {
   label: string;
   aliases?: string[];
   livingAreaM2?: number | null;
+  buildingAfaBasis?: number | null;
+  acquisitionDate?: string | null;
 };
 
 export type AnlageVBookingExportRow = {
@@ -470,6 +473,49 @@ function livingAreaForProfile(profile: TaxObjectProfile, objects: TaxReportObjec
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
+function sourceObjectForProfile(profile: TaxObjectProfile, objects: TaxReportObjectOption[]) {
+  return objects.find((item) => {
+    const resolved = getTaxObjectProfileForLabel(`${item.label} ${item.code ?? ""} ${item.id ?? ""} ${(item.aliases ?? []).join(" ")}`);
+    return profile.key.startsWith("rosenstein-")
+      ? resolved?.key.startsWith("rosenstein-") || normalize(item.label).includes("rosenstein")
+      : resolved?.key === profile.key;
+  });
+}
+
+function effectiveTaxProfile(profile: TaxObjectProfile, objects: TaxReportObjectOption[]): TaxObjectProfile {
+  const sourceObject = sourceObjectForProfile(profile, objects);
+  const sourceBasis = amount(sourceObject?.buildingAfaBasis);
+  const unitCode = detectRosensteinTaxUnit(profile.taxObjectId, profile.reportLabel, profile.key);
+  const acquisitionPrice = sourceBasis > 0
+    ? unitCode ? allocateRosensteinThird(sourceBasis, unitCode) : sourceBasis
+    : profile.acquisitionPrice;
+  return {
+    ...profile,
+    acquisitionPrice,
+    acquisitionDate: sourceObject?.acquisitionDate || profile.acquisitionDate,
+    // Die Rosenstein-Profile bleiben ohne bestätigte Immobilienvermögen-Basis
+    // bewusst bei 0 %. Sobald die zentrale Gebäudeaufteilung vorliegt, gilt
+    // für das Baujahr 1960 der reguläre lineare AfA-Satz von 2 %.
+    afaRate: sourceBasis > 0 && profile.usage === "rented_parking" ? 0.02 : profile.afaRate,
+  };
+}
+
+function annualBuildingAfa(profile: TaxObjectProfile, year: number, objects: TaxReportObjectOption[]): number {
+  if (profile.buildingYear > 2021 || profile.acquisitionPrice <= 0 || profile.afaRate <= 0) return 0;
+  const acquisitionYear = Number(String(profile.acquisitionDate ?? "").slice(0, 4));
+  const acquisitionMonth = Number(String(profile.acquisitionDate ?? "").slice(5, 7));
+  const monthFactor = acquisitionYear === year && acquisitionMonth >= 1 && acquisitionMonth <= 12
+    ? (13 - acquisitionMonth) / 12
+    : 1;
+  const sourceObject = sourceObjectForProfile(profile, objects);
+  const totalSourceBasis = amount(sourceObject?.buildingAfaBasis);
+  const unitCode = detectRosensteinTaxUnit(profile.taxObjectId, profile.reportLabel, profile.key);
+  if (unitCode && totalSourceBasis > 0) {
+    return allocateRosensteinThird(roundCurrency(totalSourceBasis * profile.afaRate * monthFactor), unitCode);
+  }
+  return roundCurrency(profile.acquisitionPrice * profile.afaRate * monthFactor);
+}
+
 type ClassifiedBooking = Omit<AnlageVBookingExportRow, "recordType" | "taxYear" | "objectId" | "objectName" | "livingAreaM2" | "bookingDate" | "bookingText" | "paymentStatus">;
 
 function classifyBookingForAnlageV(entry: TaxReportEntry, profile: TaxObjectProfile): ClassifiedBooking {
@@ -637,6 +683,16 @@ function unallocatedRosensteinLoanInterest(loans: TaxReportLoanRow[], year: numb
   );
 }
 
+function hasUnallocatedRosensteinMonthlyLoanEvidence(loans: TaxReportLoanRow[], year: number): boolean {
+  return loans
+    .filter((loan) => !loan.year || Number(loan.year) === year)
+    .filter((loan) => {
+      const identity = `${loan.property_name ?? ""} ${loan.property_label ?? ""} ${loan.property_id ?? ""}`;
+      return normalize(identity).includes("rosenstein") && !detectRosensteinTaxUnit(identity);
+    })
+    .some((loan) => /tilgungsplan|csv-monatsplan|gebuchte monatsraten/i.test(String(loan.source ?? "")));
+}
+
 function laborAmount(entry: TaxReportEntry) {
   const explicit = amount(entry.labor_amount);
   if (explicit > 0) return explicit + amount(entry.travel_amount);
@@ -659,7 +715,8 @@ function isCraftsmanTrip(trip: MileageTripRow) {
   return includesAny(normalize(`${trip.grund} ${trip.property_label} ${trip.start_adresse} ${trip.zieladresse}`), ["handwerker", "reparatur", "wartung", "schornsteinfeger", "instandhaltung"]);
 }
 
-function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[], loans: TaxReportLoanRow[], trips: MileageTripRow[], objects: TaxReportObjectOption[], year: number): AnlageVReport {
+function buildAnlageVReport(baseProfile: TaxObjectProfile, entries: TaxReportEntry[], loans: TaxReportLoanRow[], trips: MileageTripRow[], objects: TaxReportObjectOption[], year: number): AnlageVReport {
+  const profile = effectiveTaxProfile(baseProfile, objects);
   const directProfileEntries = entries.filter((entry) => entryYear(entry) === year && resolveEntryTaxProfile(entry, objects)?.key === profile.key);
   const sharedRosensteinEntries = profile.usage === "rented_parking"
     ? entries
@@ -690,7 +747,7 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
   const coldRentIncome = sumCurrency(bookingRows.filter((row) => row.categoryName === "Kaltmiete"), (row) => row.incomeAmount);
   const operatingCostAdvanceIncome = sumCurrency(bookingRows.filter((row) => row.categoryName === "Nebenkostenvorauszahlung"), (row) => row.incomeAmount);
   const settlementIncome = sumCurrency(bookingRows.filter((row) => row.categoryName === "Mietnachzahlungen & Erstattungen"), (row) => row.incomeAmount);
-  const buildingAfa = profile.buildingYear <= 2021 ? roundCurrency(profile.acquisitionPrice * profile.afaRate) : 0;
+  const buildingAfa = annualBuildingAfa(profile, year, objects);
   const inventoryAfa = sumCurrency(
     profileEntries.filter((entry) => entry.entry_type === "expense" && categoryMatches(entry, INVENTORY_CATEGORIES, profile)),
     (entry) => {
@@ -699,11 +756,18 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
     },
   );
   const ledgerLoanInterest = loanInterestForProfile(loans, profile, year);
-  const monthlyLoanEvidence = hasMonthlyLoanEvidence(loans, profile, year);
+  const directMonthlyLoanEvidence = hasMonthlyLoanEvidence(loans, profile, year);
   const unallocatedRosensteinInterest = profile.key.startsWith("rosenstein-")
     ? unallocatedRosensteinLoanInterest(loans, year)
     : 0;
-  const loanInterest = roundCurrency(ledgerLoanInterest + sumCurrency(bookingRows.filter((row) => row.categoryName === "Schuldzinsen"), (row) => row.expenseAmount));
+  const rosensteinUnit = detectRosensteinTaxUnit(profile.taxObjectId, profile.reportLabel, profile.key);
+  const allocatedRosensteinInterest = rosensteinUnit
+    ? allocateRosensteinThird(unallocatedRosensteinInterest, rosensteinUnit)
+    : 0;
+  const effectiveLedgerLoanInterest = roundCurrency(ledgerLoanInterest + allocatedRosensteinInterest);
+  const monthlyLoanEvidence = directMonthlyLoanEvidence
+    || (allocatedRosensteinInterest > 0 && hasUnallocatedRosensteinMonthlyLoanEvidence(loans, year));
+  const loanInterest = roundCurrency(effectiveLedgerLoanInterest + sumCurrency(bookingRows.filter((row) => row.categoryName === "Schuldzinsen"), (row) => row.expenseAmount));
   const moneyProcurementCosts = sumCurrency(bookingRows.filter((row) => row.categoryName === "Geldbeschaffungskosten"), (row) => row.expenseAmount);
   const maintenanceRows = profileEntries.filter((_, index) => bookingRows[index]?.categoryName === "Erhaltungsaufwand");
   const maintenance = sumCurrency(bookingRows.filter((row) => row.categoryName === "Erhaltungsaufwand"), (row) => row.expenseAmount);
@@ -723,11 +787,8 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
     profile.usage === "rented_residential" && livingAreaM2 === null ? "Wohnfläche fehlt. Bitte in den Immobilien-Stammdaten ergänzen." : "",
     blockedEntries.some((entry) => isReserveContribution(entry, profile)) ? "Zuführung zur Instandhaltungsrücklage wurde blockiert. Abzug erst bei tatsächlicher Verwendung für Erhaltungsmaßnahmen." : "",
     blockedEntries.some((entry) => isUnsplitHausgeld(entry, profile)) ? "Mindestens eine Hausgeldzahlung ist nicht in umlagefähige Kosten, nicht umlagefähige Kosten und Rücklage aufgeteilt und wurde blockiert." : "",
-    ledgerLoanInterest > 0 && !monthlyLoanEvidence
+    effectiveLedgerLoanInterest > 0 && !monthlyLoanEvidence
       ? "Schuldzinsen stammen nur als Jahressumme aus dem Darlehens-Ledger. Einzelne Zahlungstage bitte anhand des Darlehenskontos belegen."
-      : "",
-    unallocatedRosensteinInterest > 0
-      ? `Rosenstein-Schuldzinsen von ${formatTaxCurrency(unallocatedRosensteinInterest)} liegen nur als Gesamtwert vor und wurden nicht ohne Beleg auf P250, P253 und P254 verteilt. Aufteilungsschluessel mit dem Steuerberater/Darlehensnachweis festlegen.`
       : "",
     maintenanceRows.some((entry) => getDistributionYears(entry) > 1) ? "Erhaltungsaufwand wird teilweise ueber mehrere Jahre verteilt." : "",
     businessMealRows.some((entry) => {
@@ -772,7 +833,7 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
     livingAreaM2,
     bookingRows: [
       ...bookingRows,
-      ...(ledgerLoanInterest > 0 ? [{
+      ...(effectiveLedgerLoanInterest > 0 ? [{
         recordType: "Darlehenszins" as const,
         taxYear: year,
         objectId: profile.taxObjectId,
@@ -781,12 +842,14 @@ function buildAnlageVReport(profile: TaxObjectProfile, entries: TaxReportEntry[]
         bookingDate: "",
         categoryName: "Schuldzinsen",
         officialFormLine: "Anlage V Zeilen 46-48",
-        bookingText: `Darlehensmodul - Jahressumme ${year}, ausschließlich Zinsanteil, keine Tilgung; Einzelzahlungstage anhand Darlehenskonto prüfen`,
+        bookingText: allocatedRosensteinInterest > 0
+          ? `Darlehensmodul - Jahressumme ${year}, centgenauer 1/3-Anteil des Rosenstein-Gesamtdarlehens; ausschließlich Zinsanteil, keine Tilgung`
+          : `Darlehensmodul - Jahressumme ${year}, ausschließlich Zinsanteil, keine Tilgung; Einzelzahlungstage anhand Darlehenskonto prüfen`,
         incomeAmount: 0,
-        expenseAmount: ledgerLoanInterest,
+        expenseAmount: effectiveLedgerLoanInterest,
         apportionableStatus: "Nein" as const,
         paymentStatus: "Bezahlt" as const,
-        reviewStatus: "Prüfung erforderlich" as const,
+        reviewStatus: monthlyLoanEvidence ? "Exportiert" as const : "Prüfung erforderlich" as const,
       }] : []),
       ...mileageRows.map((trip) => ({
         recordType: "Fahrtkosten" as const,

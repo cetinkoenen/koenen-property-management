@@ -10,6 +10,10 @@ export type AppObject = {
   code: string | null;
   label: string;
   livingAreaM2?: number | null;
+  /** Bestätigte Gebäude-AfA-Basis aus Immobilienvermögen/property_extra_info. */
+  buildingAfaBasis?: number | null;
+  /** Bestätigtes Kaufdatum aus derselben Immobilienvermögen-Hauptquelle. */
+  acquisitionDate?: string | null;
   /** Phase 5F: alle bekannten technischen IDs/Codes/Namen, die zu derselben Immobilie gehören. */
   aliases?: string[];
 };
@@ -529,12 +533,20 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
             ?? parseMaybeNumber(row.wealth_profile?.livingArea)
             ?? parseMaybeNumber(row.wealth_profile?.living_area))
           .find((value): value is number => value !== null && value > 0);
+        const buildingAfaBasis = matchingExtras
+          .map((row) => parseMaybeNumber(row.wealth_profile?.buildingPurchasePrice))
+          .find((value): value is number => value !== null && value > 0);
+        const acquisitionDate = matchingExtras
+          .map((row) => String(row.wealth_profile?.purchaseDate ?? "").trim())
+          .find(Boolean);
         return {
           ...object,
           // Immobilienvermoegen/Objektdetails ist die einzige Wohnflaechenquelle.
           // Bei historischen Dubletten wird bewusst der erste positive Wert
           // statt einer eventuell leeren ersten Zeile verwendet.
           livingAreaM2: extraArea ?? null,
+          buildingAfaBasis: buildingAfaBasis ?? null,
+          acquisitionDate: acquisitionDate || null,
         };
       });
 
