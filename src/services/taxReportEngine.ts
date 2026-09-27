@@ -929,7 +929,6 @@ function buildSection35aReport(entries: TaxReportEntry[], trips: MileageTripRow[
     acquisitionSideCostRows.some((entry) => entry.tax_relevant !== false)
       ? `Erwerbsnebenkosten fuer Hohenloher dokumentiert: ${formatTaxCurrency(acquisitionSideCostTotal)}. Bitte steuerlich als Anschaffungskosten/AfA-Basis oder Sonderfall pruefen.`
       : "",
-    "Hohenloher Str. 78 ist als Selbstgenutzt / WEG fuer Anlage V gesperrt.",
   ].filter(Boolean);
   return {
     profile,

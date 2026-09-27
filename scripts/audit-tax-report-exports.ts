@@ -328,7 +328,7 @@ for (const year of YEARS) {
   }
 
   accountedTotal += accounted;
-  const actionableWarnings = dashboard.warnings.filter((warning) => !warning.includes("Hohenloher Str. 78 ist als Selbstgenutzt / WEG fuer Anlage V gesperrt"));
+  const actionableWarnings = dashboard.warnings;
   for (const warning of actionableWarnings) add(year, "warning", "dashboard_warning", warning);
   yearSummaries.push({
     year,

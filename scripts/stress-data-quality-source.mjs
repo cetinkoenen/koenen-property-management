@@ -9,6 +9,11 @@ const dataCheckPage = await readFile(new URL("../src/pages/Datenpruefung.tsx", i
 const appDataContext = await readFile(new URL("../src/state/AppDataContext.tsx", import.meta.url), "utf8");
 const exposeService = await readFile(new URL("../src/lib/uploadExpose.ts", import.meta.url), "utf8");
 const consistencyEngine = await readFile(new URL("../src/services/financeConsistencyEngine.ts", import.meta.url), "utf8");
+const financeAudit = await readFile(new URL("./audit-finance-entries.mjs", import.meta.url), "utf8");
+const p254ReferenceFix = await readFile(
+  new URL("../supabase/migrations/20260927150000_fix_p254_finance_reference_typo.sql", import.meta.url),
+  "utf8",
+);
 
 const bridgeDefinition = migration.match(/create or replace view public\.v_koenen_object_bridge as([\s\S]*?)revoke all/i)?.[1] ?? "";
 
@@ -29,5 +34,7 @@ assert.match(exposeService, /message\.toLowerCase\(\)\.includes\("object not fou
 assert.match(dataCheckPage, /issue_code !== "missing_documents"/, "Fehlende Dokument-Uploads dürfen nicht als Konsistenzfehler gewertet werden");
 assert.match(consistencyEngine, /today\.getDate\(\) > 10/, "Der laufende Monat darf erst nach der Zahlungskalender-Kulanz als fehlend gelten");
 assert.match(consistencyEngine, /resolveChfLoanSplitRule[\s\S]*loan-increase-chf-[\s\S]*severity: "ok"/, "Bestaetigte CHF-Darlehen duerfen bei wechselkursbedingtem EUR-Restschuldanstieg keine falsche Warnung erzeugen");
+assert.match(financeAudit, /invalid_rosenstein_unit_reference[\s\S]*E008440000123/, "Die Finanzpruefung muss eine falsche P254-Einheitenreferenz erkennen");
+assert.match(p254ReferenceFix, /set note = 'P254 - E008440000123 Nachzahlungen'[\s\S]*and note = 'P254 - E008440000124 Nachzahlungen'/, "Der belegte P254-Tippfehler muss auf die zentrale Einheitenreferenz korrigiert werden");
 
-console.log("19 Stressfaelle fuer zentrale Objektzuordnung und Datenqualitaet bestanden.");
+console.log("21 Stressfaelle fuer zentrale Objektzuordnung und Datenqualitaet bestanden.");

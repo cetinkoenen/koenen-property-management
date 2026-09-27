@@ -222,8 +222,20 @@ for (const entry of entries) {
   const category = canonicalCategory(entry.category);
   const label = objectLabel(entry);
   const portfolio = entry.objekt_code === "PORTFOLIO_GENERAL";
+  const normalizedNote = normalize(entry.note);
   const key = [entry.booking_date, entry.entry_type, round2(Math.abs(amount(entry.amount))), normalize(label), normalize(entry.category), normalize(entry.note)].join("|");
   fingerprint.set(key, [...(fingerprint.get(key) ?? []), entry]);
+
+  if (/\bp254\b/.test(normalizedNote) && /\be008440000124\b/.test(normalizedNote)) {
+    add(
+      "high",
+      "invalid_rosenstein_unit_reference",
+      entry,
+      "P254 verweist auf E008440000124; die verbindliche Einheitenreferenz lautet E008440000123.",
+      "Buchung auf die zentrale P254-Referenz E008440000123 korrigieren.",
+      { note: String(entry.note ?? "").replaceAll("E008440000124", "E008440000123") },
+    );
+  }
 
   if (!entry.category || !category) add("high", "missing_category", entry, "Kategorie fehlt.", "Beleg/Buchungstext prüfen und eine eindeutige Kategorie setzen.");
   if (category && category !== entry.category) add("medium", "noncanonical_category", entry, `Nicht normalisierte Kategorie: ${entry.category}`, `Auf ${category} normalisieren.`, { category });
