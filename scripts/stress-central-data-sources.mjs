@@ -85,6 +85,7 @@ assert.match(cockpit, /contract\.start_date && contract\.end_date && contract\.e
 assert.match(tenantService, /contractStartDate && contractStartDate > tenantEndDate[\s\S]{0,120}?return false/, "Ein frueherer Leerstand darf keinen spaeter beginnenden Anschlussvertrag beenden");
 assert.match(rosensteinContractRepair, /P250[\s\S]*2026-03-01[\s\S]*P254[\s\S]*2026-08-01[\s\S]*end_date < start_date/, "P250 und P254 muessen als laufende Anschlussvertraege wiederhergestellt und gegen inverse Zeitraeume geprueft werden");
 assert.match(app, /Buchungsanzahl[\s\S]{0,500}?yearEntries\.length/, "Die Buchungsseite muss die Gesamtanzahl des gewählten Jahres direkt neben dem Jahresfilter ausweisen");
+assert.match(app, /Gesamte Buchungszahl[\s\S]{0,500}?entries\.length/, "Die Buchungsseite muss zusätzlich die Buchungszahl über alle Jahre aus derselben zentralen Quelle anzeigen");
 assert.match(app, /aria-label="Buchungsjahr"[\s\S]{0,500}?availableBookingYears/, "Die Gesamtanzahl der Buchungen muss über den zentralen Jahresfilter steuerbar sein");
 assert.match(app, /Gesamt-Buchungssumme[\s\S]{0,700}?yearBookingVolume/, "Die Buchungsseite muss das betragliche Jahres-Buchungsvolumen neben der Anzahl anzeigen");
 assert.match(app, /yearEntries\.reduce\(\(sum, entry\) => sum \+ Math\.abs\(entry\.amount\), 0\)/, "Das Jahres-Buchungsvolumen muss Einnahmen und Ausgaben ohne Vorzeichenaufhebung summieren");

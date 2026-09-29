@@ -1681,24 +1681,30 @@ function BuchhaltungHubPage() {
       ) : null}
 
       <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 sm:grid-cols-3">
-        <label className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500">
-          Buchungsjahr
-          <select
-            aria-label="Buchungsjahr"
-            value={bookingYear}
-            onChange={(event) => setBookingYear(Number(event.target.value))}
-            className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-950"
-          >
-            {availableBookingYears.map((availableYear) => (
-              <option key={availableYear} value={availableYear}>{availableYear}</option>
-            ))}
-          </select>
-        </label>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500">
+            Buchungsjahr
+            <select
+              aria-label="Buchungsjahr"
+              value={bookingYear}
+              onChange={(event) => setBookingYear(Number(event.target.value))}
+              className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-950"
+            >
+              {availableBookingYears.map((availableYear) => (
+                <option key={availableYear} value={availableYear}>{availableYear}</option>
+              ))}
+            </select>
+          </label>
           <div className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500">
-            Buchungsanzahl
+            Buchungsanzahl im Jahr
             <div className="flex min-h-11 items-center rounded-xl border border-blue-200 bg-blue-50 px-3 text-sm font-black tabular-nums text-blue-800">
               {loading ? "…" : new Intl.NumberFormat("de-DE").format(yearEntries.length)}
+            </div>
+          </div>
+          <div className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500">
+            Gesamte Buchungszahl
+            <div className="flex min-h-11 items-center rounded-xl border border-violet-200 bg-violet-50 px-3 text-sm font-black tabular-nums text-violet-800">
+              {loading ? "…" : new Intl.NumberFormat("de-DE").format(entries.length)}
             </div>
           </div>
           <div className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500">
