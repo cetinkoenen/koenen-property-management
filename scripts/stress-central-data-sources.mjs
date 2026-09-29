@@ -29,7 +29,6 @@ const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMont
   read("vercel.json"),
 ]);
 const tenantService = await read("src/services/tenantService.ts");
-const bookings = await read("src/pages/Monate.tsx");
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
 assert.doesNotMatch(appData, /localStorage\.(?:getItem|setItem)/, "Zentrale App-Daten dürfen keinen browserweiten Fallback als zweite Fachquelle verwenden");
@@ -85,9 +84,8 @@ assert.match(cockpit, /const requiresUnitMatch = \(contractCountByObject\[object
 assert.match(cockpit, /contract\.start_date && contract\.end_date && contract\.end_date < contract\.start_date[\s\S]{0,120}?\? null/, "Ein ungueltiges Enddatum vor Vertragsbeginn darf die Cockpit-Sollmiete nicht ausblenden");
 assert.match(tenantService, /contractStartDate && contractStartDate > tenantEndDate[\s\S]{0,120}?return false/, "Ein frueherer Leerstand darf keinen spaeter beginnenden Anschlussvertrag beenden");
 assert.match(rosensteinContractRepair, /P250[\s\S]*2026-03-01[\s\S]*P254[\s\S]*2026-08-01[\s\S]*end_date < start_date/, "P250 und P254 muessen als laufende Anschlussvertraege wiederhergestellt und gegen inverse Zeitraeume geprueft werden");
-assert.match(bookings, /Gesamte Buchungsanzahl/, "Die Buchungsseite muss die Gesamtanzahl sichtbar ausweisen");
-assert.match(bookings, /<BookingCountCard[\s\S]{0,180}?total=\{rows\.length\}[\s\S]{0,120}?filtered=\{sortedRows\.length\}/, "Die Buchungsseite muss die Gesamtanzahl des geladenen Zeitraums und die aktuell gefilterte Anzahl getrennt anzeigen");
-assert.match(bookings, /periodMode === "year" \? yearRangeISO\(year\)/, "Die Buchungsanzahl muss den zentralen Jahresfilter der Buchungsabfrage verwenden");
+assert.match(app, /Gesamte Buchungsanzahl[\s\S]{0,300}?yearEntries\.length/, "Die Buchungsseite muss die Gesamtanzahl des gewählten Jahres sichtbar ausweisen");
+assert.match(app, /aria-label="Buchungsjahr"[\s\S]{0,500}?availableBookingYears/, "Die Gesamtanzahl der Buchungen muss über den zentralen Jahresfilter steuerbar sein");
 assert.match(hohenloherMigration, /v_koenen_object_bridge/, "Die Backend-Mietmonatsquelle muss die zentrale Objekt-Bridge verwenden");
 assert.match(hohenloherMigration, /mietbestandteil\[- _\]\?nk/, "Die Backend-Mietmonatsquelle muss den Mietbestandteil-NK summieren");
 assert.match(hohenloherMigration, /with \(security_invoker = true\)/, "Die korrigierte Monatsview muss RLS mit den Rechten des aufrufenden Benutzers anwenden");

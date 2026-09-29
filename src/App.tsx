@@ -1621,6 +1621,17 @@ function BuchhaltungHubPage() {
   const { user } = useAuth();
   const isReadOnly = !isAdminEmail(user?.email) && isReadonlyApprovalEmail(user?.email);
   const { entries, loading, error, getPropertyName } = useAppData();
+  const [bookingYear, setBookingYear] = useState(() => new Date().getFullYear());
+  const availableBookingYears = useMemo(() => {
+    const years = entries
+      .map((entry) => Number(String(entry.booking_date ?? "").slice(0, 4)))
+      .filter((entryYear) => Number.isInteger(entryYear) && entryYear >= 1900 && entryYear <= 3000);
+    return Array.from(new Set([new Date().getFullYear(), ...years])).sort((a, b) => b - a);
+  }, [entries]);
+  const yearEntries = useMemo(
+    () => entries.filter((entry) => Number(String(entry.booking_date ?? "").slice(0, 4)) === bookingYear),
+    [bookingYear, entries],
+  );
   const currentMonthEntries = useMemo(
     () => entries.filter((entry) => isCurrentMonthEntry(entry)),
     [entries],
@@ -1665,7 +1676,34 @@ function BuchhaltungHubPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="flex flex-col gap-3 rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Jahresfilter</p>
+          <p className="mt-1 text-sm font-bold text-slate-700">Die Buchungsanzahl stammt direkt aus der zentralen Buchungsquelle.</p>
+        </div>
+        <label className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500">
+          Buchungsjahr
+          <select
+            aria-label="Buchungsjahr"
+            value={bookingYear}
+            onChange={(event) => setBookingYear(Number(event.target.value))}
+            className="min-h-11 min-w-[160px] rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-950"
+          >
+            {availableBookingYears.map((availableYear) => (
+              <option key={availableYear} value={availableYear}>{availableYear}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <KpiCard
+          label={`Gesamte Buchungsanzahl ${bookingYear}`}
+          value={loading ? "…" : yearEntries.length}
+          detail="Alle aktiven Buchungen des gewählten Jahres"
+          icon={ListChecks}
+          tone="blue"
+        />
         <KpiCard label={`Einnahmen ${monthLabel}`} value={formatCurrency(income)} icon={WalletCards} tone="green" />
         <KpiCard label={`Ausgaben ${monthLabel}`} value={formatCurrency(expenses)} icon={ReceiptText} tone="red" />
         <KpiCard label="Saldo" value={formatCurrency(income - expenses)} icon={BarChart3} tone={income - expenses >= 0 ? "blue" : "amber"} />
