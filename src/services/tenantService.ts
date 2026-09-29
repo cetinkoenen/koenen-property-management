@@ -609,6 +609,10 @@ export async function syncTenantEndFromVacancy(input: {
   if (error) throw error;
 
   const candidates = ((data ?? []) as TenantContract[]).filter((contract) => {
+    const contractStartDate = toIsoDate(contract.start_date);
+    // Ein Leerstand darf nur den bis zum Vortag bereits laufenden Vertrag
+    // beenden. Spaeter beginnende Anschlussvertraege bleiben unangetastet.
+    if (contractStartDate && contractStartDate > tenantEndDate) return false;
     if (!isContractCurrentOrFuture(contract, vacancyStartDate)) return false;
     const endDate = normalizedContractEndDate(contract);
     if (endDate && endDate <= tenantEndDate) return false;

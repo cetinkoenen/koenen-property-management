@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMonth, appData, consistency, cockpit, cashflow, loanOverview, utilitiesKpi, utilitiesPage, billingService, wealth, propertyExtraService, garageUtilities, migration, hohenloherMigration, rosensteinRentalMigration, p250JanuaryMigration, vercelConfig] = await Promise.all([
+const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMonth, appData, consistency, cockpit, cashflow, loanOverview, utilitiesKpi, utilitiesPage, billingService, wealth, propertyExtraService, garageUtilities, migration, hohenloherMigration, rosensteinRentalMigration, p250JanuaryMigration, rosensteinContractRepair, vercelConfig] = await Promise.all([
   read("src/App.tsx"),
   read("src/pages/InvestmentBericht.tsx"),
   read("src/services/auditLogService.ts"),
@@ -25,6 +25,7 @@ const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMont
   read("supabase/migrations/20260915133500_include_rent_component_in_monthly_view.sql"),
   read("supabase/migrations/20260920190000_sync_rosenstein_current_rental_periods.sql"),
   read("supabase/migrations/20260920194500_fix_p250_january_2026_rent.sql"),
+  read("supabase/migrations/20260929203000_restore_rosenstein_current_contracts.sql"),
   read("vercel.json"),
 ]);
 const tenantService = await read("src/services/tenantService.ts");
@@ -78,8 +79,11 @@ assert.match(cockpit, /isFuertherLabel\(objectLabel\)[\s\S]{0,300}?isGarageRefer
 assert.match(cockpit, /cockpitUnitLabel[\s\S]{0,400}?"Garage" : "Wohnung"/, "Fürther muss im Cockpit mit lesbaren separaten Einheiten erscheinen");
 const cockpitContractQuery = cockpit.match(/\.from\("tenant_contracts"\)[\s\S]{0,300}?\.eq\("is_deleted", false\)/)?.[0] ?? "";
 assert.doesNotMatch(cockpitContractQuery, /\.in\("status"/, "Das Cockpit darf einen im Berichtsmonat gültigen Vertrag nicht wegen eines vorzeitig gepflegten Status ausblenden");
-assert.match(cockpit, /contract\.start_date && contract\.start_date > end[\s\S]{0,250}?contract\.end_date && contract\.end_date < start/, "Das Cockpit muss die Monatsgültigkeit jedes Vertrags aus den zentralen Start- und Enddaten bestimmen");
+assert.match(cockpit, /contract\.start_date && contract\.start_date > end[\s\S]{0,350}?effectiveEndDate && effectiveEndDate < start/, "Das Cockpit muss die Monatsgültigkeit jedes Vertrags aus den zentralen Start- und Enddaten bestimmen");
 assert.match(cockpit, /const requiresUnitMatch = \(contractCountByObject\[objectGroupKey\] \?\? 0\) > 1/, "Mehrere Einheiten eines Objekts müssen im Cockpit getrennte Soll-Ist-Zeilen erhalten");
+assert.match(cockpit, /contract\.start_date && contract\.end_date && contract\.end_date < contract\.start_date[\s\S]{0,120}?\? null/, "Ein ungueltiges Enddatum vor Vertragsbeginn darf die Cockpit-Sollmiete nicht ausblenden");
+assert.match(tenantService, /contractStartDate && contractStartDate > tenantEndDate[\s\S]{0,120}?return false/, "Ein frueherer Leerstand darf keinen spaeter beginnenden Anschlussvertrag beenden");
+assert.match(rosensteinContractRepair, /P250[\s\S]*2026-03-01[\s\S]*P254[\s\S]*2026-08-01[\s\S]*end_date < start_date/, "P250 und P254 muessen als laufende Anschlussvertraege wiederhergestellt und gegen inverse Zeitraeume geprueft werden");
 assert.match(hohenloherMigration, /v_koenen_object_bridge/, "Die Backend-Mietmonatsquelle muss die zentrale Objekt-Bridge verwenden");
 assert.match(hohenloherMigration, /mietbestandteil\[- _\]\?nk/, "Die Backend-Mietmonatsquelle muss den Mietbestandteil-NK summieren");
 assert.match(hohenloherMigration, /with \(security_invoker = true\)/, "Die korrigierte Monatsview muss RLS mit den Rechten des aufrufenden Benutzers anwenden");

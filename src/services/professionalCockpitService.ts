@@ -204,10 +204,17 @@ function tenantName(contract: ContractRow): string {
 }
 
 function isContractRelevant(contract: ContractRow, start: string, end: string): boolean {
-  if (contract.status === "ended" && contract.end_date && contract.end_date < start) return false;
+  // Ein Enddatum vor dem Vertragsbeginn ist kein fachlich gueltiges Ende.
+  // Solche Altdaten duerfen die Sollmiete nicht ausblenden; die zentrale
+  // Konsistenzpruefung meldet und die Datenmigration repariert sie separat.
+  const effectiveEndDate =
+    contract.start_date && contract.end_date && contract.end_date < contract.start_date
+      ? null
+      : contract.end_date;
+  if (contract.status === "ended" && effectiveEndDate && effectiveEndDate < start) return false;
   if (contract.status === "planned" && contract.start_date && contract.start_date > end) return false;
   if (contract.start_date && contract.start_date > end) return false;
-  if (contract.end_date && contract.end_date < start) return false;
+  if (effectiveEndDate && effectiveEndDate < start) return false;
   return contract.status !== "vacant";
 }
 
