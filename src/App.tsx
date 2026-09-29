@@ -1688,7 +1688,7 @@ function BuchhaltungHubPage() {
               aria-label="Buchungsjahr"
               value={bookingYear}
               onChange={(event) => setBookingYear(Number(event.target.value))}
-              className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-950"
+              className="h-14 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-950"
             >
               {availableBookingYears.map((availableYear) => (
                 <option key={availableYear} value={availableYear}>{availableYear}</option>
@@ -1697,20 +1697,20 @@ function BuchhaltungHubPage() {
           </label>
           <div className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500">
             Buchungsanzahl im Jahr
-            <div className="flex min-h-11 items-center rounded-xl border border-blue-200 bg-blue-50 px-3 text-sm font-black tabular-nums text-blue-800">
+            <div className="flex h-14 items-center rounded-xl border border-blue-200 bg-blue-50 px-3 text-sm font-black tabular-nums text-blue-800">
               {loading ? "…" : new Intl.NumberFormat("de-DE").format(yearEntries.length)}
             </div>
           </div>
           <div className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500">
             Gesamte Buchungszahl
-            <div className="flex min-h-11 items-center rounded-xl border border-violet-200 bg-violet-50 px-3 text-sm font-black tabular-nums text-violet-800">
+            <div className="flex h-14 items-center rounded-xl border border-violet-200 bg-violet-50 px-3 text-sm font-black tabular-nums text-violet-800">
               {loading ? "…" : new Intl.NumberFormat("de-DE").format(entries.length)}
             </div>
           </div>
           <div className="grid gap-1 text-xs font-black uppercase tracking-wide text-slate-500">
             Gesamt-Buchungssumme
             <div
-              className="flex min-h-11 items-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-sm font-black tabular-nums text-emerald-800"
+              className="flex h-14 items-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-sm font-black tabular-nums text-emerald-800"
               title="Buchungsvolumen: Einnahmen und Ausgaben werden jeweils betragsmäßig addiert."
             >
               {loading ? "…" : formatCurrency(yearBookingVolume)}
