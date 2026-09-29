@@ -250,6 +250,50 @@ function StatCard({
   );
 }
 
+function BookingCountCard({
+  total,
+  filtered,
+  periodLabel,
+  loading,
+}: {
+  total: number;
+  filtered: number;
+  periodLabel: string;
+  loading: boolean;
+}) {
+  const hasTableFilter = filtered !== total;
+
+  return (
+    <div
+      style={{
+        border: "1px solid #bfdbfe",
+        borderRadius: 14,
+        padding: 14,
+        background: "#eff6ff",
+      }}
+    >
+      <div style={{ fontSize: 12, color: "#1e3a8a", fontWeight: 900 }}>
+        Gesamte Buchungsanzahl
+      </div>
+      <div
+        style={{
+          fontSize: 22,
+          fontWeight: 950,
+          marginTop: 6,
+          color: "#1d4ed8",
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {loading ? "…" : new Intl.NumberFormat("de-DE").format(total)}
+      </div>
+      <div style={{ marginTop: 5, fontSize: 11, color: "#475569", fontWeight: 800 }}>
+        {periodLabel}
+        {hasTableFilter ? ` · aktuell gefiltert: ${new Intl.NumberFormat("de-DE").format(filtered)}` : ""}
+      </div>
+    </div>
+  );
+}
+
 function Modal({
   open,
   title,
@@ -1487,10 +1531,16 @@ export default function Monate() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
           gap: 12,
         }}
       >
+        <BookingCountCard
+          total={rows.length}
+          filtered={sortedRows.length}
+          periodLabel={periodLabel}
+          loading={loading}
+        />
         <StatCard title="Einnahmen" value={totals.income} loading={loading} />
         <StatCard title="Ausgaben" value={totals.expense} loading={loading} />
         <StatCard title="Netto" value={totals.net} loading={loading} />
