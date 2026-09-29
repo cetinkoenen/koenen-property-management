@@ -84,8 +84,10 @@ assert.match(cockpit, /const requiresUnitMatch = \(contractCountByObject\[object
 assert.match(cockpit, /contract\.start_date && contract\.end_date && contract\.end_date < contract\.start_date[\s\S]{0,120}?\? null/, "Ein ungueltiges Enddatum vor Vertragsbeginn darf die Cockpit-Sollmiete nicht ausblenden");
 assert.match(tenantService, /contractStartDate && contractStartDate > tenantEndDate[\s\S]{0,120}?return false/, "Ein frueherer Leerstand darf keinen spaeter beginnenden Anschlussvertrag beenden");
 assert.match(rosensteinContractRepair, /P250[\s\S]*2026-03-01[\s\S]*P254[\s\S]*2026-08-01[\s\S]*end_date < start_date/, "P250 und P254 muessen als laufende Anschlussvertraege wiederhergestellt und gegen inverse Zeitraeume geprueft werden");
-assert.match(app, /Gesamte Buchungsanzahl[\s\S]{0,300}?yearEntries\.length/, "Die Buchungsseite muss die Gesamtanzahl des gewählten Jahres sichtbar ausweisen");
+assert.match(app, /Buchungsanzahl[\s\S]{0,500}?yearEntries\.length/, "Die Buchungsseite muss die Gesamtanzahl des gewählten Jahres direkt neben dem Jahresfilter ausweisen");
 assert.match(app, /aria-label="Buchungsjahr"[\s\S]{0,500}?availableBookingYears/, "Die Gesamtanzahl der Buchungen muss über den zentralen Jahresfilter steuerbar sein");
+assert.match(app, /Gesamt-Buchungssumme[\s\S]{0,700}?yearBookingVolume/, "Die Buchungsseite muss das betragliche Jahres-Buchungsvolumen neben der Anzahl anzeigen");
+assert.match(app, /yearEntries\.reduce\(\(sum, entry\) => sum \+ Math\.abs\(entry\.amount\), 0\)/, "Das Jahres-Buchungsvolumen muss Einnahmen und Ausgaben ohne Vorzeichenaufhebung summieren");
 assert.match(hohenloherMigration, /v_koenen_object_bridge/, "Die Backend-Mietmonatsquelle muss die zentrale Objekt-Bridge verwenden");
 assert.match(hohenloherMigration, /mietbestandteil\[- _\]\?nk/, "Die Backend-Mietmonatsquelle muss den Mietbestandteil-NK summieren");
 assert.match(hohenloherMigration, /with \(security_invoker = true\)/, "Die korrigierte Monatsview muss RLS mit den Rechten des aufrufenden Benutzers anwenden");
