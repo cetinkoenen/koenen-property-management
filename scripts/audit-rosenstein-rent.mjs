@@ -53,16 +53,18 @@ const supabase = createClient(process.env.VITE_SUPABASE_URL, serviceRoleKey(), {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-const [{ data: objects, error: objectError }, { data: properties, error: propertyError }, { data: units, error: unitError }, { data: unitMap, error: unitMapError }] = await Promise.all([
+const [{ data: objects, error: objectError }, { data: properties, error: propertyError }, { data: units, error: unitError }, { data: unitMap, error: unitMapError }, { data: tgBilling, error: tgBillingError }] = await Promise.all([
   supabase.from("v_object_dropdown").select("value,objekt_code,label,object_id,property_id"),
   supabase.from("portfolio_properties").select("id,name,core_property_id,is_test,created_at"),
   supabase.from("portfolio_units").select("id,property_id,name,unit_type,is_active"),
   supabase.from("portfolio_unit_map").select("*"),
+  supabase.from("apartment_billing_workspaces").select("object_id,year,data,updated_at").eq("object_id", "rosenstein-str-25-tiefgarage"),
 ]);
 if (objectError) throw objectError;
 if (propertyError) throw propertyError;
 if (unitError) throw unitError;
 if (unitMapError) throw unitMapError;
+if (tgBillingError) throw tgBillingError;
 
 const rosenObjects = (objects ?? []).filter((row) => normalize(row.label).includes("rosenstein"));
 const rosenProperties = (properties ?? []).filter((row) => normalize(row.name).includes("rosenstein"));
@@ -72,12 +74,13 @@ const ids = new Set(
     .map(String),
 );
 
-const [{ data: contracts, error: contractError }, { data: rentals, error: rentalError }, { data: adjustments, error: adjustmentError }] = await Promise.all([
-  supabase.from("tenant_contracts").select("id,tenant_id,property_id,object_code,unit_label,start_date,end_date,status,cold_rent,operating_costs,total_rent,is_deleted,tenant_profiles(first_name,last_name,company_name)").order("start_date"),
+const [{ data: contracts, error: contractError }, { data: rentals, error: rentalError }, { data: adjustments, error: adjustmentError }, { data: entries, error: entryError }] = await Promise.all([
+  supabase.from("tenant_contracts").select("id,tenant_id,property_id,object_code,unit_label,start_date,end_date,status,cold_rent,operating_costs,total_rent,is_deleted,tenant_profiles(first_name,last_name,company_name,street,postal_code,city)").order("start_date"),
   supabase.from("portfolio_property_rentals").select("id,property_id,unit_id,rent_type,rent_monthly,start_date,end_date,created_at,updated_at").order("start_date"),
   supabase.from("rent_adjustments").select("id,property_id,object_label,tenant_name,effective_date,effective_end_date,old_total_rent,new_total_rent,note,is_deleted").order("effective_date"),
+  supabase.from("finance_entry").select("id,object_id,objekt_code,booking_date,entry_type,category,amount,note,is_deleted").gte("booking_date", "2025-11-01").lte("booking_date", "2025-12-31").order("booking_date"),
 ]);
-for (const error of [contractError, rentalError, adjustmentError]) if (error) throw error;
+for (const error of [contractError, rentalError, adjustmentError, entryError]) if (error) throw error;
 
 const matches = (row) =>
   ids.has(String(row.property_id ?? "")) ||
@@ -87,6 +90,14 @@ table("ROSENSTEIN-OBJEKTBRÜCKE", rosenObjects);
 table("ROSENSTEIN-PORTFOLIOOBJEKTE", rosenProperties);
 table("ROSENSTEIN-EINHEITEN", (units ?? []).filter((row) => ids.has(String(row.property_id))));
 table("ROSENSTEIN-EINHEITEN-MAP", (unitMap ?? []).filter((row) => ids.has(String(row.property_id)) || (units ?? []).some((unit) => unit.id === row.portfolio_unit_id && ids.has(String(unit.property_id)))));
-table("MIETVERTRÄGE", (contracts ?? []).filter(matches));
+console.log("\nTIEFGARAGEN-ABRECHNUNGSARBEITSBEREICH");
+console.dir(tgBilling, { depth: null });
+table("MIETVERTRÄGE", (contracts ?? []).filter(matches).map((row) => ({
+  ...row,
+  tenant_name: [row.tenant_profiles?.first_name, row.tenant_profiles?.last_name].filter(Boolean).join(" ") || row.tenant_profiles?.company_name || "",
+  tenant_address: [row.tenant_profiles?.street, [row.tenant_profiles?.postal_code, row.tenant_profiles?.city].filter(Boolean).join(" ")].filter(Boolean).join(", "),
+  tenant_profiles: undefined,
+})));
 table("VERMIETUNGSZEITRÄUME", (rentals ?? []).filter(matches));
 table("MIETANPASSUNGEN", (adjustments ?? []).filter(matches));
+table("BUCHUNGEN NOV-DEZ 2025", (entries ?? []).filter((row) => ids.has(String(row.object_id ?? "")) || normalize(`${row.objekt_code ?? ""} ${row.note ?? ""}`).includes("rosenstein")));
