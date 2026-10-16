@@ -30,7 +30,11 @@ type ObjectDropdownResponse = {
   property_id?: string | null;
 };
 
-const ROSENSTEIN_PARKING_NOTE = "P254 - E008440000123 - P250 - E008440000121 - P253 - E008440000122";
+const ROSENSTEIN_PARKING_REFERENCES = [
+  { id: "p254", label: "P254 - E008440000123" },
+  { id: "p250", label: "P250 - E008440000121" },
+  { id: "p253", label: "P253 - E008440000122" },
+] as const;
 
 function toISODate(date: Date): string {
   const y = date.getFullYear();
@@ -139,6 +143,27 @@ export default function EntryAdd() {
     [telecomLandlineInternetNumber, telecomSpouseANumber, telecomSpouseBNumber],
   );
   const effectiveAmountNumber = isTelecommunication ? telecomDetails.totalAmount : amountNumber;
+
+  function toggleRosensteinParkingReference(referenceId: string, selected: boolean) {
+    const selectedReferenceIds = new Set(
+      ROSENSTEIN_PARKING_REFERENCES
+        .filter((reference) => note.includes(reference.label))
+        .map((reference) => reference.id),
+    );
+
+    if (selected) {
+      selectedReferenceIds.add(referenceId as (typeof ROSENSTEIN_PARKING_REFERENCES)[number]["id"]);
+    } else {
+      selectedReferenceIds.delete(referenceId as (typeof ROSENSTEIN_PARKING_REFERENCES)[number]["id"]);
+    }
+
+    setNote(
+      ROSENSTEIN_PARKING_REFERENCES
+        .filter((reference) => selectedReferenceIds.has(reference.id))
+        .map((reference) => reference.label)
+        .join(" - "),
+    );
+  }
 
   useEffect(() => {
     const syncTaxRule = window.setTimeout(() => setTaxRelevant(taxRule.taxRelevant), 0);
@@ -1030,39 +1055,38 @@ export default function EntryAdd() {
               />
             </label>
 
-            <label
-              style={{
-                marginTop: 10,
-                minHeight: 44,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 12px",
-                border: "1px solid #bfdbfe",
-                borderRadius: 12,
-                background: "#eff6ff",
-                color: "#1e3a8a",
-                fontSize: 13,
-                fontWeight: 850,
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={note === ROSENSTEIN_PARKING_NOTE}
-                onChange={(event) => {
-                  if (event.target.checked) {
-                    setNote(ROSENSTEIN_PARKING_NOTE);
-                  } else if (note === ROSENSTEIN_PARKING_NOTE) {
-                    setNote("");
-                  }
-                }}
-                style={{ width: 18, height: 18, flex: "0 0 auto" }}
-              />
-              <span>
-                Rosenstein Stellplätze: {ROSENSTEIN_PARKING_NOTE}
-              </span>
-            </label>
+            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, color: "#1e3a8a" }}>
+                Rosenstein Stellplätze
+              </div>
+              {ROSENSTEIN_PARKING_REFERENCES.map((reference) => (
+                <label
+                  key={reference.id}
+                  style={{
+                    minHeight: 40,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 12px",
+                    border: "1px solid #bfdbfe",
+                    borderRadius: 12,
+                    background: "#eff6ff",
+                    color: "#1e3a8a",
+                    fontSize: 13,
+                    fontWeight: 850,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={note.includes(reference.label)}
+                    onChange={(event) => toggleRosensteinParkingReference(reference.id, event.target.checked)}
+                    style={{ width: 18, height: 18, flex: "0 0 auto" }}
+                  />
+                  {reference.label}
+                </label>
+              ))}
+            </div>
           </div>
 
           <div style={{ alignSelf: "end", display: "flex", gap: 8, flexWrap: "wrap" }}>
