@@ -47,7 +47,7 @@ const rentAdjustmentQuery = rentOverview.match(/\.from\("rent_adjustments"\)[\s\
 assert.doesNotMatch(rentAdjustmentQuery, /object_code/, "Mieteingang darf keine nicht vorhandene rent_adjustments.object_code-Spalte abfragen");
 assert.doesNotMatch(rentAdjustmentQuery, /unit_label/, "Mieteingang darf keine nicht vorhandene rent_adjustments.unit_label-Spalte abfragen");
 assert.doesNotMatch(rentOverview, /\.from\("finance_entry"\)/, "Mieteingang darf Buchungen nicht parallel zur zentralen App-Datenquelle laden");
-assert.match(rentOverview, /const allKnownBookings = appData\.entries\.filter/, "Mieteingang muss ausschließlich die zentral geladenen Buchungen verwenden");
+assert.match(rentOverview, /const allKnownBookings = useMemo\(\(\) => uniqueFinanceEntries\(appData\.entries\), \[appData\.entries\]\)/, "Mieteingang muss ausschließlich die zentral geladenen Buchungen verwenden und Dubletten einmal pro Datenstand entfernen");
 assert.match(rentOverview, /portfolioRentalsLoading/, "Mietkonto-Exporte müssen den Ladezustand der Vermietungszeiträume kennen");
 assert.match(rentOverview, /from\("portfolio_units"\)\.select\("id,name,unit_type,property_id"\)/, "Stellplatz-Mietverträge müssen ihre lesbare Einheit aus portfolio_units auflösen");
 assert.match(rentOverview, /rental\.unit_name/, "Die Zuordnung P250, P253 und P254 darf nicht nur gegen technische UUIDs prüfen");

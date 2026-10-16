@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 import { MIETBESTANDTEIL_NK_CATEGORY, isPureRentBackPayment } from "../lib/financeEntryLabels";
 import { explicitRentYearMonth, rentPaymentCutoffDay, shiftIsoDateByMonthsClamped } from "../lib/rentMonth";
 import { rentBalancePart } from "../lib/rentPaymentBalance";
+import { uniqueFinanceEntries } from "../lib/uniqueFinanceEntries";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
 import {
   isVacancyInRange,
@@ -1717,14 +1718,12 @@ export default function Mietuebersicht({
     onAnnualReportStatusChange?.({ loading: reportDataLoading, error: reportSourceError });
   }, [onAnnualReportStatusChange, reportDataLoading, reportSourceError]);
 
+  const allKnownBookings = useMemo(() => uniqueFinanceEntries(appData.entries), [appData.entries]);
+
   const rows = useMemo<OverviewRow[]>(
     () =>
       sourceObjects.flatMap((object) => {
         const objectCandidateIds = candidatePropertyIdsForObject(object, appData.portfolioRows, portfolioProperties);
-        const allKnownBookings = appData.entries.filter((booking, index, list) => {
-          const key = booking.id != null ? `id:${booking.id}` : `${booking.object_id ?? ""}|${booking.objekt_code ?? ""}|${booking.booking_date ?? ""}|${booking.amount}|${booking.category ?? ""}|${booking.note ?? ""}`;
-          return list.findIndex((other) => (other.id != null ? `id:${other.id}` : `${other.object_id ?? ""}|${other.objekt_code ?? ""}|${other.booking_date ?? ""}|${other.amount}|${other.category ?? ""}|${other.note ?? ""}`) === key) === index;
-        });
         const units = getUnitDefinitions(object.label);
         return displayedPeriods.flatMap((period) => {
           const monthlyKnownBookings = allKnownBookings.filter((booking) =>
@@ -1742,10 +1741,7 @@ export default function Mietuebersicht({
           const regularMonthlyRentBookings = (strictRentBookings.length > 0 ? strictRentBookings : monthlyIncomeBookings).filter(
             (booking) => !isRentBackPaymentBooking(booking) && !isClearlyExcludedFromRent(booking)
           );
-          const relevantBookings = [...regularMonthlyRentBookings, ...hohenloherComponents].filter((booking, index, list) => {
-            const key = booking.id != null ? `id:${booking.id}` : `${booking.object_id ?? ""}|${booking.objekt_code ?? ""}|${booking.booking_date ?? ""}|${booking.amount}|${booking.category ?? ""}|${booking.note ?? ""}`;
-            return list.findIndex((other) => (other.id != null ? `id:${other.id}` : `${other.object_id ?? ""}|${other.objekt_code ?? ""}|${other.booking_date ?? ""}|${other.amount}|${other.category ?? ""}|${other.note ?? ""}`) === key) === index;
-          });
+          const relevantBookings = uniqueFinanceEntries([...regularMonthlyRentBookings, ...hohenloherComponents]);
 
           return units.map((unit) => {
             const tenantKey = units.length > 1 ? `${object.id}::${unit.ref}` : object.id;
@@ -1918,7 +1914,7 @@ export default function Mietuebersicht({
           });
         });
       }),
-    [sourceObjects, appData, portfolioProperties, displayedPeriods, tenantInfo, tenantContractRows, vacancies, portfolioRentals, rentAdjustments]
+    [sourceObjects, appData, allKnownBookings, portfolioProperties, displayedPeriods, tenantInfo, tenantContractRows, vacancies, portfolioRentals, rentAdjustments]
   );
 
   const filteredRows = useMemo(() => {

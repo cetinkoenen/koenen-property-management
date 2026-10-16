@@ -13,6 +13,10 @@ const checks = [
   ["Sicherheitsbasis", "npm", ["run", "stress:security"]],
   ["Tilgungspläne und Kreditraten", "npm", ["run", "stress:loan-rate-plans"]],
   ["Marke und Projektname", "npm", ["run", "stress:branding"]],
+  ["Seiten und Weiterleitungen", "npm", ["run", "test:navigation"]],
+  ["Berichtscenter und Dokumentenschema", "npm", ["run", "test:report-center"]],
+  ["Buchungsdubletten bei großen Datenmengen", "npm", ["run", "stress:finance-volume"]],
+  ["Parallele Buchungsabfragen und vollständige Jahressichten", "npm", ["run", "stress:booking-loading"]],
 ];
 
 for (const [label, command, args] of checks) {

@@ -184,6 +184,7 @@ const NebenkostenTiefgarage = lazy(() => import("./pages/NebenkostenTiefgarage")
 const NebenkostenWohnungen = lazy(() => import("./pages/NebenkostenWohnungen"));
 const Administrator = lazy(() => import("./pages/Administrator"));
 const Datenschutz = lazy(() => import("./pages/Datenschutz"));
+const Impressum = lazy(() => import("./pages/Impressum"));
 const ReportsHome = lazy(() => import("./pages/ReportsHome"));
 const ReportCenter = lazy(() => import("./pages/ReportCenter"));
 const Mietuebersicht = lazy(() => import("./pages/Mietuebersicht"));
@@ -250,7 +251,7 @@ const routePreloaders: Record<string, () => Promise<unknown>> = {
   "/ticketsystem/schadenmeldungen": async () => undefined,
   "/dokumente": async () => undefined,
   "/einstellungen/benutzer-rechteverwaltung": () => import("./pages/Administrator"),
-  "/einstellungen/datenschutz-sicherheit": () => import("./pages/Datenschutz"),
+  "/einstellungen/datenschutz-compliance": () => import("./pages/Datenschutz"),
 };
 
 const preloadedRoutes = new Set<string>();
@@ -1649,7 +1650,7 @@ function BuchhaltungHubPage() {
   const rentIncome = currentMonthEntries
     .filter((entry) => isRentLikeEntry(entry))
     .reduce((sum, entry) => sum + entry.amount, 0);
-  const unassigned = currentMonthEntries.filter((entry) => !entry.object_id || !entry.category).length;
+  const unassigned = currentMonthEntries.filter((entry) => (!entry.object_id && !isPortfolioGeneralEntry(entry)) || !entry.category).length;
   const recentEntries = useMemo(
     () =>
       [...entries]
@@ -1746,7 +1747,7 @@ function BuchhaltungHubPage() {
                   <div className="text-sm font-black text-slate-700">{formatDate(entry.booking_date)}</div>
                   <div className="min-w-0">
                     <div className="truncate text-sm font-black text-slate-950">
-                      {getPropertyName(entry.object_id) || entry.objekt_code || "Ohne Objekt"}
+                      {isPortfolioGeneralEntry(entry) ? PORTFOLIO_GENERAL_LABEL : getPropertyName(entry.object_id) || entry.objekt_code || "Ohne Objekt"}
                     </div>
                     <div className="mt-1 truncate text-xs font-bold text-slate-500">
                       {entry.category || "Ohne Kategorie"} {entry.note ? `- ${entry.note}` : ""}
@@ -5713,6 +5714,15 @@ export default function App() {
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="/mfa" element={<MFA />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route path="/datenschutz" element={<Datenschutz />} />
+        <Route path="/impressum" element={<Impressum />} />
+        <Route path="/unauthorized" element={
+          <div className="mx-auto max-w-3xl p-8">
+            <h1 className="text-2xl font-bold">Keine Berechtigung</h1>
+            <p className="mt-3">Dein Konto hat keinen Zugriff auf diese Seite.</p>
+            <Link className="mt-5 inline-block underline" to="/dashboard">Zum Dashboard</Link>
+          </div>
+        } />
 
       <Route element={<ProtectedAppShell />}>
         <Route path="/dashboard" element={<Navigate to="/dashboard/finanz-kennzahlen" replace />} />
@@ -5842,7 +5852,7 @@ export default function App() {
         <Route path="/buchhaltung/neue-buchung" element={<EntryAdd />} />
         <Route path="/buchhaltung/regeln" element={<Transaktionsregeln />} />
         <Route path="/buchhaltung/mahnwesen" element={<Navigate to="/buchhaltung/automatisiertes-mahnwesen" replace />} />
-        <Route path="/buchhaltung/kautionen" element={<Navigate to="/buchhaltung/sollstellungen-mietanpassungen" replace />} />
+        <Route path="/buchhaltung/kautionen" element={<Navigate to="/kautionen" replace />} />
         <Route path="/buchhaltung/nebenkosten" element={<Navigate to="/buchhaltung/nebenkostenabrechnung" replace />} />
         <Route path="/buchhaltung/mietanpassungen" element={<Navigate to="/mieter/mietentwicklung" replace />} />
         <Route path="/mietanpassungen" element={<Navigate to="/mieter/mietentwicklung" replace />} />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase } from "../lib/supabase";
 import { clearAppDataCache } from "../lib/appCache";
 import { canonicalizeFinanceCategory, getFinanceCategoryOptions } from "../lib/financeCategories";
@@ -361,6 +361,7 @@ export default function Monate() {
   const [objektCode, setObjektCode] = useState<string>("ALL");
 
   const [rows, setRows] = useState<EntryRow[]>([]);
+  const loadRequest = useRef(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<PageNotice | null>(null);
@@ -467,14 +468,22 @@ export default function Monate() {
       .gte("booking_date", from)
       .lt("booking_date", to)
       .in("entry_type", ["income", "expense"])
-      .order("booking_date", { ascending: false });
+      .order("booking_date", { ascending: false })
+      .order("id", { ascending: false });
 
     if (code && code !== "ALL") {
       query = query.eq("objekt_code", code);
     }
 
-    const { data, error } = await query;
-    if (error) throw error;
+    const data: FinanceEntryResponse[] = [];
+    const pageSize = 500;
+    for (let offset = 0; ; offset += pageSize) {
+      const result = await query.range(offset, offset + pageSize - 1);
+      if (result.error) throw result.error;
+      const page = (result.data ?? []) as FinanceEntryResponse[];
+      data.push(...page);
+      if (page.length < pageSize) break;
+    }
 
     const entries: EntryRow[] = ((data ?? []) as FinanceEntryResponse[]).map((r) => ({
       id: Number(r.id),
@@ -492,6 +501,7 @@ export default function Monate() {
   }
 
   async function loadEntries() {
+    const request = ++loadRequest.current;
     setLoading(true);
     setErr(null);
 
@@ -514,19 +524,24 @@ export default function Monate() {
 
     try {
       const data = await fetchEntriesForRange(from, to, code);
+      if (request !== loadRequest.current) return;
       setRows(data);
     } catch (e: unknown) {
+      if (request !== loadRequest.current) return;
       console.error("loadEntries failed:", e);
       setRows([]);
       setErr(errorMessage(e));
     } finally {
-      setLoading(false);
+      if (request === loadRequest.current) setLoading(false);
     }
   }
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void loadEntries(), 0);
-    return () => window.clearTimeout(initialLoad);
+    return () => {
+      window.clearTimeout(initialLoad);
+      loadRequest.current += 1;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [objektCode, year, month, periodMode]);
 
