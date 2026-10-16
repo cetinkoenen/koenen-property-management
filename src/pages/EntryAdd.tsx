@@ -124,8 +124,8 @@ export default function EntryAdd() {
   );
   const selectedObjectLabel = useMemo(() => objects.find((object) => String(object.value) === String(objectId))?.label ?? "", [objectId, objects]);
   const isRosensteinSelected = useMemo(
-    () => `${selectedObjectLabel} ${objektCodePreview}`.toLocaleLowerCase("de-DE").includes("rosenstein"),
-    [objektCodePreview, selectedObjectLabel],
+    () => selectedObjectLabel.trim().toLocaleLowerCase("de-DE") === "rosenstein str. 25",
+    [selectedObjectLabel],
   );
   const isCreditRate = kind === "expense" && resolvedCategory === "Kreditrate";
   const chfLoanRule = useMemo(() => resolveChfLoanSplitRule(`${selectedObjectLabel} ${objektCodePreview}`), [objektCodePreview, selectedObjectLabel]);
