@@ -123,6 +123,10 @@ export default function EntryAdd() {
     [kind, note, resolvedCategory],
   );
   const selectedObjectLabel = useMemo(() => objects.find((object) => String(object.value) === String(objectId))?.label ?? "", [objectId, objects]);
+  const isRosensteinSelected = useMemo(
+    () => `${selectedObjectLabel} ${objektCodePreview}`.toLocaleLowerCase("de-DE").includes("rosenstein"),
+    [objektCodePreview, selectedObjectLabel],
+  );
   const isCreditRate = kind === "expense" && resolvedCategory === "Kreditrate";
   const chfLoanRule = useMemo(() => resolveChfLoanSplitRule(`${selectedObjectLabel} ${objektCodePreview}`), [objektCodePreview, selectedObjectLabel]);
   const loanInterestNumber = useMemo(() => parseNumberInput(loanInterest), [loanInterest]);
@@ -1055,38 +1059,40 @@ export default function EntryAdd() {
               />
             </label>
 
-            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-              <div style={{ fontSize: 12, fontWeight: 900, color: "#1e3a8a" }}>
-                Rosenstein Stellplätze
+            {isRosensteinSelected ? (
+              <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 900, color: "#1e3a8a" }}>
+                  Rosenstein Stellplätze
+                </div>
+                {ROSENSTEIN_PARKING_REFERENCES.map((reference) => (
+                  <label
+                    key={reference.id}
+                    style={{
+                      minHeight: 40,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "8px 12px",
+                      border: "1px solid #bfdbfe",
+                      borderRadius: 12,
+                      background: "#eff6ff",
+                      color: "#1e3a8a",
+                      fontSize: 13,
+                      fontWeight: 850,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={note.includes(reference.label)}
+                      onChange={(event) => toggleRosensteinParkingReference(reference.id, event.target.checked)}
+                      style={{ width: 18, height: 18, flex: "0 0 auto" }}
+                    />
+                    {reference.label}
+                  </label>
+                ))}
               </div>
-              {ROSENSTEIN_PARKING_REFERENCES.map((reference) => (
-                <label
-                  key={reference.id}
-                  style={{
-                    minHeight: 40,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "8px 12px",
-                    border: "1px solid #bfdbfe",
-                    borderRadius: 12,
-                    background: "#eff6ff",
-                    color: "#1e3a8a",
-                    fontSize: 13,
-                    fontWeight: 850,
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={note.includes(reference.label)}
-                    onChange={(event) => toggleRosensteinParkingReference(reference.id, event.target.checked)}
-                    style={{ width: 18, height: 18, flex: "0 0 auto" }}
-                  />
-                  {reference.label}
-                </label>
-              ))}
-            </div>
+            ) : null}
           </div>
 
           <div style={{ alignSelf: "end", display: "flex", gap: 8, flexWrap: "wrap" }}>
