@@ -30,6 +30,8 @@ type ObjectDropdownResponse = {
   property_id?: string | null;
 };
 
+const ROSENSTEIN_PARKING_NOTE = "P254 - E008440000123 - P250 - E008440000121 - P253 - E008440000122";
+
 function toISODate(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -1017,15 +1019,51 @@ export default function EntryAdd() {
             </>
           )}
 
-          <label style={fieldLabelStyle()}>
-            Notiz
-            <input
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="optional"
-              style={inputStyle()}
-            />
-          </label>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={fieldLabelStyle()}>
+              Notiz
+              <input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="optional"
+                style={inputStyle()}
+              />
+            </label>
+
+            <label
+              style={{
+                marginTop: 10,
+                minHeight: 44,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 12px",
+                border: "1px solid #bfdbfe",
+                borderRadius: 12,
+                background: "#eff6ff",
+                color: "#1e3a8a",
+                fontSize: 13,
+                fontWeight: 850,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={note === ROSENSTEIN_PARKING_NOTE}
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    setNote(ROSENSTEIN_PARKING_NOTE);
+                  } else if (note === ROSENSTEIN_PARKING_NOTE) {
+                    setNote("");
+                  }
+                }}
+                style={{ width: 18, height: 18, flex: "0 0 auto" }}
+              />
+              <span>
+                Rosenstein Stellplätze: {ROSENSTEIN_PARKING_NOTE}
+              </span>
+            </label>
+          </div>
 
           <div style={{ alignSelf: "end", display: "flex", gap: 8, flexWrap: "wrap" }}>
             <label
