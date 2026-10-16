@@ -45,6 +45,11 @@ const CREDIT_RATE_REFERENCES = [
   { propertyMatch: "hohenloher", label: "Darlehensvertrag 80767-1" },
 ] as const;
 
+function creditRateReferenceForObjectLabel(objectLabel: string): string | null {
+  const normalizedObjectLabel = objectLabel.toLocaleLowerCase("de-DE");
+  return CREDIT_RATE_REFERENCES.find((reference) => normalizedObjectLabel.includes(reference.propertyMatch))?.label ?? null;
+}
+
 function toISODate(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -99,6 +104,7 @@ export default function EntryAdd() {
   const [category, setCategory] = useState<string>("");
   const [customCategory, setCustomCategory] = useState<string>("");
   const [note, setNote] = useState<string>("");
+  const [creditRateReferenceSelected, setCreditRateReferenceSelected] = useState(false);
   const [businessMealPersons, setBusinessMealPersons] = useState<string>("");
   const [businessMealOccasion, setBusinessMealOccasion] = useState<string>("");
   const [telecomSpouseA, setTelecomSpouseA] = useState<string>("");
@@ -137,10 +143,7 @@ export default function EntryAdd() {
     [selectedObjectLabel],
   );
   const isCreditRate = kind === "expense" && resolvedCategory === "Kreditrate";
-  const creditRateReference = useMemo(() => {
-    const normalizedObjectLabel = selectedObjectLabel.toLocaleLowerCase("de-DE");
-    return CREDIT_RATE_REFERENCES.find((reference) => normalizedObjectLabel.includes(reference.propertyMatch))?.label ?? null;
-  }, [selectedObjectLabel]);
+  const creditRateReference = useMemo(() => creditRateReferenceForObjectLabel(selectedObjectLabel), [selectedObjectLabel]);
   const chfLoanRule = useMemo(() => resolveChfLoanSplitRule(`${selectedObjectLabel} ${objektCodePreview}`), [objektCodePreview, selectedObjectLabel]);
   const loanInterestNumber = useMemo(() => parseNumberInput(loanInterest), [loanInterest]);
   const loanPrincipalNumber = useMemo(() => parseNumberInput(loanPrincipal), [loanPrincipal]);
@@ -310,6 +313,36 @@ export default function EntryAdd() {
     setObjectId(newId);
     const selected = objects.find((o) => String(o.value) === String(newId));
     setObjektCodePreview(selected ? selected.objekt_code : "");
+    if (creditRateReferenceSelected) {
+      const nextReference = creditRateReferenceForObjectLabel(selected?.label ?? "");
+      setNote(nextReference ?? "");
+      setCreditRateReferenceSelected(Boolean(nextReference));
+    }
+  }
+
+  function onSelectKind(nextKind: "income" | "expense") {
+    setKind(nextKind);
+    if (nextKind !== "expense" && creditRateReferenceSelected) {
+      setNote("");
+      setCreditRateReferenceSelected(false);
+    }
+  }
+
+  function onSelectCategory(nextCategory: string) {
+    setCategory(nextCategory);
+    const nextResolvedCategory = canonicalizeFinanceCategory(nextCategory === "__NEW__" ? customCategory : nextCategory, kind);
+    if (nextResolvedCategory !== "Kreditrate" && creditRateReferenceSelected) {
+      setNote("");
+      setCreditRateReferenceSelected(false);
+    }
+  }
+
+  function onChangeCustomCategory(nextCategory: string) {
+    setCustomCategory(nextCategory);
+    if (canonicalizeFinanceCategory(nextCategory, kind) !== "Kreditrate" && creditRateReferenceSelected) {
+      setNote("");
+      setCreditRateReferenceSelected(false);
+    }
   }
 
   function resetForm() {
@@ -317,6 +350,7 @@ export default function EntryAdd() {
     setCategory("");
     setCustomCategory("");
     setNote("");
+    setCreditRateReferenceSelected(false);
     setBusinessMealPersons("");
     setBusinessMealOccasion("");
     setTelecomSpouseA("");
@@ -465,6 +499,7 @@ export default function EntryAdd() {
       setCategory("");
       setCustomCategory("");
       setNote("");
+      setCreditRateReferenceSelected(false);
       setBusinessMealPersons("");
       setBusinessMealOccasion("");
       setTelecomSpouseA("");
@@ -821,7 +856,7 @@ export default function EntryAdd() {
             Typ
             <select
               value={kind}
-              onChange={(e) => setKind(e.target.value as "income" | "expense")}
+              onChange={(e) => onSelectKind(e.target.value as "income" | "expense")}
               style={inputStyle()}
             >
               <option value="income">Einnahme</option>
@@ -854,7 +889,7 @@ export default function EntryAdd() {
             Kategorie
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => onSelectCategory(e.target.value)}
               style={inputStyle()}
             >
               <option value="">Kategorie auswählen</option>
@@ -872,7 +907,7 @@ export default function EntryAdd() {
               Neue Kategorie
               <input
                 value={customCategory}
-                onChange={(e) => setCustomCategory(e.target.value)}
+                onChange={(e) => onChangeCustomCategory(e.target.value)}
                 placeholder="Neue Kategorie eingeben"
                 style={inputStyle()}
               />
@@ -1066,7 +1101,10 @@ export default function EntryAdd() {
               Notiz
               <input
                 value={note}
-                onChange={(e) => setNote(e.target.value)}
+                onChange={(e) => {
+                  setNote(e.target.value);
+                  setCreditRateReferenceSelected(false);
+                }}
                 placeholder="optional"
                 style={inputStyle()}
               />
@@ -1092,8 +1130,11 @@ export default function EntryAdd() {
               >
                 <input
                   type="checkbox"
-                  checked={note === creditRateReference}
-                  onChange={(event) => setNote(event.target.checked ? creditRateReference : "")}
+                  checked={creditRateReferenceSelected && note === creditRateReference}
+                  onChange={(event) => {
+                    setCreditRateReferenceSelected(event.target.checked);
+                    setNote(event.target.checked ? creditRateReference : "");
+                  }}
                   style={{ width: 18, height: 18, flex: "0 0 auto" }}
                 />
                 Kreditrate: {creditRateReference}
