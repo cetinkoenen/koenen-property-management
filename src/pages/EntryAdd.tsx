@@ -36,6 +36,15 @@ const ROSENSTEIN_PARKING_REFERENCES = [
   { id: "p253", label: "P253 - E008440000122" },
 ] as const;
 
+const CREDIT_RATE_REFERENCES = [
+  { propertyMatch: "colmarer", label: "Darlehensvertrag 650 2083277 88" },
+  { propertyMatch: "lilienthaler", label: "Darlehensvertrag Lux Credit Ref. Nr. 287-3229732" },
+  { propertyMatch: "fürther", label: "Darlehensvertrag 2441991360" },
+  { propertyMatch: "elsasser", label: "Darlehensvertrag Lux Credit Ref. Nr. 287-3286114" },
+  { propertyMatch: "rosenstein", label: "Darlehensvertrag 80730-2" },
+  { propertyMatch: "hohenloher", label: "Darlehensvertrag 80767-1" },
+] as const;
+
 function toISODate(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -128,6 +137,10 @@ export default function EntryAdd() {
     [selectedObjectLabel],
   );
   const isCreditRate = kind === "expense" && resolvedCategory === "Kreditrate";
+  const creditRateReference = useMemo(() => {
+    const normalizedObjectLabel = selectedObjectLabel.toLocaleLowerCase("de-DE");
+    return CREDIT_RATE_REFERENCES.find((reference) => normalizedObjectLabel.includes(reference.propertyMatch))?.label ?? null;
+  }, [selectedObjectLabel]);
   const chfLoanRule = useMemo(() => resolveChfLoanSplitRule(`${selectedObjectLabel} ${objektCodePreview}`), [objektCodePreview, selectedObjectLabel]);
   const loanInterestNumber = useMemo(() => parseNumberInput(loanInterest), [loanInterest]);
   const loanPrincipalNumber = useMemo(() => parseNumberInput(loanPrincipal), [loanPrincipal]);
@@ -1058,6 +1071,34 @@ export default function EntryAdd() {
                 style={inputStyle()}
               />
             </label>
+
+            {isCreditRate && creditRateReference ? (
+              <label
+                style={{
+                  marginTop: 10,
+                  minHeight: 40,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "8px 12px",
+                  border: "1px solid #c4b5fd",
+                  borderRadius: 12,
+                  background: "#f5f3ff",
+                  color: "#5b21b6",
+                  fontSize: 13,
+                  fontWeight: 850,
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={note === creditRateReference}
+                  onChange={(event) => setNote(event.target.checked ? creditRateReference : "")}
+                  style={{ width: 18, height: 18, flex: "0 0 auto" }}
+                />
+                Kreditrate: {creditRateReference}
+              </label>
+            ) : null}
 
             {isRosensteinSelected ? (
               <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
