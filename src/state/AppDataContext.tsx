@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { isPureRentBackPayment } from "../lib/financeCategories";
 import { effectiveRentYearMonth, rentPaymentCutoffDay } from "../lib/rentMonth";
 import { loadCanonicalPropertyLoanSnapshots } from "@/services/propertyLoanLedgerService";
+import { listFinanceEntries, type FinanceEntryRepositoryRow } from "@/services/financeEntryRepository";
 
 export type AppObject = {
   id: string;
@@ -118,23 +119,6 @@ type ObjectDropdownRow = {
   label: string | null;
   object_id: string | null;
   property_id: string | null;
-};
-
-type FinanceEntryRow = {
-  id: string | number | null;
-  object_id: string | null;
-  objekt_code: string | null;
-  entry_type: string | null;
-  booking_date: string | null;
-  amount: unknown;
-  category: string | null;
-  note: string | null;
-  tax_relevant: boolean | null;
-  nk_relevant: boolean | null;
-  loan_interest_amount: unknown;
-  loan_principal_amount: unknown;
-  loan_rate_plan_id: string | null;
-  loan_split_source: string | null;
 };
 
 type PropertyExtraAreaRow = {
@@ -477,9 +461,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const [objectsRes, entriesRes, portfolioRes, loanRes, propertyExtraRes] = await Promise.all([
+      const [objectsRes, entryRows, portfolioRes, loanRes, propertyExtraRes] = await Promise.all([
         supabase.from("v_object_dropdown").select("value,objekt_code,label,object_id,property_id").order("label", { ascending: true }),
-        supabase.from("finance_entry").select("id,object_id,objekt_code,entry_type,booking_date,amount,category,note,tax_relevant,nk_relevant,loan_interest_amount,loan_principal_amount,loan_rate_plan_id,loan_split_source").eq("is_deleted", false).order("booking_date", { ascending: false }).limit(5000),
+        listFinanceEntries(),
         supabase.from("vw_property_loan_dashboard_portfolio_v2").select("property_id,portfolio_property_id,property_name,last_balance,principal_total,interest_total,repaid_percent,repayment_status,repayment_label").order("property_name", { ascending: true }),
         supabase.from("vw_property_loan_dashboard_dedup").select("property_id,property_name,first_year,last_year,last_balance_year,last_balance,interest_total,principal_total,repaid_percent,repaid_percent_display,repayment_status,repayment_label,refreshed_at").order("property_name", { ascending: true }),
         supabase.from("property_extra_info").select("property_id,living_area,wealth_profile"),
@@ -488,7 +472,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       // Objekt- und Buchungsdaten sind die Pflichtquelle fuer die App.
       // Darlehens-/Portfolio-Views duerfen Mieteingang, Buchhaltung und andere
       // Seiten nicht blockieren, wenn eine View kurzfristig nicht erreichbar ist.
-      const firstBlockingError = objectsRes.error || entriesRes.error;
+      const firstBlockingError = objectsRes.error;
       if (firstBlockingError) throw firstBlockingError;
       if (portfolioRes.error) console.warn("Portfolio-Darlehensdaten konnten nicht geladen werden:", portfolioRes.error.message);
       if (loanRes.error) console.warn("Darlehensdashboard konnte nicht geladen werden:", loanRes.error.message);
@@ -550,7 +534,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         };
       });
 
-      const mappedEntries = ((entriesRes.data ?? []) as FinanceEntryRow[]).map((row) => ({
+      const mappedEntries = (entryRows as FinanceEntryRepositoryRow[]).map((row) => ({
         id: row.id ?? null,
         object_id: row.object_id == null ? null : String(row.object_id),
         objekt_code: row.objekt_code ?? null,

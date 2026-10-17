@@ -11,6 +11,7 @@ import { PORTFOLIO_GENERAL_LABEL, PORTFOLIO_GENERAL_OBJECT_CODE, PORTFOLIO_GENER
 import { emitFinanceEntryChanged } from "../lib/appCache";
 import { findLoanRatePlanForBooking, type LoanRatePlanRow } from "../services/loanRatePlanService";
 import { calculateChfLoanSplit, resolveChfLoanSplitRule } from "../lib/chfLoanSplit";
+import { insertFinanceEntry } from "../services/financeEntryRepository";
 
 type DropdownRow = {
   /** Muss für finance_entry.object_id die UUID aus public.objects.id sein. */
@@ -509,11 +510,7 @@ export default function EntryAdd() {
         loan_split_source: isCreditRate ? (chfLoanRule?.source ?? (loanRatePlan ? `csv:${loanRatePlan.source_file}` : "manual")) : null,
       };
 
-      const { error } = await supabase.from("finance_entry").insert(payload);
-
-      if (error) {
-        throw error;
-      }
+      await insertFinanceEntry(payload);
 
       clearAppDataCache();
       emitFinanceEntryChanged();

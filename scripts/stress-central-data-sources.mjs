@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
-const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMonth, appData, consistency, cockpit, cashflow, loanOverview, utilitiesKpi, utilitiesPage, billingService, wealth, propertyExtraService, garageUtilities, migration, hohenloherMigration, rosensteinRentalMigration, p250JanuaryMigration, rosensteinContractRepair, vercelConfig] = await Promise.all([
+const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMonth, appData, financeEntryRepository, consistency, cockpit, cashflow, loanOverview, utilitiesKpi, utilitiesPage, billingService, wealth, propertyExtraService, garageUtilities, migration, hohenloherMigration, rosensteinRentalMigration, p250JanuaryMigration, rosensteinContractRepair, vercelConfig] = await Promise.all([
   read("src/App.tsx"),
   read("src/pages/InvestmentBericht.tsx"),
   read("src/services/auditLogService.ts"),
@@ -11,6 +11,7 @@ const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMont
   read("src/pages/Mietentwicklung.tsx"),
   read("src/lib/rentMonth.ts"),
   read("src/state/AppDataContext.tsx"),
+  read("src/services/financeEntryRepository.ts"),
   read("src/services/financeConsistencyEngine.ts"),
   read("src/services/professionalCockpitService.ts"),
   read("src/pages/WealthCashflowDashboard.tsx"),
@@ -30,9 +31,28 @@ const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMont
 ]);
 const tenantService = await read("src/services/tenantService.ts");
 const entryAdd = await read("src/pages/EntryAdd.tsx");
+const bookingPage = await read("src/pages/Monate.tsx");
+const monthlyEntryHook = await read("src/features/entries/useMonthlyEntries.ts");
+const compactEntryForm = await read("src/features/entries/EntryForm.tsx");
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
 assert.doesNotMatch(appData, /localStorage\.(?:getItem|setItem)/, "Zentrale App-Daten dürfen keinen browserweiten Fallback als zweite Fachquelle verwenden");
+assert.match(financeEntryRepository, /function listFinanceEntries[\s\S]*\.eq\("is_deleted", false\)[\s\S]*\.range\(offset, offset \+ pageSize - 1\)/, "Die zentrale Buchungsquelle muss ausschließlich aktive Datensätze vollständig paginiert laden");
+assert.match(financeEntryRepository, /\.order\("booking_date"[\s\S]*\.order\("id"/, "Die zentrale Pagination muss über Buchungsdatum und ID deterministisch sortiert sein");
+assert.match(financeEntryRepository, /function softDeleteFinanceEntries[\s\S]*is_deleted: true[\s\S]*deleted_at/, "Buchungen dürfen zentral nur nachvollziehbar soft-gelöscht werden");
+assert.match(appData, /listFinanceEntries\(\)/, "Der globale App-Datenbestand muss die vollständig paginierte Buchungsquelle verwenden");
+assert.doesNotMatch(appData, /\.from\("finance_entry"\)/, "Der globale App-Datenbestand darf finance_entry nicht an der zentralen Buchungsquelle vorbei laden");
+assert.match(entryAdd, /insertFinanceEntry\(payload\)/, "Die primäre Buchungserfassung muss über die zentrale Schreibfunktion speichern");
+assert.doesNotMatch(entryAdd, /\.from\("finance_entry"\)/, "Die primäre Buchungserfassung darf finance_entry nicht direkt beschreiben");
+assert.match(bookingPage, /listFinanceEntries\([\s\S]{0,300}?fromInclusive:[\s\S]{0,300}?toExclusive:/, "Die Buchungsseite muss Zeiträume über die zentrale paginierte Lesefunktion laden");
+assert.match(bookingPage, /softDeleteFinanceEntries\(selectedIds\)/, "Sammellöschungen müssen die zentrale Soft-Delete-Funktion verwenden");
+assert.match(bookingPage, /updateFinanceEntry\(editRow\.id, payload\)/, "Buchungsänderungen müssen die zentrale Schreibfunktion verwenden");
+assert.doesNotMatch(bookingPage, /\.from\("finance_entry"\)/, "Die Buchungsseite darf finance_entry nicht direkt lesen oder schreiben");
+assert.match(monthlyEntryHook, /listFinanceEntries\([\s\S]{0,300}?objectId[\s\S]{0,300}?fromInclusive/, "Monatsbuchungen müssen objektbezogen aus derselben zentralen Buchungsquelle kommen");
+assert.doesNotMatch(monthlyEntryHook, /\.from\("finance_entry"\)/, "Der Monats-Hook darf keine parallele Buchungsquelle unterhalten");
+assert.match(compactEntryForm, /listFinanceEntryCategories\(\)/, "Auch Kategorien müssen über die zentrale Buchungsquelle geladen werden");
+assert.match(compactEntryForm, /insertFinanceEntry\(/, "Auch die kompakte Erfassung muss zentral speichern");
+assert.doesNotMatch(compactEntryForm, /\.from\("finance_entry"\)/, "Die kompakte Erfassung darf finance_entry nicht direkt lesen oder schreiben");
 assert.match(entryAdd, /Objekte werden geladen…[\s\S]*Objektliste konnte nicht geladen werden[\s\S]*Keine Objekte vorhanden/, "Die Buchungserfassung muss Laden, Fehler und einen wirklich leeren Objektbestand eindeutig unterscheiden");
 assert.match(entryAdd, /setObjectLoadRevision\(\(value\) => value \+ 1\)/, "Ein fehlgeschlagener Objektabruf muss direkt wiederholt werden können");
 assert.match(entryAdd, /classifyTaxRelevance\([\s\S]{0,250}?selectedObjectLabel\)/, "Steuerregeln müssen das konkret ausgewählte Objekt berücksichtigen");
@@ -176,4 +196,4 @@ assert.deepEqual(
   "Jede Supabase-Migration muss einen gültigen Zeitstempel tragen und reproduzierbar ausführbar sein",
 );
 
-console.log("84 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("100 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

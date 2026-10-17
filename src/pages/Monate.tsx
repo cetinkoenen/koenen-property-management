@@ -19,6 +19,11 @@ import {
   parseTelecommunicationTaxDetails,
 } from "../lib/telecommunicationTax";
 import { emitFinanceEntryChanged } from "../lib/appCache";
+import {
+  listFinanceEntries,
+  softDeleteFinanceEntries,
+  updateFinanceEntry,
+} from "../services/financeEntryRepository";
 
 type EntryType = "income" | "expense";
 type TypeFilter = "all" | EntryType;
@@ -461,29 +466,12 @@ export default function Monate() {
   }, [objects]);
 
   async function fetchEntriesForRange(from: string, to: string, code: string) {
-    let query = supabase
-      .from("finance_entry")
-      .select("id,object_id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,nk_relevant,is_deleted")
-      .eq("is_deleted", false)
-      .gte("booking_date", from)
-      .lt("booking_date", to)
-      .in("entry_type", ["income", "expense"])
-      .order("booking_date", { ascending: false })
-      .order("id", { ascending: false });
-
-    if (code && code !== "ALL") {
-      query = query.eq("objekt_code", code);
-    }
-
-    const data: FinanceEntryResponse[] = [];
-    const pageSize = 500;
-    for (let offset = 0; ; offset += pageSize) {
-      const result = await query.range(offset, offset + pageSize - 1);
-      if (result.error) throw result.error;
-      const page = (result.data ?? []) as FinanceEntryResponse[];
-      data.push(...page);
-      if (page.length < pageSize) break;
-    }
+    const data = await listFinanceEntries({
+      fromInclusive: from,
+      toExclusive: to,
+      objectCode: code,
+      entryTypes: ["income", "expense"],
+    });
 
     const entries: EntryRow[] = ((data ?? []) as FinanceEntryResponse[]).map((r) => ({
       id: Number(r.id),
@@ -804,13 +792,10 @@ export default function Monate() {
 
     // Datensicherheit: Buchungen werden nicht mehr endgültig gelöscht.
     // Sie werden nur als Papierkorb/gelöscht markiert und können per SQL/Audit wiederhergestellt werden.
-    const { error } = await supabase
-      .from("finance_entry")
-      .update({ is_deleted: true, deleted_at: new Date().toISOString() })
-      .eq("id", id);
-
-    if (error) {
-      setNotice({ tone: "error", message: `Löschen fehlgeschlagen: ${error.message}` });
+    try {
+      await softDeleteFinanceEntries([id]);
+    } catch (deleteError) {
+      setNotice({ tone: "error", message: `Löschen fehlgeschlagen: ${errorMessage(deleteError)}` });
       return;
     }
 
@@ -849,12 +834,7 @@ export default function Monate() {
 
     try {
       // Datensicherheit: Auch Sammel-Löschen ist nur Soft-Delete, kein echtes DELETE.
-      const { error } = await supabase
-        .from("finance_entry")
-        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
-        .in("id", selectedIds);
-
-      if (error) throw error;
+      await softDeleteFinanceEntries(selectedIds);
 
       setSelectedKeys([]);
       clearAppDataCache();
@@ -1029,12 +1009,7 @@ export default function Monate() {
         nk_relevant: nextNkRelevant,
       };
 
-      const { error } = await supabase
-        .from("finance_entry")
-        .update(payload)
-        .eq("id", editRow.id);
-
-      if (error) throw error;
+      await updateFinanceEntry(editRow.id, payload);
 
       setEditOpen(false);
       setEditRow(null);
@@ -1061,14 +1036,11 @@ export default function Monate() {
     const nextValue = rule.locked ? false : value;
     setRows((current) => current.map((item) => (item.id === row.id ? { ...item, tax_relevant: nextValue } : item)));
 
-    const { error } = await supabase
-      .from("finance_entry")
-      .update({ tax_relevant: nextValue })
-      .eq("id", row.id);
-
-    if (error) {
+    try {
+      await updateFinanceEntry(row.id, { tax_relevant: nextValue });
+    } catch (updateError) {
       setRows((current) => current.map((item) => (item.id === row.id ? { ...item, tax_relevant: row.tax_relevant } : item)));
-      setNotice({ tone: "error", message: `Steuerrelevanz konnte nicht gespeichert werden: ${error.message}` });
+      setNotice({ tone: "error", message: `Steuerrelevanz konnte nicht gespeichert werden: ${errorMessage(updateError)}` });
       return;
     }
 
@@ -1089,14 +1061,11 @@ export default function Monate() {
 
     setRows((current) => current.map((item) => (item.id === row.id ? { ...item, nk_relevant: nextValue } : item)));
 
-    const { error } = await supabase
-      .from("finance_entry")
-      .update({ nk_relevant: nextValue })
-      .eq("id", row.id);
-
-    if (error) {
+    try {
+      await updateFinanceEntry(row.id, { nk_relevant: nextValue });
+    } catch (updateError) {
       setRows((current) => current.map((item) => (item.id === row.id ? { ...item, nk_relevant: row.nk_relevant } : item)));
-      setNotice({ tone: "error", message: `NK-Relevanz konnte nicht gespeichert werden: ${error.message}` });
+      setNotice({ tone: "error", message: `NK-Relevanz konnte nicht gespeichert werden: ${errorMessage(updateError)}` });
       return;
     }
 

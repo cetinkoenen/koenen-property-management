@@ -4,13 +4,22 @@ import { runInNewContext } from "node:vm";
 import ts from "typescript";
 
 const text = await readFile("src/pages/Monate.tsx", "utf8");
+const repositoryText = await readFile("src/services/financeEntryRepository.ts", "utf8");
 const source = ts.createSourceFile("Monate.tsx", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const repositorySource = ts.createSourceFile("financeEntryRepository.ts", repositoryText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 const functions = new Map();
 function visit(node) {
   if (ts.isFunctionDeclaration(node) && node.name) functions.set(node.name.text, node.getText(source));
   ts.forEachChild(node, visit);
 }
 visit(source);
+function visitRepository(node) {
+  if (ts.isFunctionDeclaration(node) && node.name) {
+    functions.set(node.name.text, node.getText(repositorySource).replace(/^export\s+/, ""));
+  }
+  ts.forEachChild(node, visitRepository);
+}
+visitRepository(repositorySource);
 const compile = (name, context) => runInNewContext(`${ts.transpile(functions.get(name), { target: ts.ScriptTarget.ES2022 })}\n${name}`, context);
 
 function harness() {
@@ -88,14 +97,25 @@ for (const count of [0, 500, 1305, 10_500]) {
     order(...args) { orders.push(args); return this; },
     range(from, to) { ranges.push([from, to]); return Promise.resolve({ data: rows.slice(from, Math.min(to + 1, from + 1000)), error: null }); },
   };
-  const fetch = compile("fetchEntriesForRange", { supabase: { from: () => query } });
-  const result = await fetch("2026-01-01", "2027-01-01", "A");
+  const fetch = compile("listFinanceEntries", {
+    supabase: { from: () => query },
+    FINANCE_ENTRY_SELECT: "id,object_id,objekt_code,entry_type,booking_date,amount,category,note,tax_relevant,nk_relevant",
+  });
+  const result = await fetch({
+    fromInclusive: "2026-01-01",
+    toExclusive: "2027-01-01",
+    objectCode: "A",
+    entryTypes: ["income", "expense"],
+  });
   assert.equal(result.length, count);
   assert.equal(new Set(result.map((row) => row.id)).size, count);
   assert.equal(result.reduce((sum, row) => sum + row.amount, 0), count * 10);
   assert.ok(filters.some(([key, value]) => key === "is_deleted" && value === false));
   assert.ok(filters.some(([key, value]) => key === "objekt_code" && value === "A"));
-  assert.deepEqual(orders.map(([key]) => key), ["booking_date", "id"]);
+  assert.deepEqual(
+    orders.map(([key]) => key),
+    Array.from({ length: ranges.length }, () => ["booking_date", "id"]).flat(),
+  );
   volumeResults.push({ rows: count, pages: ranges.length });
 }
 console.log(JSON.stringify({ asyncScenarios: 6, pagination: volumeResults }, null, 2));

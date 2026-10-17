@@ -4,6 +4,7 @@ import { supabase } from "../../lib/supabase";
 import { canonicalizeFinanceCategory, getFinanceCategoryOptions } from "../../lib/financeCategories";
 import { useAppData } from "../../state/AppDataContext";
 import { emitFinanceEntryChanged } from "../../lib/appCache";
+import { insertFinanceEntry, listFinanceEntryCategories } from "../../services/financeEntryRepository";
 
 type EntryType = "income" | "expense";
 
@@ -11,10 +12,6 @@ type ObjectRow = {
   id: string;
   code: string;
   street: string | null;
-};
-
-type CategoryRow = {
-  category: string | null;
 };
 
 type EntryFormProps = {
@@ -89,22 +86,18 @@ export function EntryForm({ onCreated, defaultObjectId }: EntryFormProps) {
     let cancelled = false;
 
     async function loadCategories() {
-      const res = await supabase
-        .from("finance_entry")
-        .select("category")
-        .eq("is_deleted", false)
-        .order("category", { ascending: true });
-
-      if (cancelled) return;
-      if (res.error) {
-        console.error(res.error);
+      try {
+        const rows = await listFinanceEntryCategories();
+        if (cancelled) return;
+        const cats = rows
+          .map((category) => canonicalizeFinanceCategory(category))
+          .filter(Boolean);
+        setCategoryOptions(Array.from(new Set(cats)));
+      } catch (categoryError) {
+        if (cancelled) return;
+        console.error(categoryError);
         return;
       }
-
-      const cats = ((res.data ?? []) as CategoryRow[])
-        .map((row) => canonicalizeFinanceCategory((row.category ?? "").trim()))
-        .filter(Boolean);
-      setCategoryOptions(Array.from(new Set(cats)));
     }
 
     loadCategories();
@@ -148,21 +141,22 @@ export function EntryForm({ onCreated, defaultObjectId }: EntryFormProps) {
 
     const resolvedCategory = canonicalizeFinanceCategory(category.trim(), entryType);
 
-    const { error } = await supabase.from("finance_entry").insert({
-      object_id: objectId,                // ✅ neu (richtig)
-      objekt_code: objektCodeBackup,      // ✅ optional (für Übergang/Debug)
-      booking_date: bookingDate,
-      entry_type: entryType,
-      amount: Number(amount),
-      category: resolvedCategory,
-    });
-
-    setLoading(false);
-
-    if (error) {
-      setError(error.message);
+    try {
+      await insertFinanceEntry({
+        object_id: objectId,                // ✅ neu (richtig)
+        objekt_code: objektCodeBackup,      // ✅ optional (für Übergang/Debug)
+        booking_date: bookingDate,
+        entry_type: entryType,
+        amount: Number(amount),
+        category: resolvedCategory,
+      });
+    } catch (saveError) {
+      setLoading(false);
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
       return;
     }
+
+    setLoading(false);
 
     setAmount("");
     setSuccess("Gespeichert ✅");

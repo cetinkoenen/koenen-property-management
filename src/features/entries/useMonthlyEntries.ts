@@ -1,5 +1,5 @@
 // src/features/entries/useMonthlyEntries.ts
-import { supabase } from "../../lib/supabase";
+import { listFinanceEntries } from "../../services/financeEntryRepository";
 
 export type EntryType = "income" | "expense";
 
@@ -33,18 +33,22 @@ export function useMonthlyEntries(objectId: string, year: number, month: number)
       return { entries: [], income: 0, expense: 0, saldo: 0, byCategory: [] as CategorySummary[] };
     }
 
-    const { data, error } = await supabase
-      .from("finance_entry")
-      .select("*")
-      .eq("object_id", objectId)          // ✅ neu
-      .eq("is_deleted", false)
-      .gte("booking_date", fromDate)
-      .lt("booking_date", toDate)
-      .order("booking_date", { ascending: true });
-
-    if (error) throw error;
-
-    const entries = (data ?? []) as FinanceEntry[];
+    const data = await listFinanceEntries({
+      objectId,
+      fromInclusive: fromDate,
+      toExclusive: toDate,
+      entryTypes: ["income", "expense"],
+      ascending: true,
+    });
+    const entries: FinanceEntry[] = data.map((row) => ({
+      id: Number(row.id),
+      object_id: String(row.object_id ?? objectId),
+      objekt_code: row.objekt_code ?? undefined,
+      booking_date: String(row.booking_date ?? ""),
+      entry_type: row.entry_type === "income" ? "income" : "expense",
+      amount: Number(row.amount) || 0,
+      category: row.category ?? "",
+    }));
 
     let income = 0;
     let expense = 0;
