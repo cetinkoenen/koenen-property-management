@@ -29,9 +29,16 @@ const [app, investment, audit, resolver, rentOverview, rentDevelopment, rentMont
   read("vercel.json"),
 ]);
 const tenantService = await read("src/services/tenantService.ts");
+const entryAdd = await read("src/pages/EntryAdd.tsx");
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
 assert.doesNotMatch(appData, /localStorage\.(?:getItem|setItem)/, "Zentrale App-Daten dürfen keinen browserweiten Fallback als zweite Fachquelle verwenden");
+assert.match(entryAdd, /Objekte werden geladen…[\s\S]*Objektliste konnte nicht geladen werden[\s\S]*Keine Objekte vorhanden/, "Die Buchungserfassung muss Laden, Fehler und einen wirklich leeren Objektbestand eindeutig unterscheiden");
+assert.match(entryAdd, /setObjectLoadRevision\(\(value\) => value \+ 1\)/, "Ein fehlgeschlagener Objektabruf muss direkt wiederholt werden können");
+assert.match(entryAdd, /classifyTaxRelevance\([\s\S]{0,250}?selectedObjectLabel\)/, "Steuerregeln müssen das konkret ausgewählte Objekt berücksichtigen");
+assert.match(entryAdd, /classifyNkRelevance\([\s\S]{0,250}?objectLabel: selectedObjectLabel/, "Nebenkostenregeln müssen das konkret ausgewählte Objekt berücksichtigen");
+assert.match(entryAdd, /disabled=\{isOwnerOccupiedSelected\}[\s\S]{0,180}?setNkRelevant\(isOwnerOccupiedSelected \? false/, "Eigennutzung muss das Mieter-Nebenkostenkennzeichen in der Erfassung sperren");
+assert.match(entryAdd, /Buchung wirklich speichern\?[\s\S]*Geprüft und speichern/, "Vor dem Datenbankeintrag muss eine sichtbare Buchungsprüfung erfolgen");
 assert.doesNotMatch(propertyExtraService, /localStorage\.(?:getItem|setItem)/, "Objekt-Stammdaten dürfen nicht parallel aus localStorage gelesen werden");
 assert.doesNotMatch(wealth, /function loadExposes/, "Exposés dürfen nicht parallel aus einem lokalen Browserbestand angezeigt werden");
 assert.match(garageUtilities, /migrationError[\s\S]{0,500}?setRecords\(legacyRecords\)/, "TG-Altdaten dürfen erst nach erfolgreicher Übernahme in die zentrale Quelle angezeigt werden");
@@ -169,4 +176,4 @@ assert.deepEqual(
   "Jede Supabase-Migration muss einen gültigen Zeitstempel tragen und reproduzierbar ausführbar sein",
 );
 
-console.log("78 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("84 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

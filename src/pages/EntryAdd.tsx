@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { clearAppDataCache } from "../lib/appCache";
@@ -119,9 +119,18 @@ export default function EntryAdd() {
 
   const [saving, setSaving] = useState<boolean>(false);
   const [loadingObjects, setLoadingObjects] = useState<boolean>(true);
+  const [objectLoadError, setObjectLoadError] = useState<string>("");
+  const [objectLoadRevision, setObjectLoadRevision] = useState(0);
   const [msg, setMsg] = useState<string | null>(null);
   const [pendingTaxPrompt, setPendingTaxPrompt] = useState<boolean>(false);
   const [pendingNkPrompt, setPendingNkPrompt] = useState<boolean>(false);
+  const [pendingNkSaveOptions, setPendingNkSaveOptions] = useState<{ bypassTaxPrompt?: boolean; forceTaxRelevant?: boolean }>({});
+  const [pendingSaveReview, setPendingSaveReview] = useState<{
+    bypassTaxPrompt?: boolean;
+    forceTaxRelevant?: boolean;
+    bypassNkPrompt?: boolean;
+    forceNkRelevant?: boolean;
+  } | null>(null);
 
   const amountNumber = useMemo(() => parseNumberInput(amount), [amount]);
   const categoryOptions = useMemo(() => getFinanceCategoryOptions(kind), [kind]);
@@ -129,15 +138,19 @@ export default function EntryAdd() {
     const selected = category === "__NEW__" ? customCategory : category;
     return canonicalizeFinanceCategory(selected, kind);
   }, [category, customCategory, kind]);
+  const selectedObjectLabel = useMemo(() => objects.find((object) => String(object.value) === String(objectId))?.label ?? "", [objectId, objects]);
   const taxRule = useMemo(
-    () => classifyTaxRelevance({ entry_type: kind, category: resolvedCategory, note, objekt_code: objektCodePreview }),
-    [kind, note, objektCodePreview, resolvedCategory],
+    () => classifyTaxRelevance({ entry_type: kind, category: resolvedCategory, note, objekt_code: objektCodePreview }, selectedObjectLabel),
+    [kind, note, objektCodePreview, resolvedCategory, selectedObjectLabel],
   );
   const nkRule = useMemo(
-    () => classifyNkRelevance({ entry_type: kind, category: resolvedCategory, note }),
-    [kind, note, resolvedCategory],
+    () => classifyNkRelevance({ entry_type: kind, category: resolvedCategory, note, objectLabel: selectedObjectLabel }),
+    [kind, note, resolvedCategory, selectedObjectLabel],
   );
-  const selectedObjectLabel = useMemo(() => objects.find((object) => String(object.value) === String(objectId))?.label ?? "", [objectId, objects]);
+  const isOwnerOccupiedSelected = useMemo(
+    () => selectedObjectLabel.toLocaleLowerCase("de-DE").includes("hohenloher"),
+    [selectedObjectLabel],
+  );
   const isRosensteinSelected = useMemo(
     () => selectedObjectLabel.trim().toLocaleLowerCase("de-DE") === "rosenstein str. 25",
     [selectedObjectLabel],
@@ -253,6 +266,7 @@ export default function EntryAdd() {
 
     async function loadObjects() {
       setLoadingObjects(true);
+      setObjectLoadError("");
 
       const { data, error } = await supabase
         .from("v_object_dropdown")
@@ -262,7 +276,7 @@ export default function EntryAdd() {
       if (!alive) return;
 
       if (error) {
-        setMsg(`❌ Fehler beim Laden der Objektliste: ${error.message}`);
+        setObjectLoadError(error.message);
         setObjects([]);
         setLoadingObjects(false);
         return;
@@ -293,12 +307,6 @@ export default function EntryAdd() {
       ];
 
       setObjects(list);
-
-      if (!objectId && list.length > 0) {
-        setObjectId(String(list[0].value));
-        setObjektCodePreview(list[0].objekt_code);
-      }
-
       setLoadingObjects(false);
     }
 
@@ -307,12 +315,16 @@ export default function EntryAdd() {
     return () => {
       alive = false;
     };
-  }, [objectId]);
+  }, [objectLoadRevision]);
 
   function onSelectObject(newId: string) {
     setObjectId(newId);
     const selected = objects.find((o) => String(o.value) === String(newId));
     setObjektCodePreview(selected ? selected.objekt_code : "");
+    const selectedLabel = selected?.label ?? "";
+    if (selectedLabel.toLocaleLowerCase("de-DE").includes("hohenloher")) {
+      setNkRelevant(false);
+    }
     if (creditRateReferenceSelected) {
       const nextReference = creditRateReferenceForObjectLabel(selected?.label ?? "");
       setNote(nextReference ?? "");
@@ -364,7 +376,7 @@ export default function EntryAdd() {
     setMsg(null);
   }
 
-  async function save(options?: { bypassTaxPrompt?: boolean; forceTaxRelevant?: boolean; bypassNkPrompt?: boolean; forceNkRelevant?: boolean }) {
+  async function save(options?: { bypassTaxPrompt?: boolean; forceTaxRelevant?: boolean; bypassNkPrompt?: boolean; forceNkRelevant?: boolean; confirmed?: boolean }) {
     setMsg(null);
 
     if (!objectId) {
@@ -445,9 +457,20 @@ export default function EntryAdd() {
       return;
     }
 
-    const nextNkRelevant = options?.forceNkRelevant ?? nkRelevant;
+    const nextNkRelevant = isOwnerOccupiedSelected ? false : options?.forceNkRelevant ?? nkRelevant;
     if (!options?.bypassNkPrompt && nkRule.nkRelevant !== nkRelevant) {
+      setPendingNkSaveOptions({ bypassTaxPrompt: options?.bypassTaxPrompt, forceTaxRelevant: options?.forceTaxRelevant });
       setPendingNkPrompt(true);
+      return;
+    }
+
+    if (!options?.confirmed) {
+      setPendingSaveReview({
+        bypassTaxPrompt: options?.bypassTaxPrompt,
+        forceTaxRelevant: options?.forceTaxRelevant,
+        bypassNkPrompt: options?.bypassNkPrompt,
+        forceNkRelevant: options?.forceNkRelevant,
+      });
       return;
     }
 
@@ -478,8 +501,8 @@ export default function EntryAdd() {
         amount: effectiveAmountNumber,
         category: resolvedCategory || null,
         note: resolvedNote,
-        tax_relevant: taxRule.locked ? false : options?.forceTaxRelevant ? true : taxRelevant,
-        nk_relevant: nextNkRelevant,
+        tax_relevant: taxRule.locked ? false : options?.forceTaxRelevant ?? taxRelevant,
+        nk_relevant: isOwnerOccupiedSelected ? false : nextNkRelevant,
         loan_interest_amount: isCreditRate ? loanInterestNumber : null,
         loan_principal_amount: isCreditRate ? loanPrincipalNumber : null,
         loan_rate_plan_id: isCreditRate ? loanRatePlan?.id ?? null : null,
@@ -528,6 +551,46 @@ export default function EntryAdd() {
         gap: 18,
       }}
     >
+      {pendingSaveReview ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="save-review-title"
+          style={{ position: "fixed", inset: 0, zIndex: 82, display: "grid", placeItems: "center", padding: 18, background: "rgba(15,23,42,0.48)" }}
+        >
+          <section style={{ width: "min(660px, 100%)", borderRadius: 22, border: "1px solid #dbe5ef", background: "#ffffff", boxShadow: "0 24px 70px rgba(15,23,42,0.24)", padding: 22 }}>
+            <div style={{ fontSize: 12, fontWeight: 950, letterSpacing: "0.16em", textTransform: "uppercase", color: "#315f72" }}>Letzte Prüfung</div>
+            <h2 id="save-review-title" style={{ margin: "8px 0 6px", fontSize: 24, lineHeight: 1.1, fontWeight: 950, color: "#0f172a" }}>Buchung wirklich speichern?</h2>
+            <p style={{ margin: "0 0 16px", color: "#64748b", fontSize: 13, fontWeight: 750 }}>Bitte Objekt, Betrag, Kategorie und Kennzeichen kurz kontrollieren.</p>
+            <dl style={{ display: "grid", gridTemplateColumns: "minmax(130px, .7fr) minmax(0, 1.3fr)", gap: "8px 14px", margin: 0, padding: 16, borderRadius: 16, background: "#f8fafc", color: "#0f172a" }}>
+              {[
+                ["Objekt", selectedObjectLabel || "—"],
+                ["Datum", bookingDate],
+                ["Typ", kind === "income" ? "Einnahme" : "Ausgabe"],
+                ["Betrag", effectiveAmountNumber.toLocaleString("de-DE", { style: "currency", currency: "EUR" })],
+                ["Kategorie", resolvedCategory || "—"],
+                ["Steuerrelevant", taxRule.locked ? "Nein (Regel gesperrt)" : (pendingSaveReview.forceTaxRelevant ?? taxRelevant) ? "Ja" : "Nein"],
+                [NK_ABRECHNUNG_LABEL, isOwnerOccupiedSelected ? "Nein (Eigennutzung)" : (pendingSaveReview.forceNkRelevant ?? nkRelevant) ? "Ja" : "Nein"],
+                ...(isCreditRate ? [["Zins / Tilgung", `${loanInterestNumber.toLocaleString("de-DE", { style: "currency", currency: "EUR" })} / ${loanPrincipalNumber.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}`]] : []),
+                ["Notiz", note.trim() || "—"],
+              ].map(([label, value]) => (
+                <Fragment key={label}>
+                  <dt style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>{label}</dt>
+                  <dd style={{ margin: 0, fontSize: 13, fontWeight: 850, overflowWrap: "anywhere" }}>{value}</dd>
+                </Fragment>
+              ))}
+            </dl>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
+              <button type="button" disabled={saving} onClick={() => { const review = pendingSaveReview; setPendingSaveReview(null); void save({ ...review, confirmed: true }); }} style={{ minHeight: 44, border: "1px solid #315f72", borderRadius: 13, background: "#315f72", color: "#ffffff", padding: "10px 14px", fontSize: 14, fontWeight: 950, cursor: saving ? "wait" : "pointer" }}>
+                {saving ? "Speichert…" : "Geprüft und speichern"}
+              </button>
+              <button type="button" disabled={saving} onClick={() => setPendingSaveReview(null)} style={{ minHeight: 44, border: "1px solid #e2e8f0", borderRadius: 13, background: "#ffffff", color: "#334155", padding: "10px 14px", fontSize: 14, fontWeight: 950, cursor: "pointer" }}>
+                Zurück zur Eingabe
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
       {pendingTaxPrompt ? (
         <div
           role="dialog"
@@ -695,7 +758,7 @@ export default function EntryAdd() {
                 onClick={() => {
                   setPendingNkPrompt(false);
                   setNkRelevant(nkRule.nkRelevant);
-                  void save({ bypassTaxPrompt: true, bypassNkPrompt: true, forceNkRelevant: nkRule.nkRelevant });
+                  void save({ ...pendingNkSaveOptions, bypassTaxPrompt: true, bypassNkPrompt: true, forceNkRelevant: nkRule.nkRelevant });
                 }}
                 style={{
                   minHeight: 44,
@@ -715,7 +778,7 @@ export default function EntryAdd() {
                 type="button"
                 onClick={() => {
                   setPendingNkPrompt(false);
-                  void save({ bypassTaxPrompt: true, bypassNkPrompt: true });
+                  void save({ ...pendingNkSaveOptions, bypassTaxPrompt: true, bypassNkPrompt: true });
                 }}
                 style={{
                   minHeight: 44,
@@ -829,18 +892,29 @@ export default function EntryAdd() {
               value={objectId}
               onChange={(e) => onSelectObject(e.target.value)}
               style={inputStyle()}
-              disabled={loadingObjects || objects.length === 0}
+              disabled={loadingObjects || Boolean(objectLoadError) || objects.length === 0}
             >
-              {objects.length === 0 ? (
-                <option value="">Keine Objekte gefunden</option>
-              ) : (
-                objects.map((o) => (
+              {loadingObjects ? <option value="">Objekte werden geladen…</option> : null}
+              {!loadingObjects && objectLoadError ? <option value="">Objektliste konnte nicht geladen werden</option> : null}
+              {!loadingObjects && !objectLoadError && objects.length === 0 ? <option value="">Keine Objekte vorhanden</option> : null}
+              {!loadingObjects && !objectLoadError && objects.length > 0 ? (
+                <>
+                  <option value="">Objekt auswählen</option>
+                  {objects.map((o) => (
                   <option key={String(o.value)} value={String(o.value)}>
                     {o.label}
                   </option>
-                ))
-              )}
+                  ))}
+                </>
+              ) : null}
             </select>
+
+            {objectLoadError ? (
+              <div role="alert" style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", color: "#9f1239", fontSize: 12, fontWeight: 850 }}>
+                Objektliste nicht verfügbar: {objectLoadError}
+                <button type="button" onClick={() => setObjectLoadRevision((value) => value + 1)} style={{ border: "1px solid #fecdd3", borderRadius: 9, background: "#fff1f2", padding: "6px 9px", color: "#9f1239", fontWeight: 900, cursor: "pointer" }}>Erneut laden</button>
+              </div>
+            ) : null}
 
             <div style={{ marginTop: 6, fontSize: 11, opacity: 0.65 }}>
               Objekt-Code: <b>{objektCodePreview || "—"}</b>
@@ -1221,12 +1295,14 @@ export default function EntryAdd() {
               <input
                 type="checkbox"
                 checked={nkRelevant}
-                onChange={(event) => setNkRelevant(event.target.checked)}
+                disabled={isOwnerOccupiedSelected}
+                onChange={(event) => setNkRelevant(isOwnerOccupiedSelected ? false : event.target.checked)}
                 title="Nebenkostenabrechnung relevant Ja/Nein"
                 style={{ width: 18, height: 18 }}
               />
               {NK_ABRECHNUNG_LABEL}
             </label>
+            {isOwnerOccupiedSelected ? <span style={{ flexBasis: "100%", fontSize: 12, fontWeight: 800, color: "#64748b" }}>Eigennutzung: Das Kennzeichen für eine Mieter-Nebenkostenabrechnung bleibt gesperrt.</span> : null}
           </div>
         </div>
 
@@ -1234,7 +1310,7 @@ export default function EntryAdd() {
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving}
+            disabled={saving || loadingObjects || Boolean(objectLoadError)}
             style={{
               padding: "10px 14px",
               borderRadius: 12,
@@ -1242,8 +1318,8 @@ export default function EntryAdd() {
               background: "#315f72",
               color: "#ffffff",
               fontWeight: 900,
-              cursor: saving ? "not-allowed" : "pointer",
-              opacity: saving ? 0.7 : 1,
+              cursor: saving || loadingObjects || objectLoadError ? "not-allowed" : "pointer",
+              opacity: saving || loadingObjects || objectLoadError ? 0.7 : 1,
             }}
           >
             {saving ? "Speichert…" : "Speichern"}

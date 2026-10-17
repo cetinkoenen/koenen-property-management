@@ -121,6 +121,7 @@ export type RentAnnualReportSnapshot = {
 
 type MietuebersichtProps = {
   embeddedAnnualReport?: boolean;
+  headlessAnnualReport?: boolean;
   reportYear?: number;
   reportObjectId?: string | null;
   onAnnualReportChange?: (snapshot: RentAnnualReportSnapshot) => void;
@@ -1448,6 +1449,7 @@ function DonutChart({ paid, partial, missing, inactive, vacant }: { paid: number
 
 export default function Mietuebersicht({
   embeddedAnnualReport = false,
+  headlessAnnualReport = false,
   reportYear,
   reportObjectId,
   onAnnualReportChange,
@@ -2127,6 +2129,8 @@ export default function Mietuebersicht({
     </body></html>`);
     printWindow.document.close();
   }
+
+  if (headlessAnnualReport) return null;
 
   return (
     <div className={embeddedAnnualReport ? "space-y-4" : "tenant-page"}>
