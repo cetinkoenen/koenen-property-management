@@ -43,6 +43,10 @@ const reportingPage = await read("src/pages/Auswertung.tsx");
 const objectDirectory = await read("src/services/objectDirectoryService.ts");
 const overviewPage = await read("src/pages/Uebersicht.tsx");
 const moveProcessService = await read("src/services/moveProcessService.ts");
+const portfolioRentalRepository = await read("src/services/portfolioRentalRepository.ts");
+const vacancyService = await read("src/services/vacancyService.ts");
+const rentHistoryHook = await read("src/hooks/useRentHistory24m.ts");
+const dataQualityPage = await read("src/pages/Datenpruefung.tsx");
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
 assert.doesNotMatch(appData, /localStorage\.(?:getItem|setItem)/, "Zentrale App-Daten dürfen keinen browserweiten Fallback als zweite Fachquelle verwenden");
@@ -109,6 +113,19 @@ for (const [source, label] of [
   assert.match(source, /listTenantContracts\(/, `${label} muss Mietverträge aus der zentralen Vertragsquelle laden`);
   assert.doesNotMatch(source, /\.from\("tenant_contracts"\)/, `${label} darf keine parallele Mietvertragsabfrage führen`);
 }
+assert.match(portfolioRentalRepository, /function listPortfolioRentals[\s\S]*\.from\("portfolio_property_rentals"\)[\s\S]*\.order\("start_date"[\s\S]*\.order\("id"[\s\S]*\.range\(offset, offset \+ pageSize - 1\)/, "Die zentrale Vermietungszeitreihe muss vollständig und deterministisch paginiert laden");
+for (const [source, label] of [
+  [rentOverview, "Mieteingang"],
+  [rentDevelopment, "Mietentwicklung"],
+  [vacancyService, "Leerstand"],
+  [rentHistoryHook, "24-Monats-Mietverlauf"],
+  [dataQualityPage, "Datenprüfung"],
+]) {
+  assert.match(source, /listPortfolioRentals\(/, `${label} muss Vermietungszeiträume aus der zentralen Zeitreihe laden`);
+  assert.doesNotMatch(source, /\.from\("portfolio_property_rentals"\)/, `${label} darf keine parallele Vermietungszeitreihe abfragen`);
+}
+assert.match(rentOverview, /listPortfolioUnits\(\)/, "Mieteingang muss lesbare Einheiten über die zentrale Einheitenquelle laden");
+assert.doesNotMatch(rentOverview, /\.from\("portfolio_units"\)/, "Mieteingang darf Einheiten nicht parallel direkt abfragen");
 assert.match(entryAdd, /Objekte werden geladen…[\s\S]*Objektliste konnte nicht geladen werden[\s\S]*Keine Objekte vorhanden/, "Die Buchungserfassung muss Laden, Fehler und einen wirklich leeren Objektbestand eindeutig unterscheiden");
 assert.match(entryAdd, /setObjectLoadRevision\(\(value\) => value \+ 1\)/, "Ein fehlgeschlagener Objektabruf muss direkt wiederholt werden können");
 assert.match(entryAdd, /classifyTaxRelevance\([\s\S]{0,250}?selectedObjectLabel\)/, "Steuerregeln müssen das konkret ausgewählte Objekt berücksichtigen");
@@ -132,7 +149,7 @@ assert.doesNotMatch(rentAdjustmentQuery, /unit_label/, "Mieteingang darf keine n
 assert.doesNotMatch(rentOverview, /\.from\("finance_entry"\)/, "Mieteingang darf Buchungen nicht parallel zur zentralen App-Datenquelle laden");
 assert.match(rentOverview, /const allKnownBookings = useMemo\(\(\) => uniqueFinanceEntries\(appData\.entries\), \[appData\.entries\]\)/, "Mieteingang muss ausschließlich die zentral geladenen Buchungen verwenden und Dubletten einmal pro Datenstand entfernen");
 assert.match(rentOverview, /portfolioRentalsLoading/, "Mietkonto-Exporte müssen den Ladezustand der Vermietungszeiträume kennen");
-assert.match(rentOverview, /from\("portfolio_units"\)\.select\("id,name,unit_type,property_id"\)/, "Stellplatz-Mietverträge müssen ihre lesbare Einheit aus portfolio_units auflösen");
+assert.match(portfolioRentalRepository, /function listPortfolioUnits[\s\S]*\.from\("portfolio_units"\)[\s\S]*\.range\(offset, offset \+ pageSize - 1\)/, "Die zentrale Einheitenquelle muss technische unit_id-Werte vollständig und paginiert auflösen");
 assert.match(rentOverview, /rental\.unit_name/, "Die Zuordnung P250, P253 und P254 darf nicht nur gegen technische UUIDs prüfen");
 assert.match(rentOverview, /vacanciesLoading/, "Mietkonto-Exporte müssen den Ladezustand der Leerstände kennen");
 assert.match(rentOverview, /tenantContractsLoading/, "Mietkonto-Exporte müssen den Ladezustand der Sollmieten kennen");
@@ -149,7 +166,7 @@ assert.match(rentOverview, /daysInMonth - startDay \+ 1/, "Der erste untermonati
 assert.match(rentOverview, /activeAdjustmentAmount \?\? contractExpectedAmount \?\? rentalReference\.expectedAmount \?\? inferredOldAdjustmentAmount/, "Ein spaeterer Mietanpassungs-Altwert darf einen exakt datierten Vermietungszeitraum nicht uebersteuern");
 assert.match(rentOverview, /Mietkosten[\s\S]{0,500}?Gesamtmiete[\s\S]{0,300}?Kaltmiete[\s\S]{0,300}?Nebenkosten/, "Die Jahresübersicht muss Gesamtmiete, Kaltmiete und Nebenkosten filtern können");
 assert.match(rentOverview, /projectOverviewRowByRentCost[\s\S]{0,1800}?expectedColdRent[\s\S]{0,600}?expectedOperatingCosts/, "Der Mietkostenfilter muss Soll und Ist aus denselben zentralen Mietbestandteilen ableiten");
-assert.match(rentOverview, /portfolio_property_rentals"\)\.select\("id,property_id,unit_id,rent_type,rent_monthly,kaltmiete_laut_mietvertrag,nebenkosten,gesamt_mietkosten/, "Historische Mietbestandteile müssen aus der zentralen Vermietungszeitreihe geladen werden");
+assert.match(portfolioRentalRepository, /PORTFOLIO_RENTAL_SELECT[\s\S]*kaltmiete_laut_mietvertrag[\s\S]*nebenkosten[\s\S]*gesamt_mietkosten/, "Die zentrale Vermietungszeitreihe muss alle historischen Mietbestandteile laden");
 for (const [source, label] of [[rentOverview, "Mieteingang"], [rentDevelopment, "Mietentwicklung"], [appData, "App-Datenquelle"], [consistency, "Konsistenzprüfung"], [cockpit, "Cockpit"]]) {
   assert.match(source, /rentPaymentCutoffDay/, `${label} muss die zentrale Mietmonatsregel verwenden`);
 }
@@ -252,4 +269,4 @@ assert.deepEqual(
   "Jede Supabase-Migration muss einen gültigen Zeitstempel tragen und reproduzierbar ausführbar sein",
 );
 
-console.log("151 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("164 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

@@ -1,6 +1,7 @@
 import { devLog } from "@/lib/devLog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { listPortfolioRentals } from "@/services/portfolioRentalRepository";
 import type { RentHistory24mRow } from "@/types/rentHistory";
 
 type ScopeType = "user" | "property";
@@ -209,15 +210,10 @@ export function useRentHistory24m({ scopeType, propertyId }: UseRentHistoryParam
         }
 
         // scopeType === "property"
-        const { data: rentals, error: rentalsErr } = await supabase
-          .from("portfolio_property_rentals")
-          .select("start_date,end_date,rent_monthly")
-          .eq("property_id", propertyId!);
-
-        if (rentalsErr) throw rentalsErr;
+        const rentals = await listPortfolioRentals({ propertyId: propertyId! });
         if (isStale()) return;
 
-        const rentalRows = (rentals ?? []) as RentalRow[];
+        const rentalRows = rentals as RentalRow[];
 
         if (DEBUG) {
           devLog("[useRentHistory24m] result(rentals:property)", {

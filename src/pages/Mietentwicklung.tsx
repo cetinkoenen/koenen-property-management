@@ -3,6 +3,7 @@ import { AlertTriangle, BarChart3, Building2, CalendarDays, Download, FileText, 
 import { MIETBESTANDTEIL_NK_CATEGORY, isPureRentBackPayment } from "../lib/financeEntryLabels";
 import { explicitRentYearMonth, rentPaymentCutoffDay } from "../lib/rentMonth";
 import { supabase } from "../lib/supabase";
+import { listPortfolioRentals } from "../services/portfolioRentalRepository";
 import { useAppData, type AppObject, type FinanceEntry } from "../state/AppDataContext";
 
 type PortfolioPropertyRow = {
@@ -896,12 +897,9 @@ export default function Mietentwicklung() {
       setLoadingRentals(true);
       setLoadError(null);
       try {
-        const [propertiesRes, rentalsRes, adjustmentsRes] = await Promise.all([
+        const [propertiesRes, rentals, adjustmentsRes] = await Promise.all([
           supabase.from("portfolio_properties").select("id,name,core_property_id"),
-          supabase
-            .from("portfolio_property_rentals")
-            .select("id,property_id,unit_id,rent_type,rent_monthly,kaltmiete_laut_mietvertrag,nebenkosten,gesamt_mietkosten,start_date,end_date,created_at,updated_at")
-            .order("start_date", { ascending: true }),
+          listPortfolioRentals({ ascending: true }),
           supabase
             .from("rent_adjustments")
             .select("id,property_id,object_label,tenant_name,effective_date,effective_end_date,reason,status,old_cold_rent,old_operating_costs,old_total_rent,new_cold_rent,new_operating_costs,new_total_rent,note,document_name,created_at")
@@ -909,7 +907,6 @@ export default function Mietentwicklung() {
             .order("effective_date", { ascending: false }),
         ]);
         if (propertiesRes.error) throw propertiesRes.error;
-        if (rentalsRes.error) throw rentalsRes.error;
         if (adjustmentsRes.error) throw adjustmentsRes.error;
         if (cancelled) return;
 
@@ -918,7 +915,7 @@ export default function Mietentwicklung() {
           name: row.name ?? null,
           core_property_id: row.core_property_id ? String(row.core_property_id) : null,
         })));
-        setPortfolioRentals(((rentalsRes.data ?? []) as PortfolioRentalRow[]).map((row) => ({
+        setPortfolioRentals((rentals as PortfolioRentalRow[]).map((row) => ({
           id: String(row.id),
           property_id: String(row.property_id),
           unit_id: row.unit_id ?? null,

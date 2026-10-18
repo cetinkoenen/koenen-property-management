@@ -24,6 +24,7 @@ import { createMissingCapexYear, createMissingIncomeYear, extendLoanOneYear } fr
 import { buildMasterFinanceSnapshots, buildMasterTotals } from "@/services/masterDataService";
 import { useBackendFinanceMaster } from "@/hooks/useBackendFinanceMaster";
 import { buildFinanceConsistencySummary } from "@/services/financeConsistencyEngine";
+import { listPortfolioRentals } from "@/services/portfolioRentalRepository";
 
 type Row = {
   property_id: string | null;
@@ -234,22 +235,21 @@ export default function Datenpruefung() {
   const [openActions, setOpenActions] = useState<string | null>(null);
 
   const loadAuditTables = useCallback(async () => {
-    const [capexRes, incomeRes, ledgerRes, rentalsRes] = await Promise.all([
+    const [capexRes, incomeRes, ledgerRes, rentalRows] = await Promise.all([
       supabase.from("yearly_capex_entries").select("property_id,year,amount"),
       supabase.from("yearly_property_income").select("property_id,year,annual_rent,other_income"),
       supabase.from("property_loan_ledger").select("property_id,year,balance,interest,principal"),
-      supabase.from("portfolio_property_rentals").select("property_id,rent_type,rent_monthly,start_date,end_date"),
+      listPortfolioRentals(),
     ]);
 
     if (capexRes.error) throw capexRes.error;
     if (incomeRes.error) throw incomeRes.error;
     if (ledgerRes.error) throw ledgerRes.error;
-    if (rentalsRes.error) throw rentalsRes.error;
 
     setCapex((capexRes.data ?? []) as Row[]);
     setIncomeYears((incomeRes.data ?? []) as Row[]);
     setLedger((ledgerRes.data ?? []) as Row[]);
-    setRentals((rentalsRes.data ?? []) as RentalRow[]);
+    setRentals(rentalRows as RentalRow[]);
   }, []);
 
   const runCheck = useCallback(async () => {

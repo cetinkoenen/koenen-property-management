@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import { isReadonlyApprovalEmail } from "../auth/accessControl";
+import { listPortfolioRentals } from "./portfolioRentalRepository";
 import { syncTenantEndFromVacancy } from "./tenantService";
 
 export type VacancyStatus = "active" | "planned" | "ended";
@@ -179,15 +180,10 @@ export async function listDerivedVacanciesFromEndedRentals(
   if (!validIds.length) return [];
 
   const userId = await getCurrentUserId();
-  const { data, error } = await supabase
-    .from("portfolio_property_rentals")
-    .select("id,property_id,rent_type,start_date,end_date")
-    .in("property_id", validIds)
-    .order("start_date", { ascending: false });
-
-  if (error) throw error;
-
-  const rows = (data ?? []) as RentalVacancyRow[];
+  const rows = (await listPortfolioRentals({
+    propertyIds: validIds,
+    ascending: false,
+  })) as RentalVacancyRow[];
   const byProperty = new Map<string, RentalVacancyRow[]>();
   for (const row of rows) {
     const list = byProperty.get(row.property_id) ?? [];

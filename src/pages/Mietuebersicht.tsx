@@ -14,6 +14,7 @@ import {
   type UnitVacancy,
 } from "../services/vacancyService";
 import { listTenantContracts } from "../services/tenantService";
+import { listPortfolioRentals, listPortfolioUnits } from "../services/portfolioRentalRepository";
 
 type TenantInfo = { firstName: string; lastName: string; phone: string; email: string };
 type TenantContractInfo = {
@@ -1520,14 +1521,12 @@ export default function Mietuebersicht({
       setReportSourceErrors(old => ({ ...old, rentals: "" }));
       setPortfolioRentalsLoading(true);
       try {
-        const [propertiesRes, unitsRes, rentalsRes] = await Promise.all([
+        const [propertiesRes, units, rentals] = await Promise.all([
           supabase.from("portfolio_properties").select("id,name,core_property_id"),
-          supabase.from("portfolio_units").select("id,name,unit_type,property_id"),
-          supabase.from("portfolio_property_rentals").select("id,property_id,unit_id,rent_type,rent_monthly,kaltmiete_laut_mietvertrag,nebenkosten,gesamt_mietkosten,start_date,end_date,created_at,updated_at"),
+          listPortfolioUnits(),
+          listPortfolioRentals(),
         ]);
         if (propertiesRes.error) throw propertiesRes.error;
-        if (unitsRes.error) throw unitsRes.error;
-        if (rentalsRes.error) throw rentalsRes.error;
         if (cancelled) return;
         setPortfolioProperties(((propertiesRes.data ?? []) as PortfolioPropertyRow[]).map((row) => ({
           id: String(row.id),
@@ -1535,9 +1534,9 @@ export default function Mietuebersicht({
           core_property_id: row.core_property_id ? String(row.core_property_id) : null,
         })));
         const unitsById = new Map(
-          ((unitsRes.data ?? []) as Array<{ id: string; name: string | null; unit_type: string | null }>).map((unit) => [String(unit.id), unit]),
+          units.map((unit) => [String(unit.id), unit]),
         );
-        setPortfolioRentals(((rentalsRes.data ?? []) as PortfolioRentalRow[]).map((row) => {
+        setPortfolioRentals((rentals as PortfolioRentalRow[]).map((row) => {
           const portfolioUnit = row.unit_id ? unitsById.get(String(row.unit_id)) : undefined;
           return ({
           id: String(row.id),
