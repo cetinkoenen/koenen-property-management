@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import { isReadonlyApprovalEmail } from "../auth/accessControl";
+import { listTenantContracts } from "./tenantService";
 
 export type MoveProcessType = "einzug" | "auszug" | "wechsel";
 export type MoveProcessStatus = "offen" | "in_bearbeitung" | "erledigt" | "archiviert";
@@ -111,18 +112,13 @@ function tenantName(row: ContractRow): string {
 
 export async function listMoveContractOptions(): Promise<MoveContractOption[]> {
   const userId = await getCurrentUserId();
-  let query = supabase
-    .from("tenant_contracts")
-    .select("id,tenant_id,property_id,object_code,unit_label,start_date,end_date,status,tenant_profiles(tenant_number,first_name,last_name,company_name)")
-    .eq("is_deleted", false)
-    .order("updated_at", { ascending: false })
-    .limit(250);
-  if (!(await isCurrentUserReadonly())) query = query.eq("user_id", userId);
-  const { data, error } = await query;
+  const readonly = await isCurrentUserReadonly();
+  const data = await listTenantContracts({
+    userId: readonly ? undefined : userId,
+    orderBy: "updated_at",
+  });
 
-  if (error) throw error;
-
-  return ((data ?? []) as unknown as ContractRow[]).map((row) => ({
+  return (data as unknown as ContractRow[]).map((row) => ({
     id: row.id,
     tenant_id: row.tenant_id,
     tenantName: tenantName(row),

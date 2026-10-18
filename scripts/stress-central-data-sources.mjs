@@ -42,6 +42,7 @@ const depositService = await read("src/services/depositService.ts");
 const reportingPage = await read("src/pages/Auswertung.tsx");
 const objectDirectory = await read("src/services/objectDirectoryService.ts");
 const overviewPage = await read("src/pages/Uebersicht.tsx");
+const moveProcessService = await read("src/services/moveProcessService.ts");
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
 assert.doesNotMatch(appData, /localStorage\.(?:getItem|setItem)/, "Zentrale App-Daten dürfen keinen browserweiten Fallback als zweite Fachquelle verwenden");
@@ -96,6 +97,17 @@ for (const [source, label] of [
 ]) {
   assert.match(source, /listObjectDirectory\(/, `${label} muss Immobilien aus der zentralen Objektliste laden`);
   assert.doesNotMatch(source, /\.from\("v_object_dropdown"\)/, `${label} darf keine parallele Objektliste führen`);
+}
+assert.match(tenantService, /function listTenantContracts[\s\S]*\.from\("tenant_contracts"\)[\s\S]*\.range\(offset, offset \+ pageSize - 1\)/, "Die zentrale Mietvertragsquelle muss alle aktiven Verträge vollständig paginiert laden");
+for (const [source, label] of [
+  [cockpit, "Cockpit"],
+  [depositService, "Kautionsübersicht"],
+  [moveProcessService, "Ein- und Auszug"],
+  [rentOverview, "Mieteingang"],
+  [garageUtilities, "Tiefgaragen-Nebenkosten"],
+]) {
+  assert.match(source, /listTenantContracts\(/, `${label} muss Mietverträge aus der zentralen Vertragsquelle laden`);
+  assert.doesNotMatch(source, /\.from\("tenant_contracts"\)/, `${label} darf keine parallele Mietvertragsabfrage führen`);
 }
 assert.match(entryAdd, /Objekte werden geladen…[\s\S]*Objektliste konnte nicht geladen werden[\s\S]*Keine Objekte vorhanden/, "Die Buchungserfassung muss Laden, Fehler und einen wirklich leeren Objektbestand eindeutig unterscheiden");
 assert.match(entryAdd, /setObjectLoadRevision\(\(value\) => value \+ 1\)/, "Ein fehlgeschlagener Objektabruf muss direkt wiederholt werden können");
@@ -240,4 +252,4 @@ assert.deepEqual(
   "Jede Supabase-Migration muss einen gültigen Zeitstempel tragen und reproduzierbar ausführbar sein",
 );
 
-console.log("140 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("151 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

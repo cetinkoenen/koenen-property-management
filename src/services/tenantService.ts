@@ -56,6 +56,85 @@ export type TenantProfileWithContracts = TenantProfile & {
   tenant_contracts?: TenantContract[];
 };
 
+export type TenantContractWithProfile = TenantContract & {
+  tenant_profiles?: Pick<
+    TenantProfile,
+    | "tenant_number"
+    | "salutation"
+    | "first_name"
+    | "last_name"
+    | "company_name"
+    | "email"
+    | "phone"
+    | "mobile"
+    | "street"
+    | "postal_code"
+    | "city"
+  > | null;
+};
+
+export type ListTenantContractsOptions = {
+  userId?: string;
+  tenantId?: string;
+  propertyId?: string;
+  startOnOrBefore?: string;
+  orderBy?: "start_date" | "updated_at";
+  ascending?: boolean;
+};
+
+const TENANT_CONTRACT_SELECT = [
+  "id",
+  "user_id",
+  "tenant_id",
+  "property_id",
+  "object_code",
+  "unit_label",
+  "rent_type",
+  "cold_rent",
+  "operating_costs",
+  "total_rent",
+  "deposit_amount",
+  "start_date",
+  "end_date",
+  "status",
+  "notes",
+  "created_at",
+  "updated_at",
+  "tenant_profiles(tenant_number,salutation,first_name,last_name,company_name,email,phone,mobile,street,postal_code,city)",
+].join(",");
+
+/** Zentrale, vollständig paginierte Mietvertragsquelle für alle Fachseiten. */
+export async function listTenantContracts(
+  options: ListTenantContractsOptions = {},
+): Promise<TenantContractWithProfile[]> {
+  const pageSize = 500;
+  const rows: TenantContractWithProfile[] = [];
+  const orderBy = options.orderBy ?? "start_date";
+  const ascending = options.ascending ?? false;
+
+  for (let offset = 0; ; offset += pageSize) {
+    let query = supabase
+      .from("tenant_contracts")
+      .select(TENANT_CONTRACT_SELECT)
+      .eq("is_deleted", false);
+    if (options.userId) query = query.eq("user_id", options.userId);
+    if (options.tenantId) query = query.eq("tenant_id", options.tenantId);
+    if (options.propertyId) query = query.eq("property_id", options.propertyId);
+    if (options.startOnOrBefore) query = query.lte("start_date", options.startOnOrBefore);
+
+    const { data, error } = await query
+      .order(orderBy, { ascending, nullsFirst: false })
+      .order("id", { ascending })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    const page = (data ?? []) as unknown as TenantContractWithProfile[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+
+  return rows;
+}
+
 export type TenantInput = {
   tenantNumber?: string;
   salutation?: string;
@@ -295,16 +374,8 @@ async function findExistingTenantContractId(
   tenantId: string,
   contractInput: TenantContractInput,
 ): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("tenant_contracts")
-    .select("*")
-    .eq("tenant_id", tenantId)
-    .eq("is_deleted", false)
-    .limit(50);
-
-  if (error) throw error;
-
-  const contracts = ((data ?? []) as TenantContract[]).filter((contract) => contract.status !== "vacant");
+  const contracts = (await listTenantContracts({ tenantId }))
+    .filter((contract) => contract.status !== "vacant");
   if (!contracts.length) return null;
 
   const matchingContracts = contracts.filter((contract) => contractMatchesInput(contract, contractInput));
@@ -322,16 +393,8 @@ async function findExistingTenantContractId(
 }
 
 async function findBestTenantContractId(tenantId: string): Promise<string | null> {
-  const { data, error } = await supabase
-    .from("tenant_contracts")
-    .select("*")
-    .eq("tenant_id", tenantId)
-    .eq("is_deleted", false)
-    .limit(50);
-
-  if (error) throw error;
-
-  const contracts = ((data ?? []) as TenantContract[]).filter((contract) => contract.status !== "vacant");
+  const contracts = (await listTenantContracts({ tenantId }))
+    .filter((contract) => contract.status !== "vacant");
   if (!contracts.length) return null;
 
   const referenceDate = todayDateKey();
@@ -424,24 +487,20 @@ export async function listTenantProfilesWithContracts(limit = 250): Promise<Tena
     .eq("is_deleted", false)
     .order("updated_at", { ascending: false })
     .limit(limit);
-  let contractsQuery = supabase
-    .from("tenant_contracts")
-    .select("*")
-    .eq("is_deleted", false)
-    .order("start_date", { ascending: false });
   if (!readonly) {
     profilesQuery = profilesQuery.eq("user_id", userId);
-    contractsQuery = contractsQuery.eq("user_id", userId);
   }
 
-  const [{ data: profilesData, error: profilesError }, { data: contractsData, error: contractsError }] =
-    await Promise.all([profilesQuery, contractsQuery]);
+  const [{ data: profilesData, error: profilesError }, contractsData] =
+    await Promise.all([
+      profilesQuery,
+      listTenantContracts({ userId: readonly ? undefined : userId }),
+    ]);
 
   if (profilesError) throw profilesError;
-  if (contractsError) throw contractsError;
 
   const contractsByTenant = new Map<string, TenantContract[]>();
-  ((contractsData ?? []) as TenantContract[]).forEach((contract) => {
+  (contractsData as TenantContract[]).forEach((contract) => {
     const existing = contractsByTenant.get(contract.tenant_id) ?? [];
     existing.push(contract);
     contractsByTenant.set(contract.tenant_id, existing);
@@ -599,16 +658,9 @@ export async function syncTenantEndFromVacancy(input: {
 
   const tenantEndDate = addDays(vacancyStartDate, -1);
   const objectCode = cleanText(input.objectCode);
-  const { data, error } = await supabase
-    .from("tenant_contracts")
-    .select("id,tenant_id,property_id,object_code,unit_label,start_date,end_date,status")
-    .eq("user_id", userId)
-    .eq("is_deleted", false)
-    .eq("property_id", propertyId);
+  const data = await listTenantContracts({ userId, propertyId });
 
-  if (error) throw error;
-
-  const candidates = ((data ?? []) as TenantContract[]).filter((contract) => {
+  const candidates = (data as TenantContract[]).filter((contract) => {
     const contractStartDate = toIsoDate(contract.start_date);
     // Ein Leerstand darf nur den bis zum Vortag bereits laufenden Vertrag
     // beenden. Spaeter beginnende Anschlussvertraege bleiben unangetastet.
@@ -633,16 +685,8 @@ export async function syncTenantEndFromVacancy(input: {
   if (updateError) throw updateError;
 
   for (const tenantId of tenantIds) {
-    const { data: activeContracts, error: activeError } = await supabase
-      .from("tenant_contracts")
-      .select("id,start_date,end_date,status")
-      .eq("tenant_id", tenantId)
-      .eq("user_id", userId)
-      .eq("is_deleted", false)
-      .limit(50);
-
-    if (activeError) throw activeError;
-    if (((activeContracts ?? []) as TenantContract[]).some((contract) => isContractCurrentOrFuture(contract, vacancyStartDate))) continue;
+    const activeContracts = await listTenantContracts({ tenantId, userId });
+    if ((activeContracts as TenantContract[]).some((contract) => isContractCurrentOrFuture(contract, vacancyStartDate))) continue;
 
     const { error: tenantError } = await supabase
       .from("tenant_profiles")

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import brandLogo from "../assets/koenen-brand-logo.webp";
 import { listNkRelevantEntries, type NkRelevantEntry } from "../services/nkRelevantService";
 import { supabase } from "../lib/supabase";
+import { listTenantContracts } from "../services/tenantService";
 
 type AllocationKey = "Einheiten" | "Verbrauch/Direkt" | "Direktbetrag";
 type TgWorkflowStatus = "Offen" | "In Arbeit" | "In Prüfung" | "Freigegeben" | "Korrigiert";
@@ -986,15 +987,15 @@ export default function NebenkostenTiefgarage() {
     const periodTo = activeRecord.periodTo;
 
     async function syncTenantFromBillingPeriod() {
-      const { data, error } = await supabase
-        .from("tenant_contracts")
-        .select("id,object_code,unit_label,start_date,end_date,tenant_profiles(salutation,first_name,last_name,company_name,street,postal_code,city)")
-        .eq("is_deleted", false)
-        .lte("start_date", periodTo)
-        .order("start_date", { ascending: false, nullsFirst: false });
-      if (cancelled || error) return;
+      let data: Awaited<ReturnType<typeof listTenantContracts>>;
+      try {
+        data = await listTenantContracts({ startOnOrBefore: periodTo });
+      } catch {
+        return;
+      }
+      if (cancelled) return;
 
-      const periodContract = ((data ?? []) as unknown as TgTenantContractRow[])
+      const periodContract = (data as unknown as TgTenantContractRow[])
         .filter((contract) => contractMatchesBillingPeriod(contract, unitCode, periodFrom, periodTo))
         .sort((left, right) => String(right.start_date ?? "").localeCompare(String(left.start_date ?? "")))[0];
       const tenantFields = periodContract ? tenantFieldsFromContract(periodContract) : null;

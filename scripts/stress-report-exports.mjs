@@ -223,7 +223,7 @@ assert.match(tgBilling, /balance >= 0[\s\S]*Nachforderung in Höhe von[\s\S]*Gut
 assert.match(tgBilling, /Gesamtkosten WEG[\s\S]*Umlageschlüssel[\s\S]*Ihr Anteil/, "Die professionelle Kostenaufstellung muss Quelle, Umlageschlüssel und Mieteranteil getrennt ausweisen");
 assert.match(tgBilling, /landlordIban\.trim\(\)[\s\S]*Bankverbindung für die Überweisung/, "Bankdaten dürfen nur bei einer Nachforderung und vorhandener IBAN erscheinen");
 assert.match(tgProfessionalOnepagerMigration, /15403\.92[\s\S]*laut Bescheid[\s\S]*9018\.14[\s\S]*1 \/ 274 Stellplätze/, "P250 muss die bestätigten WEG-Gesamtkosten und Umlageschlüssel zentral für den Bericht speichern");
-assert.match(tgBilling, /tenant_contracts[\s\S]*contractMatchesBillingPeriod[\s\S]*tenantFieldsFromContract/, "TG-Abrechnungen müssen den Mieter aus dem zum Abrechnungszeitraum passenden zentralen Mietvertrag beziehen");
+assert.match(tgBilling, /listTenantContracts[\s\S]*contractMatchesBillingPeriod[\s\S]*tenantFieldsFromContract/, "TG-Abrechnungen müssen den Mieter aus dem zum Abrechnungszeitraum passenden zentralen Mietvertrag beziehen");
 assert.match(tgBilling, /P254:[\s\S]*"P254"[\s\S]*"E008440000123"[\s\S]*"GARAGE3"/, "P254 muss auch über die zentrale Einheit Garage 3 eindeutig zum Mietvertrag aufgelöst werden");
 assert.match(p254BillingTenantMigration, /'tenantName', 'Sebastian Pilsl'[\s\S]*'recipientSalutation', 'Sehr geehrter Herr Pilsl,'[\s\S]*not ilike '%Güzel%'/, "P254/2025 darf nur Sebastian Pilsl als Zeitraum-Mieter führen");
 

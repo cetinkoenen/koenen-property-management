@@ -13,6 +13,7 @@ import {
   listVacancies,
   type UnitVacancy,
 } from "../services/vacancyService";
+import { listTenantContracts } from "../services/tenantService";
 
 type TenantInfo = { firstName: string; lastName: string; phone: string; email: string };
 type TenantContractInfo = {
@@ -1624,16 +1625,10 @@ export default function Mietuebersicht({
       setReportSourceErrors(old => ({ ...old, contracts: "" }));
       setTenantContractsLoading(true);
       try {
-        const { data, error } = await supabase
-          .from("tenant_contracts")
-          .select("id,property_id,object_code,unit_label,rent_type,cold_rent,operating_costs,total_rent,start_date,end_date,status,tenant_profiles(first_name,last_name,company_name,email,phone,mobile)")
-          .eq("is_deleted", false)
-          .order("start_date", { ascending: false, nullsFirst: false });
-
-        if (error) throw error;
+        const data = await listTenantContracts();
         if (cancelled) return;
 
-        const rangeContracts = ((data ?? []) as unknown as TenantContractProfileRow[]).filter((contract) =>
+        const rangeContracts = (data as unknown as TenantContractProfileRow[]).filter((contract) =>
           isContractInMonth(contract, displayedRange.start, displayedRange.end),
         );
         const currentContracts = rangeContracts.filter((contract) => isContractInMonth(contract, month.start, month.end));
