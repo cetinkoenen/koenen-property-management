@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { listFinanceEntries } from "@/services/financeEntryRepository";
 
 export type DepositStatus = "settled" | "open" | "overpaid" | "returned" | "none";
 
@@ -158,22 +159,16 @@ function latestDate(entries: DepositLedgerEntry[]): string | null {
 
 export async function loadDepositOverview(objects: AppObjectRef[]): Promise<DepositOverviewRow[]> {
   const refs = buildObjectIndexes(objects);
-  const [contractsRes, entriesRes] = await Promise.all([
+  const [contractsRes, financeEntries] = await Promise.all([
     supabase
       .from("tenant_contracts")
       .select("id,property_id,object_code,unit_label,deposit_amount,start_date,end_date,status,tenant_profiles(first_name,last_name,company_name,tenant_number)")
       .eq("is_deleted", false)
       .order("start_date", { ascending: false }),
-    supabase
-      .from("finance_entry")
-      .select("id,object_id,objekt_code,booking_date,amount,category,note,entry_type")
-      .eq("is_deleted", false)
-      .order("booking_date", { ascending: false })
-      .limit(5000),
+    listFinanceEntries(),
   ]);
 
   if (contractsRes.error) throw contractsRes.error;
-  if (entriesRes.error) throw entriesRes.error;
 
   const rowsByProperty = new Map<string, DepositOverviewRow>();
 
@@ -230,7 +225,7 @@ export async function loadDepositOverview(objects: AppObjectRef[]): Promise<Depo
     rowsByProperty.set(propertyId, candidate);
   }
 
-  for (const entry of ((entriesRes.data ?? []) as FinanceEntryRow[]).filter(isDepositEntry)) {
+  for (const entry of (financeEntries as unknown as FinanceEntryRow[]).filter(isDepositEntry)) {
     const object = resolveObject(refs, entry.object_id, entry.objekt_code);
     const propertyId = object?.id ?? compactName(entry.object_id) ?? compactName(entry.objekt_code);
     if (!propertyId) continue;

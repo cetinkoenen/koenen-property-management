@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import { effectiveRentDate, rentPaymentCutoffDay } from "../lib/rentMonth";
+import { listFinanceEntries } from "./financeEntryRepository";
 import {
   effectiveVacancyStartDate,
   isVacancyEffectivelyActiveInRange,
@@ -537,19 +538,17 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
   const period = monthRange(baseDate);
   const previousWindowStart = isoDate(new Date(baseDate.getFullYear(), baseDate.getMonth() - 1, 25));
 
-  const [contractsRes, objectsRes, paymentsRes, docsRes, vacancyRows] = await Promise.all([
+  const [contractsRes, objectsRes, paymentRows, docsRes, vacancyRows] = await Promise.all([
     supabase
       .from("tenant_contracts")
       .select("*,tenant_profiles(first_name,last_name,company_name,tenant_number)")
       .eq("is_deleted", false),
     supabase.from("v_object_dropdown").select("value,object_id,property_id,objekt_code,label"),
-    supabase
-      .from("finance_entry")
-      .select("object_id,objekt_code,booking_date,amount,category,note")
-      .eq("is_deleted", false)
-      .eq("entry_type", "income")
-      .gte("booking_date", previousWindowStart)
-      .lte("booking_date", period.end),
+    listFinanceEntries({
+      fromInclusive: previousWindowStart,
+      toInclusive: period.end,
+      entryTypes: ["income"],
+    }),
     supabase
       .from("property_documents")
       .select("id,property_name,category,status,title")
@@ -560,7 +559,6 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
 
   if (contractsRes.error) throw contractsRes.error;
   if (objectsRes.error) throw objectsRes.error;
-  if (paymentsRes.error) throw paymentsRes.error;
 
   const contracts = ((contractsRes.data ?? []) as unknown as ContractRow[]).filter((contract) =>
     isContractRelevant(contract, period.start, period.end),
@@ -575,7 +573,7 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
     .order("due_date", { ascending: true, nullsFirst: false })
     .limit(8);
 
-  const payments = ((paymentsRes.data ?? []) as FinanceRow[]).filter((row) => {
+  const payments = (paymentRows as unknown as FinanceRow[]).filter((row) => {
     const objectLabel = objectLabels[String(row.object_id ?? "")] || objectLabels[String(row.objekt_code ?? "")];
     const effectiveDate = bookingEffectiveMonthDate(row.booking_date, objectLabel, `${row.category ?? ""} ${row.note ?? ""}`);
     return Boolean(effectiveDate && effectiveDate >= period.start && effectiveDate <= period.end && isRentPayment(row));

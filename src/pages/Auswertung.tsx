@@ -16,6 +16,7 @@ import {
 } from "@/services/documentArchiveService";
 import { listPropertyTasks, savePropertyTask, completePropertyTask, getPropertyTaskSummary, type PropertyTaskRow, type PropertyTaskPriority } from "@/services/workflowTaskService";
 import { listAuditLogs, recordAuditLog, type AuditLogEntry } from "@/services/auditLogService";
+import { listFinanceEntries } from "@/services/financeEntryRepository";
 import {
   ResponsiveContainer,
   PieChart,
@@ -2186,21 +2187,18 @@ function PhaseTwoBAutomationCenter() {
       setError(null);
 
       try {
-        const [objectsRes, financeRes] = await Promise.all([
+        const [objectsRes, financeEntries] = await Promise.all([
           supabase.from("v_object_dropdown").select("objekt_code,label").order("label", { ascending: true }),
-          supabase
-            .from("finance_entry")
-            .select("id,objekt_code,booking_date,amount,category,note,entry_type")
-            .eq("is_deleted", false)
-            .gte("booking_date", startOfYear)
-            .lt("booking_date", tomorrow)
-            .in("entry_type", ["income", "expense"]),
+          listFinanceEntries({
+            fromInclusive: startOfYear,
+            toExclusive: tomorrow,
+            entryTypes: ["income", "expense"],
+          }),
         ]);
 
         if (!alive) return;
 
         if (objectsRes.error) throw objectsRes.error;
-        if (financeRes.error) throw financeRes.error;
 
         setObjects(
           ((objectsRes.data ?? []) as DropdownRow[])
@@ -2208,7 +2206,7 @@ function PhaseTwoBAutomationCenter() {
             .filter((row) => !isHiddenTechnicalPropertyName(row.label))
             .sort((a, b) => a.label.localeCompare(b.label, "de"))
         );
-        const financeRows = splitFinanceEntries(mapFinanceEntryRows(financeRes.data ?? []));
+        const financeRows = splitFinanceEntries(mapFinanceEntryRows(financeEntries));
         setIncomeRows(financeRows.incomeRows);
         setExpenseRows(financeRows.expenseRows);
         setLoading(false);
@@ -2562,23 +2560,14 @@ function PhaseTwoCReportingCenter() {
     const to = `${safeYear + 1}-01-01`;
 
     try {
-      let financeQuery = supabase
-        .from("finance_entry")
-        .select("id,objekt_code,booking_date,amount,category,note,entry_type")
-        .eq("is_deleted", false)
-        .gte("booking_date", from)
-        .lt("booking_date", to)
-        .in("entry_type", ["income", "expense"]);
+      const financeEntries = await listFinanceEntries({
+        fromInclusive: from,
+        toExclusive: to,
+        objectCode: objektCode,
+        entryTypes: ["income", "expense"],
+      });
 
-      if (objektCode !== "ALL") {
-        financeQuery = financeQuery.eq("objekt_code", objektCode);
-      }
-
-      const result = await financeQuery;
-
-      if (result.error) throw result.error;
-
-      const financeRows = splitFinanceEntries(mapFinanceEntryRows(result.data ?? []));
+      const financeRows = splitFinanceEntries(mapFinanceEntryRows(financeEntries));
       setIncomeRows(financeRows.incomeRows);
       setExpenseRows(financeRows.expenseRows);
     } catch (e: unknown) {
@@ -2890,23 +2879,15 @@ function PhaseFourDProfessionalReportingSystem() {
 
       void (async () => {
         try {
-          let financeQuery = supabase
-            .from("finance_entry")
-            .select("id,objekt_code,booking_date,amount,category,note,entry_type")
-            .eq("is_deleted", false)
-            .gte("booking_date", from)
-            .lt("booking_date", to)
-            .in("entry_type", ["income", "expense"]);
-
-          if (objektCode !== "ALL") {
-            financeQuery = financeQuery.eq("objekt_code", objektCode);
-          }
-
-          const result = await financeQuery;
-          if (result.error) throw result.error;
+          const financeEntries = await listFinanceEntries({
+            fromInclusive: from,
+            toExclusive: to,
+            objectCode: objektCode,
+            entryTypes: ["income", "expense"],
+          });
 
           if (!alive) return;
-          const financeRows = splitFinanceEntries(mapFinanceEntryRows(result.data ?? []));
+          const financeRows = splitFinanceEntries(mapFinanceEntryRows(financeEntries));
           setIncomeRows(financeRows.incomeRows);
           setExpenseRows(financeRows.expenseRows);
         } catch (e: unknown) {
@@ -3298,23 +3279,15 @@ function AuswertungCore() {
     const selectedCode = objektCode?.trim();
 
     try {
-      let query = supabase
-        .from("finance_entry")
-        .select("id,objekt_code,booking_date,amount,category,note,entry_type")
-        .eq("is_deleted", false)
-        .gte("booking_date", from)
-        .lt("booking_date", toPlus1)
-        .in("entry_type", ["income", "expense"]);
+      const financeEntries = await listFinanceEntries({
+        fromInclusive: from,
+        toExclusive: toPlus1,
+        objectCode: selectedCode,
+        entryTypes: ["income", "expense"],
+        ascending: true,
+      });
 
-      if (selectedCode && selectedCode !== "ALL") {
-        query = query.eq("objekt_code", selectedCode);
-      }
-
-      const result = await query.order("booking_date", { ascending: true });
-
-      if (result.error) throw result.error;
-
-      const rows = ((result.data ?? []) as Array<EntryRow & { entry_type?: EntryType }>).map((row) => ({
+      const rows = (financeEntries as unknown as Array<EntryRow & { entry_type?: EntryType }>).map((row) => ({
         ...row,
         amount: Number(row.amount || 0),
       }));

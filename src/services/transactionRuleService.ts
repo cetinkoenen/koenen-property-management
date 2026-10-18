@@ -2,6 +2,11 @@ import { clearAppDataCache } from "../lib/appCache";
 import { supabase } from "../lib/supabase";
 import { emitFinanceEntryChanged } from "../lib/appCache";
 import { isReadonlyApprovalEmail } from "../auth/accessControl";
+import {
+  listFinanceEntries,
+  updateFinanceEntry,
+  type FinanceEntryMutation,
+} from "./financeEntryRepository";
 
 export type RuleEntryType = "income" | "expense";
 
@@ -198,20 +203,23 @@ export async function deleteTransactionRule(id: string): Promise<void> {
 }
 
 export async function listRuleCandidateEntries(from: string, to: string): Promise<FinanceEntryForRules[]> {
-  const { data, error } = await supabase
-    .from("finance_entry")
-    .select("id,object_id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant")
-    .eq("is_deleted", false)
-    .in("entry_type", ["income", "expense"])
-    .gte("booking_date", from)
-    .lte("booking_date", to)
-    .order("booking_date", { ascending: false })
-    .limit(1500);
-
-  if (error) throw error;
-  return ((data ?? []) as FinanceEntryForRules[]).map((entry) => ({
-    ...entry,
+  const rows = await listFinanceEntries({
+    fromInclusive: from,
+    toInclusive: to,
+    entryTypes: ["income", "expense"],
+  });
+  return rows
+    .filter((entry) => entry.id != null)
+    .map((entry) => ({
+    id: String(entry.id),
+    object_id: entry.object_id,
+    objekt_code: entry.objekt_code,
+    booking_date: entry.booking_date,
+    amount: Number(entry.amount ?? 0),
+    category: entry.category,
+    note: entry.note,
     entry_type: entry.entry_type === "expense" ? "expense" : "income",
+    tax_relevant: entry.tax_relevant,
   }));
 }
 
@@ -326,14 +334,7 @@ export async function applyRulePreview(rows: RulePreviewRow[]): Promise<number> 
 
     if (Object.keys(payload).length === 0) continue;
 
-    const { error } = await supabase
-      .from("finance_entry")
-      .update(payload)
-      .eq("id", row.entry.id)
-      .eq("user_id", userId)
-      .eq("is_deleted", false);
-
-    if (error) throw error;
+    await updateFinanceEntry(row.entry.id, payload as FinanceEntryMutation, { userId });
     updated += 1;
   }
 

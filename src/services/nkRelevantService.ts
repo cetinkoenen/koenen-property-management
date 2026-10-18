@@ -1,5 +1,5 @@
-import { supabase } from "../lib/supabase";
 import { inferNkRelevant } from "../lib/nkClassification";
+import { listFinanceEntries, updateFinanceEntries } from "./financeEntryRepository";
 
 export type NkRelevantEntry = {
   id: number;
@@ -15,21 +15,15 @@ export type NkRelevantEntry = {
 export async function listNkRelevantEntries(year: number, objektCode?: string | null): Promise<NkRelevantEntry[]> {
   const from = `${year}-01-01`;
   const to = `${year + 1}-01-01`;
-  let query = supabase
-    .from("finance_entry")
-    .select("id,objekt_code,booking_date,amount,category,note,entry_type,nk_relevant")
-    .eq("is_deleted", false)
-    .eq("nk_relevant", true)
-    .gte("booking_date", from)
-    .lt("booking_date", to)
-    .order("booking_date", { ascending: true });
+  const rows = await listFinanceEntries({
+    fromInclusive: from,
+    toExclusive: to,
+    objectCode: objektCode ?? undefined,
+    nkRelevant: true,
+    ascending: true,
+  });
 
-  if (objektCode) query = query.eq("objekt_code", objektCode);
-
-  const { data, error } = await query;
-  if (error) throw error;
-
-  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+  return rows.map((row) => ({
     id: Number(row.id),
     objekt_code: row.objekt_code == null ? null : String(row.objekt_code),
     booking_date: String(row.booking_date ?? ""),
@@ -42,18 +36,15 @@ export async function listNkRelevantEntries(year: number, objektCode?: string | 
 }
 
 export async function classifyNkRelevantEntries(from = "2024-01-01", to = "2026-06-08"): Promise<{ updated: number; matched: number }> {
-  const { data, error } = await supabase
-    .from("finance_entry")
-    .select("id,category,note,entry_type,nk_relevant")
-    .eq("is_deleted", false)
-    .gte("booking_date", from)
-    .lt("booking_date", to)
-    .in("entry_type", ["income", "expense"])
-    .limit(10000);
+  const financeEntries = await listFinanceEntries({
+    fromInclusive: from,
+    toExclusive: to,
+    entryTypes: ["income", "expense"],
+  });
 
-  if (error) throw error;
-
-  const rows: Array<Pick<NkRelevantEntry, "id" | "category" | "note" | "entry_type" | "nk_relevant">> = ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+  const rows: Array<Pick<NkRelevantEntry, "id" | "category" | "note" | "entry_type" | "nk_relevant">> = financeEntries
+    .filter((row) => row.id != null)
+    .map((row) => ({
     id: Number(row.id),
     category: row.category == null ? null : String(row.category),
     note: row.note == null ? null : String(row.note),
@@ -68,13 +59,11 @@ export async function classifyNkRelevantEntries(from = "2024-01-01", to = "2026-
   if (!mismatches.length) return { updated: 0, matched: rows.filter((row) => inferNkRelevant(row)).length };
 
   if (idsToSet.length > 0) {
-    const { error: updateError } = await supabase.from("finance_entry").update({ nk_relevant: true }).in("id", idsToSet);
-    if (updateError) throw updateError;
+    await updateFinanceEntries(idsToSet, { nk_relevant: true });
   }
 
   if (idsToUnset.length > 0) {
-    const { error: updateError } = await supabase.from("finance_entry").update({ nk_relevant: false }).in("id", idsToUnset);
-    if (updateError) throw updateError;
+    await updateFinanceEntries(idsToUnset, { nk_relevant: false });
   }
 
   return { updated: mismatches.length, matched: rows.filter((row) => inferNkRelevant(row)).length };

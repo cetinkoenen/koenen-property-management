@@ -35,12 +35,18 @@ const bookingPage = await read("src/pages/Monate.tsx");
 const monthlyEntryHook = await read("src/features/entries/useMonthlyEntries.ts");
 const compactEntryForm = await read("src/features/entries/EntryForm.tsx");
 const taxCenter = await read("src/pages/SteuerCenter.tsx");
+const loanRatePlanService = await read("src/services/loanRatePlanService.ts");
+const nkRelevantService = await read("src/services/nkRelevantService.ts");
+const transactionRuleService = await read("src/services/transactionRuleService.ts");
+const depositService = await read("src/services/depositService.ts");
+const reportingPage = await read("src/pages/Auswertung.tsx");
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
 assert.doesNotMatch(appData, /localStorage\.(?:getItem|setItem)/, "Zentrale App-Daten dürfen keinen browserweiten Fallback als zweite Fachquelle verwenden");
 assert.match(financeEntryRepository, /function listFinanceEntries[\s\S]*\.eq\("is_deleted", false\)[\s\S]*\.range\(offset, offset \+ pageSize - 1\)/, "Die zentrale Buchungsquelle muss ausschließlich aktive Datensätze vollständig paginiert laden");
 assert.match(financeEntryRepository, /\.order\("booking_date"[\s\S]*\.order\("id"/, "Die zentrale Pagination muss über Buchungsdatum und ID deterministisch sortiert sein");
 assert.match(financeEntryRepository, /function softDeleteFinanceEntries[\s\S]*is_deleted: true[\s\S]*deleted_at/, "Buchungen dürfen zentral nur nachvollziehbar soft-gelöscht werden");
+assert.match(financeEntryRepository, /function updateFinanceEntries[\s\S]*chunkSize = 500[\s\S]*\.eq\("is_deleted", false\)/, "Zentrale Sammeländerungen müssen vollständig in sicheren Blöcken und nur auf aktive Buchungen angewendet werden");
 assert.match(appData, /listFinanceEntries\(\)/, "Der globale App-Datenbestand muss die vollständig paginierte Buchungsquelle verwenden");
 assert.doesNotMatch(appData, /\.from\("finance_entry"\)/, "Der globale App-Datenbestand darf finance_entry nicht an der zentralen Buchungsquelle vorbei laden");
 assert.match(entryAdd, /insertFinanceEntry\(payload\)/, "Die primäre Buchungserfassung muss über die zentrale Schreibfunktion speichern");
@@ -61,6 +67,20 @@ assert.doesNotMatch(taxCenter, /\.from\("finance_entry"\)/, "Der Steuer-Center d
 assert.match(taxCenter, /Jahresbuchungen aus Hauptquelle finance_entry[\s\S]{0,300}?advisorTotals\.count[\s\S]{0,200}?advisorTotals\.taxRows/, "Gesamtbestand und steuerrelevante Teilmenge müssen getrennt und nachvollziehbar angezeigt werden");
 assert.match(taxCenter, /Status und Suche filtern die Bildschirmtabellen sowie die Buchungs-CSV[\s\S]{0,300}?Steuerberater-Exporte enthalten bewusst die vollständige Jahresakte/, "Die Filterwirkung auf Bildschirm, CSV und Steuerberater-Export muss eindeutig erklärt sein");
 assert.match(taxCenter, /Überschuss Jahresakte[\s\S]{0,150}?advisorTotals\.taxNetIncludingLoans/, "Die Jahresakten-Kennzahl darf nicht vom sichtbaren Such- oder Statusfilter abhängen");
+for (const [source, label] of [
+  [cockpit, "Cockpit"],
+  [loanRatePlanService, "Tilgungsplan"],
+  [nkRelevantService, "Nebenkosten-Klassifizierung"],
+  [transactionRuleService, "Buchungsregeln"],
+  [depositService, "Kautionsübersicht"],
+  [reportingPage, "Berichtsauswertung"],
+]) {
+  assert.match(source, /listFinanceEntries\(/, `${label} muss Buchungen über die zentrale vollständig paginierte Quelle laden`);
+  assert.doesNotMatch(source, /\.from\("finance_entry"\)/, `${label} darf finance_entry nicht parallel direkt lesen oder schreiben`);
+}
+assert.match(loanRatePlanService, /updateFinanceEntry\(selected\.id/, "Tilgungsplan-Zuordnungen müssen Buchungen über die zentrale Schreibfunktion aktualisieren");
+assert.match(nkRelevantService, /updateFinanceEntries\(idsToSet[\s\S]*updateFinanceEntries\(idsToUnset/, "Nebenkosten-Korrekturen müssen zentral und vollständig gesammelt gespeichert werden");
+assert.match(transactionRuleService, /updateFinanceEntry\(row\.entry\.id[\s\S]{0,150}?userId/, "Buchungsregeln müssen die zentrale Schreibfunktion mit Benutzerbegrenzung verwenden");
 assert.match(entryAdd, /Objekte werden geladen…[\s\S]*Objektliste konnte nicht geladen werden[\s\S]*Keine Objekte vorhanden/, "Die Buchungserfassung muss Laden, Fehler und einen wirklich leeren Objektbestand eindeutig unterscheiden");
 assert.match(entryAdd, /setObjectLoadRevision\(\(value\) => value \+ 1\)/, "Ein fehlgeschlagener Objektabruf muss direkt wiederholt werden können");
 assert.match(entryAdd, /classifyTaxRelevance\([\s\S]{0,250}?selectedObjectLabel\)/, "Steuerregeln müssen das konkret ausgewählte Objekt berücksichtigen");
@@ -204,4 +224,4 @@ assert.deepEqual(
   "Jede Supabase-Migration muss einen gültigen Zeitstempel tragen und reproduzierbar ausführbar sein",
 );
 
-console.log("107 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("123 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

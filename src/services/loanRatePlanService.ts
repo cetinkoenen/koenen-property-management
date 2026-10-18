@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { canonicalizeFinanceCategory } from "@/lib/financeCategories";
 import { expandPropertyIdAliases, type PropertyIdAliasRow } from "@/lib/propertyIdAliases";
 import { calculateChfLoanSplit } from "@/lib/chfLoanSplit";
+import { listFinanceEntries, updateFinanceEntry } from "@/services/financeEntryRepository";
 
 export type LoanRatePlanRow = {
   id?: string;
@@ -290,15 +291,12 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
   const dates = plan.rows.map((row) => row.plan_date).sort();
   const start = `${shiftMonthKey(dates[0].slice(0, 7), -1)}-01`;
   const end = `${shiftMonthKey(String(dates.at(-1)).slice(0, 7), 1)}-01`;
-  const result = await supabase
-    .from("finance_entry")
-    .select("id,object_id,objekt_code,booking_date,amount,category,entry_type,note")
-    .eq("is_deleted", false)
-    .gte("booking_date", start)
-    .lt("booking_date", end);
-  if (result.error) throw result.error;
+  const financeEntries = await listFinanceEntries({
+    fromInclusive: start,
+    toExclusive: end,
+  });
 
-  const directlyAssignedEntries = (result.data ?? []).filter((entry) => propertyIds.includes(String(entry.object_id ?? ""))
+  const directlyAssignedEntries = financeEntries.filter((entry) => propertyIds.includes(String(entry.object_id ?? ""))
     || propertyObjectCodes.includes(String(entry.objekt_code ?? "").trim())
     || resolveLoanProperty(String(entry.objekt_code ?? ""))?.key === plan.propertyKey);
   const knownLoanReferences = new Set(directlyAssignedEntries.flatMap((entry) => loanReferenceTokens(entry.note)));
@@ -308,7 +306,7 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
   for (const schedule of plan.rows) {
     const month = schedule.plan_date.slice(0, 7);
     const previousMonth = shiftMonthKey(month, -1);
-    const candidates = (result.data ?? [])
+    const candidates = financeEntries
       .filter((entry) => !usedEntryIds.has(String(entry.id)))
       .filter((entry) => propertyIds.includes(String(entry.object_id ?? ""))
         || propertyObjectCodes.includes(String(entry.objekt_code ?? "").trim())
@@ -340,14 +338,14 @@ async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanOb
     // wenn auch der Gesamtbetrag centgenau passt. Bei Sondertilgungen,
     // Gebuehren oder Ratenaenderungen bleibt die Buchung bewusst ungeaendert und
     // muss anhand eines Bank-/Darlehensbelegs geprueft werden.
-    const update = await supabase.from("finance_entry").update({
+    if (selected.id == null) continue;
+    await updateFinanceEntry(selected.id, {
       loan_interest_amount: chfSplit?.interestEur ?? schedule.interest_amount,
       loan_principal_amount: chfSplit?.principalEur ?? schedule.principal_amount,
       loan_rate_plan_id: schedule.id ?? null,
       loan_split_source: chfSplit?.source ?? `csv:${plan.sourceFile}`,
       tax_relevant: false,
-    }).eq("id", selected.id).eq("is_deleted", false);
-    if (update.error) throw update.error;
+    });
     usedEntryIds.add(String(selected.id));
     updated += 1;
   }

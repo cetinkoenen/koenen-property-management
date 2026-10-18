@@ -55,11 +55,17 @@ export type FinanceEntryMutation = {
 export type ListFinanceEntriesOptions = {
   fromInclusive?: string;
   toExclusive?: string;
+  toInclusive?: string;
   objectId?: string;
   objectCode?: string;
   entryTypes?: Array<"income" | "expense">;
+  nkRelevant?: boolean;
   ascending?: boolean;
   pageSize?: number;
+};
+
+export type UpdateFinanceEntryOptions = {
+  userId?: string;
 };
 
 /**
@@ -84,11 +90,13 @@ export async function listFinanceEntries(
 
     if (options.fromInclusive) query = query.gte("booking_date", options.fromInclusive);
     if (options.toExclusive) query = query.lt("booking_date", options.toExclusive);
+    else if (options.toInclusive) query = query.lte("booking_date", options.toInclusive);
     if (options.objectId) query = query.eq("object_id", options.objectId);
     if (options.objectCode && options.objectCode !== "ALL") {
       query = query.eq("objekt_code", options.objectCode);
     }
     if (options.entryTypes?.length) query = query.in("entry_type", options.entryTypes);
+    if (typeof options.nkRelevant === "boolean") query = query.eq("nk_relevant", options.nkRelevant);
 
     const { data, error } = await query
       .order("booking_date", { ascending })
@@ -135,13 +143,32 @@ export async function insertFinanceEntry(payload: FinanceEntryMutation): Promise
 export async function updateFinanceEntry(
   id: string | number,
   payload: FinanceEntryMutation,
+  options: UpdateFinanceEntryOptions = {},
 ): Promise<void> {
-  const { error } = await supabase
+  let query = supabase
     .from("finance_entry")
     .update(payload)
     .eq("id", id)
     .eq("is_deleted", false);
+  if (options.userId) query = query.eq("user_id", options.userId);
+  const { error } = await query;
   if (error) throw error;
+}
+
+export async function updateFinanceEntries(
+  ids: Array<string | number>,
+  payload: FinanceEntryMutation,
+): Promise<void> {
+  const chunkSize = 500;
+  for (let offset = 0; offset < ids.length; offset += chunkSize) {
+    const chunk = ids.slice(offset, offset + chunkSize);
+    const { error } = await supabase
+      .from("finance_entry")
+      .update(payload)
+      .in("id", chunk)
+      .eq("is_deleted", false);
+    if (error) throw error;
+  }
 }
 
 export async function softDeleteFinanceEntries(ids: Array<string | number>): Promise<void> {
