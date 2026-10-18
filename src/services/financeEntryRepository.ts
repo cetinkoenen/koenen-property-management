@@ -136,7 +136,11 @@ export async function updateFinanceEntry(
   id: string | number,
   payload: FinanceEntryMutation,
 ): Promise<void> {
-  const { error } = await supabase.from("finance_entry").update(payload).eq("id", id);
+  const { error } = await supabase
+    .from("finance_entry")
+    .update(payload)
+    .eq("id", id)
+    .eq("is_deleted", false);
   if (error) throw error;
 }
 

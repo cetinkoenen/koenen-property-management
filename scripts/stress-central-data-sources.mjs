@@ -34,6 +34,7 @@ const entryAdd = await read("src/pages/EntryAdd.tsx");
 const bookingPage = await read("src/pages/Monate.tsx");
 const monthlyEntryHook = await read("src/features/entries/useMonthlyEntries.ts");
 const compactEntryForm = await read("src/features/entries/EntryForm.tsx");
+const taxCenter = await read("src/pages/SteuerCenter.tsx");
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
 assert.doesNotMatch(appData, /localStorage\.(?:getItem|setItem)/, "Zentrale App-Daten dürfen keinen browserweiten Fallback als zweite Fachquelle verwenden");
@@ -53,6 +54,13 @@ assert.doesNotMatch(monthlyEntryHook, /\.from\("finance_entry"\)/, "Der Monats-H
 assert.match(compactEntryForm, /listFinanceEntryCategories\(\)/, "Auch Kategorien müssen über die zentrale Buchungsquelle geladen werden");
 assert.match(compactEntryForm, /insertFinanceEntry\(/, "Auch die kompakte Erfassung muss zentral speichern");
 assert.doesNotMatch(compactEntryForm, /\.from\("finance_entry"\)/, "Die kompakte Erfassung darf finance_entry nicht direkt lesen oder schreiben");
+assert.match(taxCenter, /listFinanceEntries\(\{[\s\S]{0,300}?fromInclusive: range\.from[\s\S]{0,300}?toExclusive: range\.to/, "Der Steuer-Center muss Jahresbuchungen vollständig über die zentrale Quelle laden");
+assert.match(taxCenter, /loadAllFinanceEntriesForTaxRules[\s\S]{0,400}?listFinanceEntries\(\{ entryTypes:/, "Auch die Steuerregel-Reparatur muss den vollständigen zentralen Buchungsbestand verwenden");
+assert.match(taxCenter, /updateFinanceEntry\(update\.id/, "Steuer- und NK-Korrekturen müssen über die zentrale Schreibfunktion laufen");
+assert.doesNotMatch(taxCenter, /\.from\("finance_entry"\)/, "Der Steuer-Center darf finance_entry nicht direkt lesen oder schreiben");
+assert.match(taxCenter, /Jahresbuchungen aus Hauptquelle finance_entry[\s\S]{0,300}?advisorTotals\.count[\s\S]{0,200}?advisorTotals\.taxRows/, "Gesamtbestand und steuerrelevante Teilmenge müssen getrennt und nachvollziehbar angezeigt werden");
+assert.match(taxCenter, /Status und Suche filtern die Bildschirmtabellen sowie die Buchungs-CSV[\s\S]{0,300}?Steuerberater-Exporte enthalten bewusst die vollständige Jahresakte/, "Die Filterwirkung auf Bildschirm, CSV und Steuerberater-Export muss eindeutig erklärt sein");
+assert.match(taxCenter, /Überschuss Jahresakte[\s\S]{0,150}?advisorTotals\.taxNetIncludingLoans/, "Die Jahresakten-Kennzahl darf nicht vom sichtbaren Such- oder Statusfilter abhängen");
 assert.match(entryAdd, /Objekte werden geladen…[\s\S]*Objektliste konnte nicht geladen werden[\s\S]*Keine Objekte vorhanden/, "Die Buchungserfassung muss Laden, Fehler und einen wirklich leeren Objektbestand eindeutig unterscheiden");
 assert.match(entryAdd, /setObjectLoadRevision\(\(value\) => value \+ 1\)/, "Ein fehlgeschlagener Objektabruf muss direkt wiederholt werden können");
 assert.match(entryAdd, /classifyTaxRelevance\([\s\S]{0,250}?selectedObjectLabel\)/, "Steuerregeln müssen das konkret ausgewählte Objekt berücksichtigen");
@@ -196,4 +204,4 @@ assert.deepEqual(
   "Jede Supabase-Migration muss einen gültigen Zeitstempel tragen und reproduzierbar ausführbar sein",
 );
 
-console.log("100 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("107 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

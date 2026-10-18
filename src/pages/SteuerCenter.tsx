@@ -21,6 +21,11 @@ import { listLoanRatePlanRowsForYear } from "../services/loanRatePlanService";
 import { isVacancyInRange, listVacancies, type UnitVacancy } from "../services/vacancyService";
 import { parseLocaleNumber } from "../utils/numberParser";
 import { useAppData } from "../state/AppDataContext";
+import {
+  listFinanceEntries,
+  updateFinanceEntry,
+  type FinanceEntryRepositoryRow,
+} from "../services/financeEntryRepository";
 
 type EntryType = "income" | "expense";
 type RelevanceFilter = "all" | "tax" | "check" | "private";
@@ -48,6 +53,24 @@ type EntryRow = {
   loan_rate_plan_id: string | null;
   loan_split_source: string | null;
 };
+
+function repositoryRowToEntry(row: FinanceEntryRepositoryRow): EntryRow {
+  return {
+    id: Number(row.id ?? 0),
+    objekt_code: row.objekt_code ?? null,
+    booking_date: String(row.booking_date ?? ""),
+    amount: parseLocaleNumber(row.amount, 0),
+    category: row.category ?? null,
+    note: row.note ?? null,
+    entry_type: row.entry_type === "expense" ? "expense" : "income",
+    tax_relevant: typeof row.tax_relevant === "boolean" ? row.tax_relevant : null,
+    nk_relevant: typeof row.nk_relevant === "boolean" ? row.nk_relevant : null,
+    loan_interest_amount: row.loan_interest_amount == null ? null : parseLocaleNumber(row.loan_interest_amount, 0),
+    loan_principal_amount: row.loan_principal_amount == null ? null : parseLocaleNumber(row.loan_principal_amount, 0),
+    loan_rate_plan_id: row.loan_rate_plan_id ?? null,
+    loan_split_source: row.loan_split_source ?? null,
+  };
+}
 
 type LoanTaxRow = {
   property_id: string;
@@ -85,47 +108,8 @@ type ClassifiedEntry = EntryRow & {
 };
 
 async function loadAllFinanceEntriesForTaxRules(): Promise<EntryRow[]> {
-  const pageSize = 1000;
-  let from = 0;
-  const rows: EntryRow[] = [];
-
-  while (true) {
-    const { data, error } = await supabase
-      .from("finance_entry")
-      .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,nk_relevant,loan_interest_amount,loan_principal_amount,loan_rate_plan_id,loan_split_source,is_deleted")
-      .eq("is_deleted", false)
-      .in("entry_type", ["income", "expense"])
-      .order("booking_date", { ascending: false })
-      .range(from, from + pageSize - 1);
-
-    if (error) throw error;
-
-    const pageRows: EntryRow[] = (data ?? []).map((row: unknown) => {
-      const item = row as Partial<EntryRow>;
-      const entryType: EntryType = item.entry_type === "expense" ? "expense" : "income";
-      return {
-        id: Number(item.id ?? 0),
-        objekt_code: item.objekt_code ?? null,
-        booking_date: String(item.booking_date ?? ""),
-        amount: parseLocaleNumber(item.amount, 0),
-        category: item.category ?? null,
-        note: item.note ?? null,
-        entry_type: entryType,
-        tax_relevant: typeof item.tax_relevant === "boolean" ? item.tax_relevant : null,
-        nk_relevant: typeof item.nk_relevant === "boolean" ? item.nk_relevant : null,
-        loan_interest_amount: item.loan_interest_amount == null ? null : parseLocaleNumber(item.loan_interest_amount, 0),
-        loan_principal_amount: item.loan_principal_amount == null ? null : parseLocaleNumber(item.loan_principal_amount, 0),
-        loan_rate_plan_id: item.loan_rate_plan_id ?? null,
-        loan_split_source: item.loan_split_source ?? null,
-      };
-    });
-
-    rows.push(...pageRows);
-    if (pageRows.length < pageSize) break;
-    from += pageSize;
-  }
-
-  return rows;
+  const rows = await listFinanceEntries({ entryTypes: ["income", "expense"] });
+  return rows.map(repositoryRowToEntry);
 }
 
 function getLoadErrorMessage(error: unknown, fallback = "Daten konnten nicht geladen werden."): string {
@@ -1118,40 +1102,12 @@ export default function SteuerCenter() {
         objectOptions = await loadObjects();
       }
 
-      let query = supabase
-        .from("finance_entry")
-        .select("id,objekt_code,booking_date,amount,category,note,entry_type,tax_relevant,nk_relevant,loan_interest_amount,loan_principal_amount,loan_rate_plan_id,loan_split_source,is_deleted")
-        .eq("is_deleted", false)
-        .gte("booking_date", range.from)
-        .lt("booking_date", range.to)
-        .in("entry_type", ["income", "expense"])
-        .order("booking_date", { ascending: false });
-
-      if (objectCode !== "ALL") {
-        query = query.eq("objekt_code", objectCode);
-      }
-
-      const result = await query;
-      if (result.error) throw result.error;
-
-      const rows: EntryRow[] = (result.data ?? []).map((row: unknown) => {
-        const item = row as Partial<EntryRow>;
-        return {
-          id: Number(item.id ?? 0),
-          objekt_code: item.objekt_code ?? null,
-          booking_date: String(item.booking_date ?? ""),
-          amount: parseLocaleNumber(item.amount, 0),
-          category: item.category ?? null,
-          note: item.note ?? null,
-          entry_type: item.entry_type === "expense" ? "expense" : "income",
-          tax_relevant: typeof item.tax_relevant === "boolean" ? item.tax_relevant : null,
-          nk_relevant: typeof item.nk_relevant === "boolean" ? item.nk_relevant : null,
-          loan_interest_amount: item.loan_interest_amount == null ? null : parseLocaleNumber(item.loan_interest_amount, 0),
-          loan_principal_amount: item.loan_principal_amount == null ? null : parseLocaleNumber(item.loan_principal_amount, 0),
-          loan_rate_plan_id: item.loan_rate_plan_id ?? null,
-          loan_split_source: item.loan_split_source ?? null,
-        };
-      });
+      const rows = (await listFinanceEntries({
+        fromInclusive: range.from,
+        toExclusive: range.to,
+        objectCode,
+        entryTypes: ["income", "expense"],
+      })).map(repositoryRowToEntry);
 
       setEntries(rows.sort((a, b) => b.booking_date.localeCompare(a.booking_date)));
 
@@ -1399,22 +1355,15 @@ export default function SteuerCenter() {
         return;
       }
 
-      const results = await Promise.all(
+      await Promise.all(
         updates.map((update) =>
-          supabase
-            .from("finance_entry")
-            .update({
+          updateFinanceEntry(update.id, {
               tax_relevant: update.tax_relevant,
               nk_relevant: update.nk_relevant,
               ...(update.category ? { category: update.category } : {}),
-            })
-            .eq("id", update.id)
-            .eq("is_deleted", false),
+          }),
         ),
       );
-
-      const failed = results.find((result) => result.error);
-      if (failed?.error) throw failed.error;
 
       await loadEntries();
       setTaxRepairStatus(`${updates.length} Buchung(en) im Gesamtbestand nach Steuer- und NK-Regeln aktualisiert.`);
@@ -1437,7 +1386,7 @@ export default function SteuerCenter() {
   }, [appData.objects]);
 
   useEffect(() => {
-    // Initialer und filterbasierter Supabase-Ladevorgang fuer die Steueruebersicht.
+    // Initialer und filterbasierter Ladevorgang über die zentrale Buchungsquelle.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1563,11 +1512,12 @@ export default function SteuerCenter() {
   const advisorStatusTone: "green" | "amber" | "slate" = advisorTotals.count === 0 ? "slate" : advisorTotals.checkRows === 0 ? "green" : "amber";
   const loanRowsWithYearValue = loanTaxRows.filter((row) => row.has_year_value);
   const loanRowsMissingYearValue = loanTaxRows.filter((row) => !row.has_year_value);
+  const advisorPrivateRows = Math.max(0, advisorTotals.count - advisorTotals.taxRows - advisorTotals.checkRows);
   const advisorChecks = [
     {
-      label: "Buchungen aus Hauptquelle finance_entry",
-      value: `${advisorTotals.count} Zeilen`,
-      relevance: advisorTotals.count > 0 ? "tax" : "private",
+      label: "Jahresbuchungen aus Hauptquelle finance_entry",
+      value: `${advisorTotals.count} gesamt · ${advisorTotals.taxRows} steuerrelevant · ${advisorPrivateRows} nicht abziehbar`,
+      relevance: advisorTotals.checkRows > 0 ? "check" : advisorTotals.count > 0 ? "tax" : "private",
     },
     {
       label: "Offene steuerliche Prueffaelle",
@@ -1724,6 +1674,9 @@ export default function SteuerCenter() {
             </span>
           </label>
         </div>
+        <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 14, background: "#eff6ff", color: "#1e3a5f", fontWeight: 750, lineHeight: 1.5 }}>
+          Status und Suche filtern die Bildschirmtabellen sowie die Buchungs-CSV. Die Steuerberater-Exporte enthalten bewusst die vollständige Jahresakte des gewählten Objekts einschließlich nicht abziehbarer und gesperrter Nachweiszeilen.
+        </div>
       </section>
 
       {error ? (
@@ -1740,8 +1693,8 @@ export default function SteuerCenter() {
               <TonePill label={advisorStatus} tone={advisorStatusTone} />
             </div>
             <p style={styles.text}>
-              Dieser Extrakt buendelt Jahreskennzahlen, Steuergruppen, Darlehenszinsen und die gefilterten
-              Buchungen fuer die Weitergabe an den Steuerberater.
+              Dieser Extrakt bündelt Jahreskennzahlen, Steuergruppen, Darlehenszinsen und die vollständigen
+              Jahresbuchungen für die Weitergabe an den Steuerberater.
             </p>
 
             <div style={styles.advisorMeta}>
@@ -1754,8 +1707,8 @@ export default function SteuerCenter() {
                 <div style={styles.metaValue}>{selectedObjectLabel}</div>
               </div>
               <div style={styles.metaBox}>
-                <div style={styles.metaLabel}>Ueberschuss</div>
-                <div style={styles.metaValue}>{loading ? "..." : eur(totals.taxNetIncludingLoans)}</div>
+                <div style={styles.metaLabel}>Überschuss Jahresakte</div>
+                <div style={styles.metaValue}>{loading ? "..." : eur(advisorTotals.taxNetIncludingLoans)}</div>
               </div>
             </div>
 
@@ -1860,9 +1813,9 @@ export default function SteuerCenter() {
         <MetricCard label="Steuerlicher Ueberschuss inkl. Darlehen" value={loading ? "..." : eur(totals.taxNetIncludingLoans)} tone={totals.taxNetIncludingLoans >= 0 ? "blue" : "red"} />
         <MetricCard label="Tilgung nicht steuerrelevant" value={loading ? "..." : eur(totals.loanPrincipal)} tone="slate" />
         <MetricCard label="Buchhaltungs-Netto" value={loading ? "..." : eur(totals.net)} tone={totals.net >= 0 ? "blue" : "red"} />
-        <MetricCard label="Steuerrelevant" value={loading ? "..." : String(totals.taxRows)} tone="green" />
-        <MetricCard label="Zu pruefen" value={loading ? "..." : String(totals.checkRows)} tone="amber" />
-        <MetricCard label="Buchungen" value={loading ? "..." : String(totals.count)} tone="slate" />
+        <MetricCard label="Steuerrelevant · aktuelle Ansicht" value={loading ? "..." : String(totals.taxRows)} tone="green" />
+        <MetricCard label="Zu prüfen · aktuelle Ansicht" value={loading ? "..." : String(totals.checkRows)} tone="amber" />
+        <MetricCard label="Buchungen · aktuelle Ansicht" value={loading ? "..." : String(totals.count)} tone="slate" />
       </section>
 
       <section style={styles.panel}>
@@ -2029,7 +1982,7 @@ export default function SteuerCenter() {
       </section>
 
       <section style={styles.panel}>
-        <SectionHeading title="Buchungen fuer Steuerpruefung" subtitle="Exportiert werden genau die aktuell gefilterten Zeilen." />
+        <SectionHeading title="Buchungen für Steuerprüfung" subtitle="Diese Tabelle und die Buchungs-CSV folgen dem aktuellen Status- und Suchfilter. Die Steuerberater-Exporte enthalten dagegen die vollständige Jahresakte." />
         <div style={styles.tableWrap}>
           <table style={styles.table}>
             <thead>
