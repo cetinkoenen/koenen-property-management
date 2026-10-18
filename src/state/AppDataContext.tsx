@@ -5,6 +5,7 @@ import { isPureRentBackPayment } from "../lib/financeCategories";
 import { effectiveRentYearMonth, rentPaymentCutoffDay } from "../lib/rentMonth";
 import { loadCanonicalPropertyLoanSnapshots } from "@/services/propertyLoanLedgerService";
 import { listFinanceEntries, type FinanceEntryRepositoryRow } from "@/services/financeEntryRepository";
+import { listObjectDirectory } from "@/services/objectDirectoryService";
 
 export type AppObject = {
   id: string;
@@ -461,8 +462,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const [objectsRes, entryRows, portfolioRes, loanRes, propertyExtraRes] = await Promise.all([
-        supabase.from("v_object_dropdown").select("value,objekt_code,label,object_id,property_id").order("label", { ascending: true }),
+      const [objectRows, entryRows, portfolioRes, loanRes, propertyExtraRes] = await Promise.all([
+        listObjectDirectory(),
         listFinanceEntries(),
         supabase.from("vw_property_loan_dashboard_portfolio_v2").select("property_id,portfolio_property_id,property_name,last_balance,principal_total,interest_total,repaid_percent,repayment_status,repayment_label").order("property_name", { ascending: true }),
         supabase.from("vw_property_loan_dashboard_dedup").select("property_id,property_name,first_year,last_year,last_balance_year,last_balance,interest_total,principal_total,repaid_percent,repaid_percent_display,repayment_status,repayment_label,refreshed_at").order("property_name", { ascending: true }),
@@ -472,13 +473,11 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       // Objekt- und Buchungsdaten sind die Pflichtquelle fuer die App.
       // Darlehens-/Portfolio-Views duerfen Mieteingang, Buchhaltung und andere
       // Seiten nicht blockieren, wenn eine View kurzfristig nicht erreichbar ist.
-      const firstBlockingError = objectsRes.error;
-      if (firstBlockingError) throw firstBlockingError;
       if (portfolioRes.error) console.warn("Portfolio-Darlehensdaten konnten nicht geladen werden:", portfolioRes.error.message);
       if (loanRes.error) console.warn("Darlehensdashboard konnte nicht geladen werden:", loanRes.error.message);
       if (propertyExtraRes.error) console.warn("Wohnflächen aus Immobilienvermögen konnten nicht geladen werden:", propertyExtraRes.error.message);
 
-      const baseObjects = dedupeObjectsByCanonicalName(((objectsRes.data ?? []) as ObjectDropdownRow[])
+      const baseObjects = dedupeObjectsByCanonicalName((objectRows as ObjectDropdownRow[])
         .filter((row) => row.value)
         .map((row) => ({
           // AppObject.id muss zur Buchungstabelle passen: finance_entry.object_id -> public.objects.id.

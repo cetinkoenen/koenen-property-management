@@ -11,6 +11,7 @@ import {
   getPropertyDocumentSignedUrl,
   type PropertyDocumentRow,
 } from "@/services/documentArchiveService";
+import { listObjectDirectory } from "@/services/objectDirectoryService";
 
 type BillingRow = { object_id: string; year: string | number; data: unknown };
 type ObjectOption = { objekt_code: string; label: string };
@@ -75,18 +76,17 @@ export default function PropertyUtilitiesKpiDashboard({ propertyId, propertyLabe
     try {
       setLoading(true);
       setError(null);
-      const [billingResult, documentResult, objectResult] = await Promise.all([
+      const [billingResult, documentResult, objectRows] = await Promise.all([
         supabase.from("apartment_billing_workspaces").select("object_id,year,data").order("year", { ascending: false }),
         supabase.from("property_documents").select("*").eq("category", "nk_abrechnung").order("document_year", { ascending: false, nullsFirst: false }),
-        supabase.from("v_object_dropdown").select("objekt_code,label").order("label", { ascending: true }),
+        listObjectDirectory(),
       ]);
       if (requestId !== loadRequestId.current) return;
       if (billingResult.error) throw billingResult.error;
       if (documentResult.error) throw documentResult.error;
-      if (objectResult.error) throw objectResult.error;
 
       const labelKey = normalizeIdentity(propertyLabel);
-      const matchingObject = ((objectResult.data ?? []) as ObjectOption[]).find((object) => {
+      const matchingObject = (objectRows as ObjectOption[]).find((object) => {
         return object.objekt_code === propertyId || (Boolean(labelKey) && normalizeIdentity(object.label) === labelKey);
       });
       const canonicalObjectCode = matchingObject?.objekt_code ?? propertyId;

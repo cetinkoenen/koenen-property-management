@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { supabase } from "../lib/supabase";
 import { clearAppDataCache } from "../lib/appCache";
 import { canonicalizeFinanceCategory, getFinanceCategoryOptions } from "../lib/financeCategories";
 import { displayFinanceCategory } from "../lib/financeEntryLabels";
@@ -24,6 +23,7 @@ import {
   softDeleteFinanceEntries,
   updateFinanceEntry,
 } from "../services/financeEntryRepository";
+import { listObjectDirectory } from "../services/objectDirectoryService";
 
 type EntryType = "income" | "expense";
 type TypeFilter = "all" | EntryType;
@@ -409,20 +409,18 @@ export default function Monate() {
 
     (async () => {
       try {
-        const { data, error } = await supabase
-          .from("v_object_dropdown")
-          .select("value,objekt_code,label,object_id,property_id")
-          .order("label", { ascending: true });
-
-        if (!alive) return;
-
-        if (error) {
+        let data: ObjectDropdownResponse[];
+        try {
+          data = await listObjectDirectory();
+        } catch (error: unknown) {
+          if (!alive) return;
           console.error("Fehler beim Laden der Objekt-Dropdown-Liste:", error);
           setObjects([]);
           return;
         }
+        if (!alive) return;
 
-        const dbObjects = ((data ?? []) as ObjectDropdownResponse[])
+        const dbObjects = data
           .filter((x) => (x.object_id || x.value) && x.objekt_code && x.label)
           .map((x) => ({
             value: String(x.object_id ?? x.value),

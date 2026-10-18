@@ -4,6 +4,7 @@ import brandLogo from "../assets/koenen-brand-logo.webp";
 import { supabase } from "../lib/supabase";
 import { listNkRelevantEntries, type NkRelevantEntry } from "../services/nkRelevantService";
 import { summarizeBillingWorkspace } from "../services/billingWorkspaceService";
+import { listObjectDirectory } from "../services/objectDirectoryService";
 
 type AllocationType = "allocationKey" | "persons" | "directAmount" | "heatingDirect";
 
@@ -433,7 +434,7 @@ export default function NebenkostenWohnungen() {
   const autoPrintTriggered = useRef(false);
   const [nkEntries, setNkEntries] = useState<NkRelevantEntry[]>([]);
   const [nkLoading, setNkLoading] = useState(false);
-  useEffect(() => { let alive = true; (async () => { const { data, error } = await supabase.from("v_object_dropdown").select("objekt_code,label").order("label", { ascending: true }); if (!alive) return; if (error) { setError(`Objekte konnten nicht geladen werden: ${error.message}`); return; } const list = ((data ?? []) as ObjectOption[]).filter(o => o.objekt_code && o.label && !isGarage(o)); setObjects(list); if (!selectedObjectCode && list[0]) { const requested = list.find((object) => object.objekt_code === requestedObjectCode); setSelectedObjectCode(requested?.objekt_code ?? list[0].objekt_code); } })(); return () => { alive = false; }; }, [requestedObjectCode, selectedObjectCode]);
+  useEffect(() => { let alive = true; (async () => { try { const data = await listObjectDirectory(); if (!alive) return; const list = (data as ObjectOption[]).filter(o => o.objekt_code && o.label && !isGarage(o)); setObjects(list); if (!selectedObjectCode && list[0]) { const requested = list.find((object) => object.objekt_code === requestedObjectCode); setSelectedObjectCode(requested?.objekt_code ?? list[0].objekt_code); } } catch (error: unknown) { if (!alive) return; setError(`Objekte konnten nicht geladen werden: ${error instanceof Error ? error.message : String(error)}`); } })(); return () => { alive = false; }; }, [requestedObjectCode, selectedObjectCode]);
   const selectedObject = useMemo(() => objects.find(o => o.objekt_code === selectedObjectCode) ?? null, [objects, selectedObjectCode]);
   const selectedConfig = useMemo(() => getPropertyBillingConfig(selectedObject), [selectedObject]);
   const co2EnabledForSelectedObject = selectedConfig.co2Enabled;

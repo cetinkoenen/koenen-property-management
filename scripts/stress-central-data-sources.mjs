@@ -40,6 +40,8 @@ const nkRelevantService = await read("src/services/nkRelevantService.ts");
 const transactionRuleService = await read("src/services/transactionRuleService.ts");
 const depositService = await read("src/services/depositService.ts");
 const reportingPage = await read("src/pages/Auswertung.tsx");
+const objectDirectory = await read("src/services/objectDirectoryService.ts");
+const overviewPage = await read("src/pages/Uebersicht.tsx");
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
 assert.doesNotMatch(appData, /localStorage\.(?:getItem|setItem)/, "Zentrale App-Daten dürfen keinen browserweiten Fallback als zweite Fachquelle verwenden");
@@ -81,6 +83,20 @@ for (const [source, label] of [
 assert.match(loanRatePlanService, /updateFinanceEntry\(selected\.id/, "Tilgungsplan-Zuordnungen müssen Buchungen über die zentrale Schreibfunktion aktualisieren");
 assert.match(nkRelevantService, /updateFinanceEntries\(idsToSet[\s\S]*updateFinanceEntries\(idsToUnset/, "Nebenkosten-Korrekturen müssen zentral und vollständig gesammelt gespeichert werden");
 assert.match(transactionRuleService, /updateFinanceEntry\(row\.entry\.id[\s\S]{0,150}?userId/, "Buchungsregeln müssen die zentrale Schreibfunktion mit Benutzerbegrenzung verwenden");
+assert.match(objectDirectory, /function listObjectDirectory[\s\S]*\.from\("v_object_dropdown"\)[\s\S]*\.range\(offset, offset \+ pageSize - 1\)/, "Die zentrale Objektliste muss die kanonische View vollständig paginiert laden");
+for (const [source, label] of [
+  [appData, "App-Datenquelle"],
+  [entryAdd, "Buchungserfassung"],
+  [bookingPage, "Buchungsseite"],
+  [overviewPage, "Buchungsübersicht"],
+  [utilitiesKpi, "Nebenkosten-KPI"],
+  [utilitiesPage, "Nebenkostenabrechnung"],
+  [cockpit, "Cockpit"],
+  [reportingPage, "Berichtsauswertung"],
+]) {
+  assert.match(source, /listObjectDirectory\(/, `${label} muss Immobilien aus der zentralen Objektliste laden`);
+  assert.doesNotMatch(source, /\.from\("v_object_dropdown"\)/, `${label} darf keine parallele Objektliste führen`);
+}
 assert.match(entryAdd, /Objekte werden geladen…[\s\S]*Objektliste konnte nicht geladen werden[\s\S]*Keine Objekte vorhanden/, "Die Buchungserfassung muss Laden, Fehler und einen wirklich leeren Objektbestand eindeutig unterscheiden");
 assert.match(entryAdd, /setObjectLoadRevision\(\(value\) => value \+ 1\)/, "Ein fehlgeschlagener Objektabruf muss direkt wiederholt werden können");
 assert.match(entryAdd, /classifyTaxRelevance\([\s\S]{0,250}?selectedObjectLabel\)/, "Steuerregeln müssen das konkret ausgewählte Objekt berücksichtigen");
@@ -224,4 +240,4 @@ assert.deepEqual(
   "Jede Supabase-Migration muss einen gültigen Zeitstempel tragen und reproduzierbar ausführbar sein",
 );
 
-console.log("123 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("140 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

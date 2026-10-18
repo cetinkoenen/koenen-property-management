@@ -17,6 +17,7 @@ import {
 import { listPropertyTasks, savePropertyTask, completePropertyTask, getPropertyTaskSummary, type PropertyTaskRow, type PropertyTaskPriority } from "@/services/workflowTaskService";
 import { listAuditLogs, recordAuditLog, type AuditLogEntry } from "@/services/auditLogService";
 import { listFinanceEntries } from "@/services/financeEntryRepository";
+import { listObjectDirectory } from "@/services/objectDirectoryService";
 import {
   ResponsiveContainer,
   PieChart,
@@ -2187,8 +2188,8 @@ function PhaseTwoBAutomationCenter() {
       setError(null);
 
       try {
-        const [objectsRes, financeEntries] = await Promise.all([
-          supabase.from("v_object_dropdown").select("objekt_code,label").order("label", { ascending: true }),
+        const [objectRows, financeEntries] = await Promise.all([
+          listObjectDirectory(),
           listFinanceEntries({
             fromInclusive: startOfYear,
             toExclusive: tomorrow,
@@ -2198,10 +2199,8 @@ function PhaseTwoBAutomationCenter() {
 
         if (!alive) return;
 
-        if (objectsRes.error) throw objectsRes.error;
-
         setObjects(
-          ((objectsRes.data ?? []) as DropdownRow[])
+          (objectRows as DropdownRow[])
             .filter((row) => row.objekt_code && row.label)
             .filter((row) => !isHiddenTechnicalPropertyName(row.label))
             .sort((a, b) => a.label.localeCompare(b.label, "de"))
@@ -2517,25 +2516,20 @@ function PhaseTwoCReportingCenter() {
     let alive = true;
 
     (async () => {
-      const { data, error } = await supabase
-        .from("v_object_dropdown")
-        .select("objekt_code,label")
-        .order("label", { ascending: true });
-
-      if (!alive) return;
-
-      if (error) {
+      try {
+        const data = await listObjectDirectory();
+        if (!alive) return;
+        setObjects(
+          (data as DropdownRow[])
+            .filter((row) => row.objekt_code && row.label)
+            .filter((row) => !/test|trigger|rls|dummy/i.test(`${row.objekt_code} ${row.label}`))
+            .sort((a, b) => a.label.localeCompare(b.label, "de"))
+        );
+      } catch (error: unknown) {
+        if (!alive) return;
         console.error("Fehler beim Laden der Objekte für Reporting:", error);
         setObjects([]);
-        return;
       }
-
-      setObjects(
-        ((data ?? []) as DropdownRow[])
-          .filter((row) => row.objekt_code && row.label)
-          .filter((row) => !/test|trigger|rls|dummy/i.test(`${row.objekt_code} ${row.label}`))
-          .sort((a, b) => a.label.localeCompare(b.label, "de"))
-      );
     })();
 
     return () => {
@@ -2833,25 +2827,20 @@ function PhaseFourDProfessionalReportingSystem() {
     let alive = true;
 
     (async () => {
-      const { data, error } = await supabase
-        .from("v_object_dropdown")
-        .select("objekt_code,label")
-        .order("label", { ascending: true });
-
-      if (!alive) return;
-
-      if (error) {
+      try {
+        const data = await listObjectDirectory();
+        if (!alive) return;
+        setObjects(
+          (data as DropdownRow[])
+            .filter((row) => row.objekt_code && row.label)
+            .filter((row) => !/test|trigger|rls|dummy/i.test(`${row.objekt_code} ${row.label}`))
+            .sort((a, b) => a.label.localeCompare(b.label, "de"))
+        );
+      } catch (error: unknown) {
+        if (!alive) return;
         console.error("Fehler beim Laden der Reporting-Objekte:", error);
         setObjects([]);
-        return;
       }
-
-      setObjects(
-        ((data ?? []) as DropdownRow[])
-          .filter((row) => row.objekt_code && row.label)
-          .filter((row) => !/test|trigger|rls|dummy/i.test(`${row.objekt_code} ${row.label}`))
-          .sort((a, b) => a.label.localeCompare(b.label, "de"))
-      );
     })();
 
     return () => {
@@ -3230,24 +3219,18 @@ function AuswertungCore() {
     let alive = true;
 
     (async () => {
-      const { data, error } = await supabase
-        .from("v_object_dropdown")
-        .select("objekt_code,label")
-        .order("label", { ascending: true });
-
-      if (!alive) return;
-
-      if (error) {
+      try {
+        const data = await listObjectDirectory();
+        if (!alive) return;
+        const list = (data as Partial<DropdownRow>[])
+          .filter((row): row is DropdownRow => Boolean(row.objekt_code && row.label))
+          .sort((a, b) => a.label.localeCompare(b.label, "de"));
+        setObjects(list);
+      } catch (error: unknown) {
+        if (!alive) return;
         console.error("Fehler beim Laden der Objekt-Dropdown-Liste:", error);
         setObjects([]);
-        return;
       }
-
-      const list = ((data ?? []) as Partial<DropdownRow>[])
-        .filter((row): row is DropdownRow => Boolean(row.objekt_code && row.label))
-        .sort((a, b) => a.label.localeCompare(b.label, "de"));
-
-      setObjects(list);
     })();
 
     return () => {

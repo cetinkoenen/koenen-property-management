@@ -1,6 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { supabase } from "../lib/supabase";
 import { clearAppDataCache } from "../lib/appCache";
 import { canonicalizeFinanceCategory, getFinanceCategoryOptions } from "../lib/financeCategories";
 import { NK_ABRECHNUNG_LABEL, buildNkMismatchMessage, classifyNkRelevance } from "../lib/nkClassification";
@@ -12,6 +11,7 @@ import { emitFinanceEntryChanged } from "../lib/appCache";
 import { findLoanRatePlanForBooking, type LoanRatePlanRow } from "../services/loanRatePlanService";
 import { calculateChfLoanSplit, resolveChfLoanSplitRule } from "../lib/chfLoanSplit";
 import { insertFinanceEntry } from "../services/financeEntryRepository";
+import { listObjectDirectory } from "../services/objectDirectoryService";
 
 type DropdownRow = {
   /** Muss für finance_entry.object_id die UUID aus public.objects.id sein. */
@@ -269,21 +269,19 @@ export default function EntryAdd() {
       setLoadingObjects(true);
       setObjectLoadError("");
 
-      const { data, error } = await supabase
-        .from("v_object_dropdown")
-        .select("value,objekt_code,label,object_id,property_id")
-        .order("label", { ascending: true });
-
-      if (!alive) return;
-
-      if (error) {
-        setObjectLoadError(error.message);
+      let data: ObjectDropdownResponse[];
+      try {
+        data = await listObjectDirectory();
+      } catch (error: unknown) {
+        if (!alive) return;
+        setObjectLoadError(error instanceof Error ? error.message : String(error));
         setObjects([]);
         setLoadingObjects(false);
         return;
       }
+      if (!alive) return;
 
-      const dbObjects = ((data ?? []) as ObjectDropdownResponse[])
+      const dbObjects = data
         .filter((x) => (x.object_id || x.value) && x.objekt_code && x.label)
         .map((x) => ({
           ...x,

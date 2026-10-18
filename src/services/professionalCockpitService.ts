@@ -1,6 +1,7 @@
 import { supabase } from "../lib/supabase";
 import { effectiveRentDate, rentPaymentCutoffDay } from "../lib/rentMonth";
 import { listFinanceEntries } from "./financeEntryRepository";
+import { listObjectDirectory } from "./objectDirectoryService";
 import {
   effectiveVacancyStartDate,
   isVacancyEffectivelyActiveInRange,
@@ -538,12 +539,12 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
   const period = monthRange(baseDate);
   const previousWindowStart = isoDate(new Date(baseDate.getFullYear(), baseDate.getMonth() - 1, 25));
 
-  const [contractsRes, objectsRes, paymentRows, docsRes, vacancyRows] = await Promise.all([
+  const [contractsRes, objectRows, paymentRows, docsRes, vacancyRows] = await Promise.all([
     supabase
       .from("tenant_contracts")
       .select("*,tenant_profiles(first_name,last_name,company_name,tenant_number)")
       .eq("is_deleted", false),
-    supabase.from("v_object_dropdown").select("value,object_id,property_id,objekt_code,label"),
+    listObjectDirectory(),
     listFinanceEntries({
       fromInclusive: previousWindowStart,
       toInclusive: period.end,
@@ -558,12 +559,11 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
   ]);
 
   if (contractsRes.error) throw contractsRes.error;
-  if (objectsRes.error) throw objectsRes.error;
 
   const contracts = ((contractsRes.data ?? []) as unknown as ContractRow[]).filter((contract) =>
     isContractRelevant(contract, period.start, period.end),
   );
-  const objectLabels = buildObjectLabelMap((objectsRes.data ?? []) as ObjectRow[]);
+  const objectLabels = buildObjectLabelMap(objectRows as ObjectRow[]);
   await ensureMoveOutChecklistTasks(vacancyRows, objectLabels, period.start, period.end);
 
   const taskRes = await supabase

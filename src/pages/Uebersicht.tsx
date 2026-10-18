@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
 import { getErrorMessage } from "../lib/errorMessage";
+import { listObjectDirectory } from "../services/objectDirectoryService";
 
 type EntryRow = {
   id: number;
@@ -111,20 +112,18 @@ export default function Uebersicht() {
     let alive = true;
 
     (async () => {
-      const { data, error } = await supabase
-        .from("v_object_dropdown")
-        .select("objekt_code,label")
-        .order("label", { ascending: true });
-
-      if (!alive) return;
-
-      if (error) {
+      let data: unknown[];
+      try {
+        data = await listObjectDirectory();
+      } catch (error: unknown) {
+        if (!alive) return;
         console.error("Fehler beim Laden der Objekt-Dropdown-Liste:", error);
         setObjects([]);
         return;
       }
+      if (!alive) return;
 
-      const list = (data ?? []).filter(isObjectOption);
+      const list = data.filter(isObjectOption);
 
       setObjects(list);
 
