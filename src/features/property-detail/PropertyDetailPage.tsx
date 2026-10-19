@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation, useParams } from "react-router-dom";
-import { supabase } from "@/lib/supabase";
 import { buildBaseFinanceMetrics } from "@/services/financeService";
 import { parseLocaleNumber, parseNullableLocaleNumber } from "@/utils/numberParser";
-import { resolveLoanIdForProperty } from "@/services/propertyLoanLedgerService";
+import {
+  insertPropertyLoanLedgerRow,
+  listPropertyLoanLedgerRows,
+  updatePropertyLoanLedgerRow,
+} from "@/services/propertyLoanLedgerService";
 import { useResolvedPropertyContext } from "./useResolvedPropertyContext";
 import { useIncome } from "./hooks/useIncome";
 import { useLedger } from "./hooks/useLedger";
@@ -88,12 +91,6 @@ function cleanRemainingBalanceForProperty(value: unknown, propertyContext: strin
   }
 
   return parsed;
-}
-
-function toSafeString(value: unknown, fallback = ""): string {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  return fallback;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -559,45 +556,19 @@ export default function PropertyDetailPage(props: {
         setEditableLedgerLoading(true);
         setEditableLedgerError(null);
 
-        const { data, error } = await supabase
-          .from("property_loan_ledger")
-          .select("*")
-          .eq("property_id", ledgerPropertyId)
-          .order("year", { ascending: true });
+        const data = await listPropertyLoanLedgerRows({ propertyIds: [ledgerPropertyId] });
 
         if (cancelled) return;
 
-        if (error) {
-          setEditableLedgerRows([]);
-          setEditableLedgerError(error.message || "Ledger konnte nicht geladen werden.");
-          setEditableLedgerLoading(false);
-          return;
-        }
-
-        const rows = Array.isArray(data)
-          ? data.map((row) => ({
+        const rows = data.map((row) => ({
               id: makeClientId(),
-              dbId: toSafeString((row as Record<string, unknown>).id ?? null, "") || null,
-              year: toSafeString((row as Record<string, unknown>).year ?? ""),
-              interestPayment: toSafeString(
-                (row as Record<string, unknown>).interest_payment ??
-                  (row as Record<string, unknown>).interest ??
-                  "",
-              ),
-              principalPayment: toSafeString(
-                (row as Record<string, unknown>).principal_payment ??
-                  (row as Record<string, unknown>).principal ??
-                  "",
-              ),
-              remainingBalance: String(cleanRemainingBalanceForProperty(
-                (row as Record<string, unknown>).remaining_balance ??
-                  (row as Record<string, unknown>).balance ??
-                  "",
-                propertyContextText,
-              )),
-              source: toSafeString((row as Record<string, unknown>).source ?? "manual", "manual"),
-            }))
-          : [];
+              dbId: row.id || null,
+              year: String(row.year),
+              interestPayment: String(row.interest),
+              principalPayment: String(row.principal),
+              remainingBalance: String(cleanRemainingBalanceForProperty(row.balance, propertyContextText)),
+              source: row.source ?? "manual",
+            }));
 
         setEditableLedgerRows(rows);
         setEditableLedgerLoading(false);
@@ -731,7 +702,6 @@ export default function PropertyDetailPage(props: {
 
       for (const row of rowsSorted) {
         const payload = {
-          property_id: ledgerPropertyId,
           year: toSafeNumber(row.year, 0),
           interest: toSafeNumber(row.interestPayment, 0),
           principal: toSafeNumber(row.principalPayment, 0),
@@ -745,56 +715,24 @@ export default function PropertyDetailPage(props: {
           // property_loan_ledger benutzt in der aktuellen DB die kanonischen Spalten
           // interest / principal / balance. Die alten UI-Namen interest_payment /
           // principal_payment / remaining_balance verursachten beim PATCH einen 400 Bad Request.
-          const { error } = await supabase
-            .from("property_loan_ledger")
-            .update(payload)
-            .eq("id", row.dbId);
-          if (error) throw error;
+          await updatePropertyLoanLedgerRow(Number(row.dbId), payload);
         } else {
-          const loanId = await resolveLoanIdForProperty(ledgerPropertyId);
-          const { error } = await supabase
-            .from("property_loan_ledger")
-            .upsert(
-              { ...payload, loan_id: loanId },
-              { onConflict: "property_id,year" },
-            );
-          if (error) throw error;
+          await insertPropertyLoanLedgerRow(ledgerPropertyId, payload);
         }
       }
 
-      const { data: refreshed, error: refreshError } = await supabase
-        .from("property_loan_ledger")
-        .select("*")
-        .eq("property_id", ledgerPropertyId)
-        .order("year", { ascending: true });
-
-      if (refreshError) throw refreshError;
+      const refreshed = await listPropertyLoanLedgerRows({ propertyIds: [ledgerPropertyId] });
 
       setEditableLedgerRows(
-        Array.isArray(refreshed)
-          ? refreshed.map((row) => ({
+        refreshed.map((row) => ({
               id: makeClientId(),
-              dbId: toSafeString((row as Record<string, unknown>).id ?? null, "") || null,
-              year: toSafeString((row as Record<string, unknown>).year ?? ""),
-              interestPayment: toSafeString(
-                (row as Record<string, unknown>).interest_payment ??
-                  (row as Record<string, unknown>).interest ??
-                  "",
-              ),
-              principalPayment: toSafeString(
-                (row as Record<string, unknown>).principal_payment ??
-                  (row as Record<string, unknown>).principal ??
-                  "",
-              ),
-              remainingBalance: String(cleanRemainingBalanceForProperty(
-                (row as Record<string, unknown>).remaining_balance ??
-                  (row as Record<string, unknown>).balance ??
-                  "",
-                propertyContextText,
-              )),
-              source: toSafeString((row as Record<string, unknown>).source ?? "manual", "manual"),
-            }))
-          : [],
+              dbId: row.id || null,
+              year: String(row.year),
+              interestPayment: String(row.interest),
+              principalPayment: String(row.principal),
+              remainingBalance: String(cleanRemainingBalanceForProperty(row.balance, propertyContextText)),
+              source: row.source ?? "manual",
+            })),
       );
 
       await Promise.allSettled([reloadLedger(), reloadProperty()]);

@@ -48,6 +48,11 @@ const vacancyService = await read("src/services/vacancyService.ts");
 const rentHistoryHook = await read("src/hooks/useRentHistory24m.ts");
 const dataQualityPage = await read("src/pages/Datenpruefung.tsx");
 const rentAdjustmentRepository = await read("src/services/rentAdjustmentRepository.ts");
+const loanLedgerRepository = await read("src/services/propertyLoanLedgerService.ts");
+const legacyLedgerAdapter = await read("src/services/ledgerService.ts");
+const propertyDetailPage = await read("src/features/property-detail/PropertyDetailPage.tsx");
+const loanEntryAddPage = await read("src/pages/LoanEntryAdd.tsx");
+const loanImportPage = await read("src/pages/LoanImport.tsx");
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
 assert.doesNotMatch(appData, /localStorage\.(?:getItem|setItem)/, "Zentrale App-Daten dürfen keinen browserweiten Fallback als zweite Fachquelle verwenden");
@@ -134,6 +139,26 @@ for (const [source, label] of [[rentOverview, "Mieteingang"], [rentDevelopment, 
 }
 assert.match(rentDevelopment, /updateRentAdjustment\(editingAdjustmentId, payload\)/, "Mietanpassungen müssen über die zentrale Schreibfunktion aktualisiert werden");
 assert.match(rentDevelopment, /insertRentAdjustment\(\{/, "Neue Mietanpassungen müssen über die zentrale Schreibfunktion gespeichert werden");
+assert.match(loanLedgerRepository, /function listPropertyLoanLedgerRows[\s\S]*\.range\(from, from \+ LEDGER_PAGE_SIZE - 1\)/, "Die Darlehens-Hauptquelle muss das vollständige Ledger paginiert laden");
+assert.match(loanLedgerRepository, /\.order\("property_id"[\s\S]*\.order\("year"[\s\S]*\.order\("id"/, "Darlehenszeilen müssen objekt-, jahr- und ID-stabil sortiert sein");
+assert.match(appData, /listPropertyLoanLedgerRows\(\{ propertyIds: ids \}\)/, "Globale Darlehensdiagramme müssen das zentrale Ledger verwenden");
+assert.doesNotMatch(appData, /\.from\("property_loan_ledger"\)/, "Globale App-Daten dürfen das Darlehens-Ledger nicht direkt abfragen");
+assert.match(app, /listPropertyLoanLedgerRows\(\{ year: selectedYear \}\)/, "Steuerreport-Darlehenswerte müssen jahrbezogen aus dem zentralen Ledger kommen");
+assert.doesNotMatch(app, /\.from\("property_loan_ledger"\)/, "Die Berichtszentrale darf das Darlehens-Ledger nicht direkt abfragen");
+assert.match(taxCenter, /listPropertyLoanLedgerRows\(\{ year \}\)/, "Der Steuer-Center muss seine Darlehenswerte aus dem zentralen Ledger laden");
+assert.doesNotMatch(taxCenter, /\.from\("property_loan_ledger"\)/, "Der Steuer-Center darf keine parallele Darlehensquelle führen");
+assert.match(reportingPage, /listPropertyLoanLedgerRows\(\)/, "Portfolio-Auswertungen müssen Darlehensverläufe aus der zentralen Quelle laden");
+assert.doesNotMatch(reportingPage, /\.from\("property_loan_ledger"\)/, "Portfolio-Auswertungen dürfen das Ledger nicht direkt abfragen");
+assert.match(dataQualityPage, /listPropertyLoanLedgerRows\(\)/, "Die Datenprüfung muss dieselbe vollständige Darlehensquelle prüfen");
+assert.doesNotMatch(dataQualityPage, /\.from\("property_loan_ledger"\)/, "Die Datenprüfung darf keine abweichende Darlehensabfrage verwenden");
+assert.match(propertyDetailPage, /listPropertyLoanLedgerRows\(\{ propertyIds: \[ledgerPropertyId\] \}\)/, "Immobilienakten müssen Ledger-Zeilen objektbezogen zentral laden");
+assert.match(propertyDetailPage, /updatePropertyLoanLedgerRow\(Number\(row\.dbId\), payload\)/, "Immobilienakten müssen Darlehensänderungen zentral speichern");
+assert.doesNotMatch(propertyDetailPage, /\.from\("property_loan_ledger"\)/, "Immobilienakten dürfen das Darlehens-Ledger nicht direkt lesen oder schreiben");
+assert.match(loanEntryAddPage, /insertPropertyLoanLedgerRow\(safePropertyId, payload\)/, "Manuelle Darlehensjahre müssen über die zentrale Schreibfunktion gespeichert werden");
+assert.match(loanImportPage, /insertPropertyLoanLedgerRow\(row\.property!\.id/, "Darlehensimporte müssen über die zentrale Schreibfunktion gespeichert werden");
+assert.doesNotMatch(legacyLedgerAdapter, /from\(TABLE_NAME\)/, "Der Kompatibilitätsadapter darf keine zweite Darlehens-Datenquelle unterhalten");
+assert.match(legacyLedgerAdapter, /listPropertyLoanLedgerRows[\s\S]*insertPropertyLoanLedgerRow[\s\S]*updatePropertyLoanLedgerRow/, "Alte Darlehens-Hooks müssen vollständig auf den zentralen Service delegieren");
+assert.match(loanRatePlanService, /insertPropertyLoanLedgerRow\(propertyId, row\)/, "Tilgungsplanimporte müssen Jahreswerte über das zentrale Ledger synchronisieren");
 assert.match(entryAdd, /Objekte werden geladen…[\s\S]*Objektliste konnte nicht geladen werden[\s\S]*Keine Objekte vorhanden/, "Die Buchungserfassung muss Laden, Fehler und einen wirklich leeren Objektbestand eindeutig unterscheiden");
 assert.match(entryAdd, /setObjectLoadRevision\(\(value\) => value \+ 1\)/, "Ein fehlgeschlagener Objektabruf muss direkt wiederholt werden können");
 assert.match(entryAdd, /classifyTaxRelevance\([\s\S]{0,250}?selectedObjectLabel\)/, "Steuerregeln müssen das konkret ausgewählte Objekt berücksichtigen");
@@ -276,4 +301,4 @@ assert.deepEqual(
   "Jede Supabase-Migration muss einen gültigen Zeitstempel tragen und reproduzierbar ausführbar sein",
 );
 
-console.log("174 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("194 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

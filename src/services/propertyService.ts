@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { listPropertyLoanLedgerRows } from "@/services/propertyLoanLedgerService";
 
 export type Property = {
   id: string;
@@ -348,11 +349,13 @@ async function findPropertyAcrossTables(
 async function collectCandidatePropertyIdsFromFinanceTables(): Promise<string[]> {
   const candidateIds = new Set<string>();
 
-  const results = await Promise.all([
+  const [results, ledgerRows] = await Promise.all([
+    Promise.all([
     supabase.from("property_income").select("property_id").limit(200),
     supabase.from("yearly_property_income").select("property_id").limit(200),
     supabase.from("yearly_capex_entries").select("property_id").limit(200),
-    supabase.from("property_loan_ledger").select("property_id").limit(200),
+    ]),
+    listPropertyLoanLedgerRows(),
   ]);
 
   for (const result of results) {
@@ -365,6 +368,8 @@ async function collectCandidatePropertyIdsFromFinanceTables(): Promise<string[]>
       }
     }
   }
+
+  for (const row of ledgerRows) candidateIds.add(row.propertyId);
 
   return Array.from(candidateIds);
 }

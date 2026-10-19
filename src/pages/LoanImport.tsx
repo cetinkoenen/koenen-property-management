@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getErrorMessage } from "../lib/errorMessage";
+import { insertPropertyLoanLedgerRow } from "../services/propertyLoanLedgerService";
 
 type PropertyOption = { id: string; name: string };
 
@@ -169,31 +170,6 @@ export default function LoanImport() {
     }
   }
 
-  async function ensureLoanId(property_id: string): Promise<string> {
-    // 1) latest loan
-    const { data: existing, error: e1 } = await supabase
-      .from("property_loans")
-      .select("id,created_at")
-      .eq("property_id", property_id)
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    if (e1) throw e1;
-    const got = (existing ?? [])[0]?.id as string | undefined;
-    if (got) return got;
-
-    // 2) create
-    const { data: created, error: e2 } = await supabase
-      .from("property_loans")
-      .insert({ property_id })
-      .select("id");
-
-    if (e2) throw e2;
-    const newId = (created ?? [])[0]?.id as string | undefined;
-    if (!newId) throw new Error("Konnte loan_id nicht erzeugen.");
-    return newId;
-  }
-
   async function commit() {
     try {
       setBusy(true);
@@ -224,36 +200,15 @@ export default function LoanImport() {
 
       if (!finalRows.length) throw new Error("Keine Zeilen passen zu diesem Objekt (property_id Filter).");
 
-      // Group by property_id -> loan_id
-      const loanIdByProperty = new Map<string, string>();
-      for (const r of finalRows) {
-        const pid = r.property!.id;
-        if (!loanIdByProperty.has(pid)) {
-          const loanId = await ensureLoanId(pid);
-          loanIdByProperty.set(pid, loanId);
-        }
+      for (const row of finalRows) {
+        await insertPropertyLoanLedgerRow(row.property!.id, {
+          year: row.year,
+          interest: row.interest,
+          principal: row.principal,
+          balance: row.balance,
+          source: row.source || "import",
+        });
       }
-
-      // Upsert ledger rows
-      const payload = finalRows.map((r) => {
-        const pid = r.property!.id;
-        const loan_id = loanIdByProperty.get(pid)!;
-        return {
-          loan_id,
-          property_id: pid,
-          year: r.year,
-          interest: r.interest,
-          principal: r.principal,
-          balance: r.balance,
-          source: r.source || "import",
-        };
-      });
-
-      const { error: uerr } = await supabase.from("property_loan_ledger").upsert(payload, {
-        onConflict: "property_id,year",
-      });
-
-      if (uerr) throw uerr;
 
       // zurück
       if (preselectPropertyId) {

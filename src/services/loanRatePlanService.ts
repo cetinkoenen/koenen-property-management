@@ -3,6 +3,7 @@ import { canonicalizeFinanceCategory } from "@/lib/financeCategories";
 import { expandPropertyIdAliases, type PropertyIdAliasRow } from "@/lib/propertyIdAliases";
 import { calculateChfLoanSplit } from "@/lib/chfLoanSplit";
 import { listFinanceEntries, updateFinanceEntry } from "@/services/financeEntryRepository";
+import { insertPropertyLoanLedgerRow } from "@/services/propertyLoanLedgerService";
 
 export type LoanRatePlanRow = {
   id?: string;
@@ -239,18 +240,7 @@ function bridgeForPlan(plan: ParsedLoanRatePlan, bridges: LoanObjectBridgeRow[])
   return bridges.find((row) => resolveLoanProperty(row.property_name ?? "")?.key === plan.propertyKey) ?? null;
 }
 
-async function ensureLoanId(propertyId: string): Promise<string> {
-  const existing = await supabase.from("property_loans").select("id").eq("property_id", propertyId).order("created_at", { ascending: false }).limit(1);
-  if (existing.error) throw existing.error;
-  const current = String(existing.data?.[0]?.id ?? "");
-  if (current) return current;
-  const created = await supabase.from("property_loans").insert({ property_id: propertyId }).select("id").single();
-  if (created.error) throw created.error;
-  return String(created.data.id);
-}
-
 async function syncYearlyLedger(plan: ParsedLoanRatePlan, propertyId: string) {
-  const loanId = await ensureLoanId(propertyId);
   const grouped = new Map<number, LoanRatePlanRow[]>();
   for (const row of plan.rows) {
     const year = Number(row.plan_date.slice(0, 4));
@@ -259,8 +249,6 @@ async function syncYearlyLedger(plan: ParsedLoanRatePlan, propertyId: string) {
   const payload = Array.from(grouped.entries()).map(([year, rows]) => {
     const ordered = [...rows].sort((a, b) => a.plan_date.localeCompare(b.plan_date));
     return {
-      loan_id: loanId,
-      property_id: propertyId,
       year,
       interest: Math.round(ordered.reduce((sum, row) => sum + row.interest_amount, 0) * 100) / 100,
       principal: Math.round(ordered.reduce((sum, row) => sum + row.principal_amount, 0) * 100) / 100,
@@ -268,8 +256,7 @@ async function syncYearlyLedger(plan: ParsedLoanRatePlan, propertyId: string) {
       source: `CSV-Monatsplan: ${plan.sourceFile}`,
     };
   });
-  const result = await supabase.from("property_loan_ledger").upsert(payload, { onConflict: "property_id,year" });
-  if (result.error) throw result.error;
+  for (const row of payload) await insertPropertyLoanLedgerRow(propertyId, row);
 }
 
 async function backfillBookedLoanSplits(plan: ParsedLoanRatePlan, bridge: LoanObjectBridgeRow, bridges: LoanObjectBridgeRow[]): Promise<number> {

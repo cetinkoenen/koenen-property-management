@@ -83,7 +83,10 @@ import { EmptyState, InfoList, KpiCard, ModuleCard, PageHeader, SectionPanel } f
 import { isPortfolioGeneralEntry, PORTFOLIO_GENERAL_LABEL } from "./lib/portfolioExpense";
 import { canonicalCategoryForTax } from "./lib/taxClassification";
 import type { RentAnnualReportSnapshot } from "./pages/Mietuebersicht";
-import { loadCanonicalPropertyLoanHistory } from "./services/propertyLoanLedgerService";
+import {
+  listPropertyLoanLedgerRows,
+  loadCanonicalPropertyLoanHistory,
+} from "./services/propertyLoanLedgerService";
 import { fetchPropertyWealthProfiles, type PropertyWealthProfile } from "./services/propertyExtraService";
 import {
   getPropertyDocumentSignedUrl,
@@ -2994,11 +2997,7 @@ function ReportsExportsPage() {
     async function loadTaxLoanRows() {
       try {
         setTaxLoanError(null);
-        const { data, error } = await supabase
-          .from("property_loan_ledger")
-          .select("property_id,year,interest,principal")
-          .eq("year", selectedYear);
-        if (error) throw error;
+        const data = await listPropertyLoanLedgerRows({ year: selectedYear });
         if (alive) {
           const reportYearEntries = entries.filter((entry) => entry.booking_date?.startsWith(`${selectedYear}-`));
           const bookedSplits = objects.map((object) => {
@@ -3016,9 +3015,9 @@ function ReportsExportsPage() {
             };
           }).filter((item) => item.count > 0);
 
-          const ledgerRows = (data ?? []).map((row) => ({
-            property_id: String(row.property_id ?? ""),
-            property_name: getPropertyName(String(row.property_id ?? "")),
+          const ledgerRows = data.map((row) => ({
+            property_id: row.propertyId,
+            property_name: getPropertyName(row.propertyId),
             year: Number(row.year ?? selectedYear),
             interest: Number(row.interest ?? 0),
             principal: Number(row.principal ?? 0),

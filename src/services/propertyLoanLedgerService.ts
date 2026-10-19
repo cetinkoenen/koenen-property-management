@@ -80,6 +80,27 @@ export type CanonicalPropertyLoanYear = {
   source: string | null;
 };
 
+export type PropertyLoanLedgerRecord = {
+  id: string;
+  propertyId: string;
+  loanId: string | null;
+  year: number;
+  interest: number;
+  principal: number;
+  balance: number;
+  source: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type PropertyLoanLedgerFilters = {
+  propertyIds?: Array<string | null | undefined>;
+  year?: number;
+  maximumYear?: number;
+};
+
+const LEDGER_PAGE_SIZE = 500;
+
 function devLog(message: string, payload?: unknown) {
   if (!DEBUG) return;
   if (import.meta.env.DEV) console.debug(`[propertyLoanLedgerService] ${message}`, payload);
@@ -187,6 +208,73 @@ function mapRowToLoanLedgerRow(row: PropertyLoanLedgerRowDb): LoanLedgerRow {
     updated_at: toOptionalString(row.updated_at),
     updated_by: toNullableString(row.updated_by),
   };
+}
+
+function mapRowToLedgerRecord(row: PropertyLoanLedgerRowDb): PropertyLoanLedgerRecord {
+  return {
+    id: String(row.id ?? ""),
+    propertyId: String(row.property_id ?? "").trim(),
+    loanId: toNullableString(row.loan_id),
+    year: toInteger(row.year, Number.NaN),
+    interest: toNumber(row.interest),
+    principal: toNumber(row.principal),
+    balance: toNumber(row.balance),
+    source: toNullableString(row.source),
+    createdAt: toNullableString(row.created_at),
+    updatedAt: toNullableString(row.updated_at),
+  };
+}
+
+/**
+ * Vollständige, deterministisch sortierte Hauptabfrage für das Darlehens-Ledger.
+ * Fachseiten dürfen property_loan_ledger nicht selbst abfragen, damit
+ * Restschuld, Zins und Tilgung überall aus derselben Datenmenge stammen.
+ */
+export async function listPropertyLoanLedgerRows(
+  filters: PropertyLoanLedgerFilters = {},
+): Promise<PropertyLoanLedgerRecord[]> {
+  const propertyIds = Array.from(new Set(
+    (filters.propertyIds ?? []).map((value) => String(value ?? "").trim()).filter(Boolean),
+  ));
+  if (filters.propertyIds && propertyIds.length === 0) return [];
+
+  const rows: PropertyLoanLedgerRecord[] = [];
+  for (let from = 0; ; from += LEDGER_PAGE_SIZE) {
+    let query = supabase
+      .from(LEDGER_TABLE)
+      .select(LEDGER_SELECT)
+      .order("property_id", { ascending: true })
+      .order("year", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + LEDGER_PAGE_SIZE - 1);
+    if (propertyIds.length) query = query.in("property_id", propertyIds);
+    if (Number.isInteger(filters.year)) query = query.eq("year", filters.year as number);
+    if (Number.isInteger(filters.maximumYear)) query = query.lte("year", filters.maximumYear as number);
+
+    const { data, error } = await query;
+    if (error) throw buildDetailedLedgerError(error, "Darlehens-Ledger konnte nicht geladen werden.");
+    const page = ((data ?? []) as PropertyLoanLedgerRowDb[])
+      .map(mapRowToLedgerRecord)
+      .filter((row) => row.id && row.propertyId && Number.isFinite(row.year));
+    rows.push(...page);
+    if ((data ?? []).length < LEDGER_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+export async function getPropertyLoanLedgerRow(
+  rowId: string | number,
+): Promise<PropertyLoanLedgerRecord | null> {
+  const safeRowId = assertNonEmptyString(rowId, "rowId");
+  const { data, error } = await supabase
+    .from(LEDGER_TABLE)
+    .select(LEDGER_SELECT)
+    .eq("id", safeRowId)
+    .maybeSingle();
+  if (error) throw buildDetailedLedgerError(error, "Darlehens-Ledger-Zeile konnte nicht geladen werden.");
+  if (!data) return null;
+  const row = mapRowToLedgerRecord(data as PropertyLoanLedgerRowDb);
+  return row.id && row.propertyId && Number.isFinite(row.year) ? row : null;
 }
 
 function buildFriendlyLedgerErrorMessage(error: SupabaseLikeError): string {

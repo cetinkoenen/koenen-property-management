@@ -3,7 +3,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { supabase } from "../lib/supabase";
 import { isPureRentBackPayment } from "../lib/financeCategories";
 import { effectiveRentYearMonth, rentPaymentCutoffDay } from "../lib/rentMonth";
-import { loadCanonicalPropertyLoanSnapshots } from "@/services/propertyLoanLedgerService";
+import {
+  listPropertyLoanLedgerRows,
+  loadCanonicalPropertyLoanSnapshots,
+} from "@/services/propertyLoanLedgerService";
 import { listFinanceEntries, type FinanceEntryRepositoryRow } from "@/services/financeEntryRepository";
 import { listObjectDirectory } from "@/services/objectDirectoryService";
 
@@ -638,13 +641,12 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       let charts: Record<string, LoanChartPoint[]> = {};
       const ids = mappedLoans.map((row) => row.property_id);
       if (ids.length) {
-        const ledgerRes = await supabase
-          .from("property_loan_ledger")
-          .select("property_id,year,balance")
-          .in("property_id", ids)
-          .order("property_id", { ascending: true })
-          .order("year", { ascending: true });
-        if (!ledgerRes.error) charts = groupLedgerRows((ledgerRes.data ?? []) as LoanLedgerSourceRow[]);
+        const ledgerRows = await listPropertyLoanLedgerRows({ propertyIds: ids });
+        charts = groupLedgerRows(ledgerRows.map((row) => ({
+          property_id: row.propertyId,
+          year: row.year,
+          balance: row.balance,
+        })) as LoanLedgerSourceRow[]);
       }
       for (const row of mappedLoans) {
         if (!charts[row.property_id] || charts[row.property_id].length === 0) {

@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { normalizeUuid } from "../lib/ids";
 import { getErrorMessage } from "../lib/errorMessage";
+import { insertPropertyLoanLedgerRow } from "../services/propertyLoanLedgerService";
 
 type PropertyRow = { id: string; name: string };
 
@@ -94,34 +95,6 @@ export default function LoanEntryAdd() {
     };
   }, [safePropertyId]);
 
-  async function ensureLoanId(pid: string): Promise<string> {
-    // 1) newest loan for property
-    const { data: existing, error: e1 } = await supabase
-      .from("property_loans")
-      .select("id,created_at")
-      .eq("property_id", pid)
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    if (e1) throw e1;
-
-    const current = (existing ?? [])[0]?.id as string | undefined;
-    if (current) return current;
-
-    // 2) create loan
-    const { data: created, error: e2 } = await supabase
-      .from("property_loans")
-      .insert({ property_id: pid })
-      .select("id")
-      .limit(1);
-
-    if (e2) throw e2;
-
-    const newId = (created ?? [])[0]?.id as string | undefined;
-    if (!newId) throw new Error("Konnte loan_id nicht erzeugen.");
-    return newId;
-  }
-
   async function save() {
     try {
       setSaving(true);
@@ -137,12 +110,7 @@ export default function LoanEntryAdd() {
         );
       }
 
-      const loanId = await ensureLoanId(safePropertyId);
-
-      // Upsert in property_loan_ledger über UNIQUE(property_id, year)
       const payload = {
-        loan_id: loanId,
-        property_id: safePropertyId,
         year,
         interest: parsed.interest ?? 0,
         principal: parsed.principal ?? 0,
@@ -150,11 +118,7 @@ export default function LoanEntryAdd() {
         source,
       };
 
-      const { error: uerr } = await supabase.from("property_loan_ledger").upsert(payload, {
-        onConflict: "property_id,year",
-      });
-
-      if (uerr) throw uerr;
+      await insertPropertyLoanLedgerRow(safePropertyId, payload);
 
       // ✅ Go to the new, canonical route (no legacy)
       navigate(`/darlehensuebersicht/${safePropertyId}`);

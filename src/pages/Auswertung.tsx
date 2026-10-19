@@ -18,6 +18,7 @@ import { listPropertyTasks, savePropertyTask, completePropertyTask, getPropertyT
 import { listAuditLogs, recordAuditLog, type AuditLogEntry } from "@/services/auditLogService";
 import { listFinanceEntries } from "@/services/financeEntryRepository";
 import { listObjectDirectory } from "@/services/objectDirectoryService";
+import { listPropertyLoanLedgerRows } from "@/services/propertyLoanLedgerService";
 import {
   ResponsiveContainer,
   PieChart,
@@ -1339,10 +1340,7 @@ function ObjectFinanceModuleButtons() {
           .from("portfolio_properties")
           .select("id,name,core_property_id")
           .order("name", { ascending: true }),
-        supabase
-          .from("property_loan_ledger")
-          .select("property_id,year,balance")
-          .order("year", { ascending: true }),
+        listPropertyLoanLedgerRows(),
         supabase
           .from("properties")
           .select("*")
@@ -1402,7 +1400,11 @@ function ObjectFinanceModuleButtons() {
       }
 
       const trends = addDashboardFallbackTrends(
-        groupLoanTrendRows(((ledgerResult.data ?? []) as LoanTrendRow[])),
+        groupLoanTrendRows(ledgerResult.map((row) => ({
+          property_id: row.propertyId,
+          year: row.year,
+          balance: row.balance,
+        })) as LoanTrendRow[]),
         dashboardRows,
       );
       const corePropertyRows = Array.isArray(propertiesResult.data)

@@ -18,6 +18,7 @@ import {
 } from "../services/taxReportEngine";
 import { listMileageTrips, openMileageReceipt, type MileageTripRow } from "../services/mileageTripService";
 import { listLoanRatePlanRowsForYear } from "../services/loanRatePlanService";
+import { listPropertyLoanLedgerRows } from "../services/propertyLoanLedgerService";
 import { isVacancyInRange, listVacancies, type UnitVacancy } from "../services/vacancyService";
 import { parseLocaleNumber } from "../utils/numberParser";
 import { useAppData } from "../state/AppDataContext";
@@ -1123,15 +1124,8 @@ export default function SteuerCenter() {
           .map((row) => [String(row.property_id), String(row.property_name ?? row.property_id)]),
       );
 
-      const loanQuery = supabase
-        .from("property_loan_ledger")
-        .select("property_id,year,interest,principal,balance,source")
-        .eq("year", year)
-        .order("property_id", { ascending: true });
-
       const selectedLabel = objectCode === "ALL" ? "" : objectLabelByCode.get(objectCode) ?? objectCode;
-      const loanResult = await loanQuery;
-      if (loanResult.error) throw loanResult.error;
+      const loanResult = await listPropertyLoanLedgerRows({ year });
 
       // Der importierte Monatsplan ist die fachliche Quelle der Darlehensseite.
       // Aeltere Ledger-Zeilen koennen noch technische property_ids besitzen, die
@@ -1175,16 +1169,9 @@ export default function SteuerCenter() {
         has_year_value: true,
       }));
 
-      const loanRows = ((loanResult.data ?? []) as Array<{
-        property_id: string | null;
-        year: number | string | null;
-        interest: number | string | null;
-        principal: number | string | null;
-        balance: number | string | null;
-        source: string | null;
-      }>)
+      const loanRows = loanResult
         .map((row) => {
-          const propertyId = String(row.property_id ?? "");
+          const propertyId = row.propertyId;
           const propertyLabel = loanNameById.get(propertyId) ?? propertyId;
           return {
             property_id: propertyId,
