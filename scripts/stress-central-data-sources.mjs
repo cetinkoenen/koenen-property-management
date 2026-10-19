@@ -53,6 +53,8 @@ const legacyLedgerAdapter = await read("src/services/ledgerService.ts");
 const propertyDetailPage = await read("src/features/property-detail/PropertyDetailPage.tsx");
 const loanEntryAddPage = await read("src/pages/LoanEntryAdd.tsx");
 const loanImportPage = await read("src/pages/LoanImport.tsx");
+const billingWorkspaceRepository = await read("src/services/billingWorkspaceRepository.ts");
+const reportCenterPage = await read("src/pages/ReportCenter.tsx");
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
 assert.doesNotMatch(appData, /localStorage\.(?:getItem|setItem)/, "Zentrale App-Daten dürfen keinen browserweiten Fallback als zweite Fachquelle verwenden");
@@ -262,7 +264,19 @@ assert.match(wealth, /activeTab === "cashflow"[\s\S]{0,1000}?<CentralWealthCashf
 assert.match(wealth, /activeTab === "loan"[\s\S]{0,1000}?<CentralLoanOverview/, "Der Darlehen-Tab muss ausschließlich die zentrale Darlehensübersicht laden");
 assert.match(wealth, /activeTab === "utilities"[\s\S]{0,1000}?<PropertyUtilitiesKpiDashboard/, "Der Nebenkosten-Tab muss ausschließlich das zentrale Nebenkosten-KPI-Dashboard laden");
 assert.doesNotMatch(wealth, /href="#(?:objektuebersicht|miete|cashflow|darlehen|nebenkosten)"/, "Die Fachnavigation darf nicht mehr nur als Sprungmarke auf eine lange Mischseite arbeiten");
-assert.match(utilitiesKpi, /from\("apartment_billing_workspaces"\)/, "Nebenkosten-KPIs müssen die zentrale Abrechnungsquelle laden");
+assert.match(billingWorkspaceRepository, /function listBillingWorkspaces[\s\S]*\.from\(TABLE_NAME\)[\s\S]*\.range\(offset, offset \+ PAGE_SIZE - 1\)/, "Die zentrale Nebenkostenquelle muss alle Arbeitsbereiche vollständig paginiert laden");
+assert.match(billingWorkspaceRepository, /function getBillingWorkspace[\s\S]*\.eq\("object_id", objectId\)[\s\S]*\.eq\("year", String\(year\)\)/, "Einzelne Nebenkosten-Arbeitsbereiche müssen eindeutig nach Objekt und Jahr gelesen werden");
+assert.match(billingWorkspaceRepository, /function upsertBillingWorkspace[\s\S]*onConflict: "object_id,year"/, "Nebenkosten-Arbeitsbereiche müssen zentral und konfliktstabil gespeichert werden");
+assert.match(utilitiesKpi, /listBillingWorkspaces\(\)/, "Nebenkosten-KPIs müssen die zentrale Abrechnungsquelle laden");
+assert.doesNotMatch(utilitiesKpi, /\.from\("apartment_billing_workspaces"\)/, "Nebenkosten-KPIs dürfen die Arbeitsbereiche nicht direkt abfragen");
+assert.match(utilitiesPage, /getBillingWorkspace\(selectedObjectCode, selectedYear\)[\s\S]*upsertBillingWorkspace\(selectedObjectCode, selectedYear, payload\)/, "Wohnungsabrechnungen müssen zentral gelesen und gespeichert werden");
+assert.doesNotMatch(utilitiesPage, /\.from\("apartment_billing_workspaces"\)/, "Wohnungsabrechnungen dürfen keine parallele Datenquelle führen");
+assert.match(garageUtilities, /getBillingWorkspace\(BILLING_OBJECT_ID, BILLING_SCOPE\)[\s\S]*upsertBillingWorkspace\(BILLING_OBJECT_ID, BILLING_SCOPE/, "Tiefgaragenabrechnungen müssen zentral gelesen und gespeichert werden");
+assert.doesNotMatch(garageUtilities, /\.from\(BILLING_TABLE\)|apartment_billing_workspaces/, "Tiefgaragenabrechnungen dürfen keine parallele Datenquelle führen");
+assert.match(app, /listBillingWorkspaces\(\)/, "Die globale Nebenkostenübersicht muss dieselbe zentrale Arbeitsbereichsquelle verwenden");
+assert.doesNotMatch(app, /\.from\("apartment_billing_workspaces"\)/, "Die globale Nebenkostenübersicht darf Arbeitsbereiche nicht direkt abfragen");
+assert.match(reportCenterPage, /listBillingWorkspaces\(\)[\s\S]*billing_workspaces:billingWorkspaces/, "Berichtsexporte müssen Nebenkosten-Arbeitsbereiche aus derselben zentralen Quelle übernehmen");
+assert.doesNotMatch(reportCenterPage, /apartment_billing_workspaces/, "Das Report-Center darf keine parallele Nebenkostenquelle definieren");
 assert.match(utilitiesKpi, /recordMatchesProperty\(record, propertyId, canonicalObjectCode, propertyLabel\)/, "Nebenkosten-KPIs müssen Abrechnungen strikt über Objekt-ID und kanonische Objektbezeichnung begrenzen");
 assert.match(utilitiesKpi, /selectedYear === "all" \? records : records\.filter/, "Der Jahresfilter muss einzelne Jahre und die Gesamthistorie unterstützen");
 assert.match(utilitiesKpi, /setSelectedYear\(String\(currentYear\)\)[\s\S]{0,200}?void load\(\)/, "Beim Objektwechsel muss der Jahresfilter vollständig zurückgesetzt und neu geladen werden");
@@ -301,4 +315,4 @@ assert.deepEqual(
   "Jede Supabase-Migration muss einen gültigen Zeitstempel tragen und reproduzierbar ausführbar sein",
 );
 
-console.log("194 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("206 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

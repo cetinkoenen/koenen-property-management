@@ -281,7 +281,9 @@ for (const readonly of [false, true]) {
       return query;
     },
   };
-  const loaded = await runInNewContext(`${loaderJs}\nloadSources()`, { supabase, isReadonlyApprovalEmail: () => readonly });
+  const listBillingWorkspaces = async () => [{ object_id: 'test-object', year: '2025', data: { billings: [] } }];
+  const loaded = await runInNewContext(`${loaderJs}\nloadSources()`, { supabase, isReadonlyApprovalEmail: () => readonly, listBillingWorkspaces });
+  assert.equal(loaded.billing_workspaces.length, 1, 'Billing workspaces must come from the central repository');
   assert.equal(loaded.property_documents.length, 501, 'Documents must load across pages without a user_id filter');
   assert.equal(queries.filter(q => q.table === 'property_documents').length, 2);
   for (const request of queries.filter(q => !['property_documents','apartment_billing_workspaces','property_id_aliases','v_koenen_object_bridge','property_loan_ledger'].includes(q.table))) {

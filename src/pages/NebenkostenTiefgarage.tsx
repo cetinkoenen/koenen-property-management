@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import brandLogo from "../assets/koenen-brand-logo.webp";
 import { listNkRelevantEntries, type NkRelevantEntry } from "../services/nkRelevantService";
-import { supabase } from "../lib/supabase";
 import { listTenantContracts } from "../services/tenantService";
+import { getBillingWorkspace, upsertBillingWorkspace } from "../services/billingWorkspaceRepository";
 
 type AllocationKey = "Einheiten" | "Verbrauch/Direkt" | "Direktbetrag";
 type TgWorkflowStatus = "Offen" | "In Arbeit" | "In Prüfung" | "Freigegeben" | "Korrigiert";
@@ -87,7 +87,6 @@ type TgTenantContractRow = {
 };
 
 const STORAGE_KEY = "koenen:tiefgarage-nebenkosten:v1";
-const BILLING_TABLE = "apartment_billing_workspaces";
 const BILLING_OBJECT_ID = "rosenstein-str-25-tiefgarage";
 const BILLING_SCOPE = "all";
 
@@ -919,19 +918,16 @@ export default function NebenkostenTiefgarage() {
     let alive = true;
 
     async function loadStoredYears() {
-      const { data, error } = await supabase
-        .from(BILLING_TABLE)
-        .select("data")
-        .eq("object_id", BILLING_OBJECT_ID)
-        .eq("year", BILLING_SCOPE)
-        .maybeSingle();
-      if (!alive) return;
-
-      if (error) {
-        setStorageError(`Zentrale Tiefgaragenabrechnung konnte nicht geladen werden: ${error.message}`);
+      let data;
+      try {
+        data = await getBillingWorkspace(BILLING_OBJECT_ID, BILLING_SCOPE);
+      } catch (error) {
+        if (!alive) return;
+        setStorageError(`Zentrale Tiefgaragenabrechnung konnte nicht geladen werden: ${error instanceof Error ? error.message : String(error)}`);
         setStorageReady(false);
         return;
       }
+      if (!alive) return;
 
       const remoteRecords = normalizeStoredYears(data?.data);
       if (remoteRecords.length) {
@@ -942,14 +938,15 @@ export default function NebenkostenTiefgarage() {
       }
 
       const legacyRecords = loadLegacyStoredYears();
-      const { error: migrationError } = await supabase.from(BILLING_TABLE).upsert({
-        object_id: BILLING_OBJECT_ID,
-        year: BILLING_SCOPE,
-        data: { records: legacyRecords } satisfies StoredPayload,
-      }, { onConflict: "object_id,year" });
+      let migrationError: unknown = null;
+      try {
+        await upsertBillingWorkspace(BILLING_OBJECT_ID, BILLING_SCOPE, { records: legacyRecords } satisfies StoredPayload);
+      } catch (error) {
+        migrationError = error;
+      }
       if (!alive) return;
       if (migrationError) {
-        setStorageError(`Lokale Altdaten konnten nicht zentral übernommen werden: ${migrationError.message}`);
+        setStorageError(`Lokale Altdaten konnten nicht zentral übernommen werden: ${migrationError instanceof Error ? migrationError.message : String(migrationError)}`);
         setStorageReady(false);
         return;
       }
@@ -968,12 +965,12 @@ export default function NebenkostenTiefgarage() {
   useEffect(() => {
     if (!storageReady) return;
     const timeout = window.setTimeout(async () => {
-      const { error } = await supabase.from(BILLING_TABLE).upsert({
-        object_id: BILLING_OBJECT_ID,
-        year: BILLING_SCOPE,
-        data: { records } satisfies StoredPayload,
-      }, { onConflict: "object_id,year" });
-      setStorageError(error ? `Zentrale Speicherung fehlgeschlagen: ${error.message}` : "");
+      try {
+        await upsertBillingWorkspace(BILLING_OBJECT_ID, BILLING_SCOPE, { records } satisfies StoredPayload);
+        setStorageError("");
+      } catch (error) {
+        setStorageError(`Zentrale Speicherung fehlgeschlagen: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }, 650);
     return () => window.clearTimeout(timeout);
   }, [records, storageReady]);

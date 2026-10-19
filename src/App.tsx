@@ -97,6 +97,7 @@ import {
 import { portfolioGalleryItems } from "./data/portfolioGallery";
 import { buildRepairCapexSummary, isAcquisitionAdjacentCostEntry } from "./lib/repairCapex";
 import { extractBillingWorkspaceRecords } from "./services/billingWorkspaceService";
+import { listBillingWorkspaces } from "./services/billingWorkspaceRepository";
 import {
   buildLoanInterestReportCsv,
   buildLoanInterestReportExcelHtml,
@@ -1164,20 +1165,13 @@ function NebenkostenIndexPage() {
   useEffect(() => {
     let active = true;
     Promise.all([
-      supabase.from("apartment_billing_workspaces").select("object_id,year,data").order("year", { ascending: false }),
+      listBillingWorkspaces(),
       fetchPropertyWealthProfiles(),
-    ]).then(([{ data, error }, wealthProfiles]) => {
+    ]).then(([data, wealthProfiles]) => {
       if (!active) return;
-      if (error) {
-        setWorkflowRecords([]);
-        setExcludedWorkflowRecords([]);
-        setWorkflowError(`Nebenkosten-KPIs konnten nicht geladen werden: ${error.message}`);
-        setWorkflowLoading(false);
-        return;
-      }
       const next: NebenkostenOverviewRecord[] = [];
       const excluded: ExcludedNebenkostenOverviewRecord[] = [];
-      for (const row of data ?? []) {
+      for (const row of data) {
         const rawYear = Number(row.year);
         const fallbackYear = Number.isFinite(rawYear) && rawYear >= 2000 ? rawYear : currentYear;
         for (const billing of extractBillingWorkspaceRecords(row.data, fallbackYear)) {

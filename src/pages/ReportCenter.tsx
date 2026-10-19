@@ -9,30 +9,31 @@ import { openProfessionalPdfReport } from '../lib/professionalPdfReport';
 import { reportCsv, reportWorkbook } from '../lib/reportCenterExport';
 import type { RentAnnualReportSnapshot } from './Mietuebersicht';
 import { isRosensteinLabel, ROSENSTEIN_TAX_UNITS, rosensteinTaxUnitLabel, type RosensteinTaxUnitCode } from '../lib/rosensteinTaxUnit';
+import { listBillingWorkspaces } from '../services/billingWorkspaceRepository';
 import './ReportCenter.css';
 import './ReportCenterEnhancements.css';
 const RentOverview = lazy(()=>import('./Mietuebersicht'));
 const root='/berichte';
-const tableSources: Record<string,string>={billing_workspaces:'apartment_billing_workspaces',property_extra:'property_extra_info',portfolio_properties:'portfolio_properties',portfolio_units:'portfolio_units',portfolio_property_rentals:'portfolio_property_rentals',tenant_contracts:'tenant_contracts',tenant_profiles:'tenant_profiles',rent_adjustments:'rent_adjustments',mileage_trips:'property_mileage_trips',unit_vacancies:'unit_vacancies',property_documents:'property_documents',property_id_aliases:'property_id_aliases',object_bridge:'v_koenen_object_bridge',property_loan_ledger:'property_loan_ledger',property_loan_rate_plan:'property_loan_rate_plan'};
+const tableSources: Record<string,string>={property_extra:'property_extra_info',portfolio_properties:'portfolio_properties',portfolio_units:'portfolio_units',portfolio_property_rentals:'portfolio_property_rentals',tenant_contracts:'tenant_contracts',tenant_profiles:'tenant_profiles',rent_adjustments:'rent_adjustments',mileage_trips:'property_mileage_trips',unit_vacancies:'unit_vacancies',property_documents:'property_documents',property_id_aliases:'property_id_aliases',object_bridge:'v_koenen_object_bridge',property_loan_ledger:'property_loan_ledger',property_loan_rate_plan:'property_loan_rate_plan'};
 async function loadSources():Promise<ReportSources>{
   const auth=await supabase.auth.getUser();if(auth.error)throw auth.error;if(!auth.data.user)throw new Error('Bitte erneut anmelden.');
   const user=auth.data.user;
+  const billingWorkspaces=await listBillingWorkspaces();
   const results=await Promise.allSettled(Object.entries(tableSources).map(async([key,table])=>{
     const rows:ReportRecord[]=[];
     for(let start=0;;start+=500){
       let query=supabase.from(table).select('*');
-      if(key!=='property_id_aliases'&&key!=='object_bridge')query=query.order(table==='property_extra_info'?'property_id':key==='billing_workspaces'?'object_id':'id');
+      if(key!=='property_id_aliases'&&key!=='object_bridge')query=query.order(table==='property_extra_info'?'property_id':'id');
       query=query.range(start,start+499);
-      if(key==='billing_workspaces')query=query.order('year');
       // Documents use role-based RLS, as in documentArchiveService; they have no user_id column.
-      if(!['billing_workspaces','property_documents','property_id_aliases','object_bridge','property_loan_ledger'].includes(key)&&!isReadonlyApprovalEmail(user.email))query=query.eq('user_id',user.id);
+      if(!['property_documents','property_id_aliases','object_bridge','property_loan_ledger'].includes(key)&&!isReadonlyApprovalEmail(user.email))query=query.eq('user_id',user.id);
       if(key==='tenant_profiles'||key==='tenant_contracts')query=query.eq('is_deleted',false);
       const {data,error}=await query;if(error)throw new Error(`${table}: ${error.message}`);rows.push(...(data??[]));if((data?.length??0)<500)break;
     }
     return[key,rows] as const;
   }));
   const errors=results.filter(r=>r.status==='rejected');if(errors.length)throw new Error(errors.map(r=>r.status==='rejected'?String(r.reason):'').join('\n'));
-  return Object.fromEntries(results.flatMap(r=>r.status==='fulfilled'?[r.value]:[]));
+  return {...Object.fromEntries(results.flatMap(r=>r.status==='fulfilled'?[r.value]:[])),billing_workspaces:billingWorkspaces as ReportRecord[]};
 }
 function Preview({module}:{module:ReportModule}){
   const cellClass=(value:unknown)=>{const cell=String(value);return cell.endsWith('· bezahlt')||cell.startsWith('Guthaben ·')?'report-paid':cell.endsWith('· offen')||cell.startsWith('Nachzahlung ·')?'report-open':'';};

@@ -12,8 +12,8 @@ import {
   type PropertyDocumentRow,
 } from "@/services/documentArchiveService";
 import { listObjectDirectory } from "@/services/objectDirectoryService";
+import { listBillingWorkspaces, type BillingWorkspaceRow } from "@/services/billingWorkspaceRepository";
 
-type BillingRow = { object_id: string; year: string | number; data: unknown };
 type ObjectOption = { objekt_code: string; label: string };
 
 type KpiRecord = BillingWorkspaceRecordSnapshot & { sourceObjectId: string; year: number };
@@ -76,13 +76,12 @@ export default function PropertyUtilitiesKpiDashboard({ propertyId, propertyLabe
     try {
       setLoading(true);
       setError(null);
-      const [billingResult, documentResult, objectRows] = await Promise.all([
-        supabase.from("apartment_billing_workspaces").select("object_id,year,data").order("year", { ascending: false }),
+      const [billingRows, documentResult, objectRows] = await Promise.all([
+        listBillingWorkspaces(),
         supabase.from("property_documents").select("*").eq("category", "nk_abrechnung").order("document_year", { ascending: false, nullsFirst: false }),
         listObjectDirectory(),
       ]);
       if (requestId !== loadRequestId.current) return;
-      if (billingResult.error) throw billingResult.error;
       if (documentResult.error) throw documentResult.error;
 
       const labelKey = normalizeIdentity(propertyLabel);
@@ -90,7 +89,7 @@ export default function PropertyUtilitiesKpiDashboard({ propertyId, propertyLabe
         return object.objekt_code === propertyId || (Boolean(labelKey) && normalizeIdentity(object.label) === labelKey);
       });
       const canonicalObjectCode = matchingObject?.objekt_code ?? propertyId;
-      const allRecords = ((billingResult.data ?? []) as BillingRow[]).flatMap((row) => {
+      const allRecords = (billingRows as BillingWorkspaceRow[]).flatMap((row) => {
         const year = Number(row.year);
         return extractBillingWorkspaceRecords(row.data, year).map((record) => ({
           ...record,
