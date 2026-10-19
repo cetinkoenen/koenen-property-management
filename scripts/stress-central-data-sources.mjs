@@ -47,6 +47,7 @@ const portfolioRentalRepository = await read("src/services/portfolioRentalReposi
 const vacancyService = await read("src/services/vacancyService.ts");
 const rentHistoryHook = await read("src/hooks/useRentHistory24m.ts");
 const dataQualityPage = await read("src/pages/Datenpruefung.tsx");
+const rentAdjustmentRepository = await read("src/services/rentAdjustmentRepository.ts");
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
 assert.doesNotMatch(appData, /localStorage\.(?:getItem|setItem)/, "Zentrale App-Daten dürfen keinen browserweiten Fallback als zweite Fachquelle verwenden");
@@ -126,6 +127,13 @@ for (const [source, label] of [
 }
 assert.match(rentOverview, /listPortfolioUnits\(\)/, "Mieteingang muss lesbare Einheiten über die zentrale Einheitenquelle laden");
 assert.doesNotMatch(rentOverview, /\.from\("portfolio_units"\)/, "Mieteingang darf Einheiten nicht parallel direkt abfragen");
+assert.match(rentAdjustmentRepository, /function listRentAdjustments[\s\S]*\.from\("rent_adjustments"\)[\s\S]*\.eq\("is_deleted", false\)[\s\S]*\.range\(offset, offset \+ pageSize - 1\)/, "Die zentrale Mietanpassungsquelle muss ausschließlich aktive Datensätze vollständig paginiert laden");
+for (const [source, label] of [[rentOverview, "Mieteingang"], [rentDevelopment, "Mietentwicklung"]]) {
+  assert.match(source, /listRentAdjustments\(/, `${label} muss Mietanpassungen aus der zentralen Quelle laden`);
+  assert.doesNotMatch(source, /\.from\("rent_adjustments"\)/, `${label} darf Mietanpassungen nicht parallel direkt lesen oder schreiben`);
+}
+assert.match(rentDevelopment, /updateRentAdjustment\(editingAdjustmentId, payload\)/, "Mietanpassungen müssen über die zentrale Schreibfunktion aktualisiert werden");
+assert.match(rentDevelopment, /insertRentAdjustment\(\{/, "Neue Mietanpassungen müssen über die zentrale Schreibfunktion gespeichert werden");
 assert.match(entryAdd, /Objekte werden geladen…[\s\S]*Objektliste konnte nicht geladen werden[\s\S]*Keine Objekte vorhanden/, "Die Buchungserfassung muss Laden, Fehler und einen wirklich leeren Objektbestand eindeutig unterscheiden");
 assert.match(entryAdd, /setObjectLoadRevision\(\(value\) => value \+ 1\)/, "Ein fehlgeschlagener Objektabruf muss direkt wiederholt werden können");
 assert.match(entryAdd, /classifyTaxRelevance\([\s\S]{0,250}?selectedObjectLabel\)/, "Steuerregeln müssen das konkret ausgewählte Objekt berücksichtigen");
@@ -143,9 +151,8 @@ assert.match(migration, /enable row level security/i, "Alias-Tabelle muss RLS ak
 assert.match(migration, /revoke all on public\.property_id_aliases from anon/i, "Alias-Tabelle darf für anon nicht freigegeben sein");
 assert.match(app, /path="\/exports" element={<Navigate to="\/buchhaltung\/berichte-exporte" replace \/>}/, "Alter Exportpfad muss zur zentralen Berichteseite führen");
 assert.match(app, /path="\/portfolio" element={<Navigate to="\/immobilienvermoegen" replace \/>}/, "Alter Portfoliopfad muss zur zentralen Immobilienseite führen");
-const rentAdjustmentQuery = rentOverview.match(/\.from\("rent_adjustments"\)[\s\S]{0,500}?\.order\("effective_date"/)?.[0] ?? "";
-assert.doesNotMatch(rentAdjustmentQuery, /object_code/, "Mieteingang darf keine nicht vorhandene rent_adjustments.object_code-Spalte abfragen");
-assert.doesNotMatch(rentAdjustmentQuery, /unit_label/, "Mieteingang darf keine nicht vorhandene rent_adjustments.unit_label-Spalte abfragen");
+assert.doesNotMatch(rentAdjustmentRepository, /["']object_code["']/, "Die zentrale Mietanpassungsquelle darf keine nicht vorhandene object_code-Spalte abfragen");
+assert.doesNotMatch(rentAdjustmentRepository, /["']unit_label["']/, "Die zentrale Mietanpassungsquelle darf keine nicht vorhandene unit_label-Spalte abfragen");
 assert.doesNotMatch(rentOverview, /\.from\("finance_entry"\)/, "Mieteingang darf Buchungen nicht parallel zur zentralen App-Datenquelle laden");
 assert.match(rentOverview, /const allKnownBookings = useMemo\(\(\) => uniqueFinanceEntries\(appData\.entries\), \[appData\.entries\]\)/, "Mieteingang muss ausschließlich die zentral geladenen Buchungen verwenden und Dubletten einmal pro Datenstand entfernen");
 assert.match(rentOverview, /portfolioRentalsLoading/, "Mietkonto-Exporte müssen den Ladezustand der Vermietungszeiträume kennen");
@@ -269,4 +276,4 @@ assert.deepEqual(
   "Jede Supabase-Migration muss einen gültigen Zeitstempel tragen und reproduzierbar ausführbar sein",
 );
 
-console.log("164 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");
+console.log("174 Stressfaelle fuer zentrale Datenquellen und Navigationspfade bestanden.");

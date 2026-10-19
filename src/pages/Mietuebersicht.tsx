@@ -15,6 +15,7 @@ import {
 } from "../services/vacancyService";
 import { listTenantContracts } from "../services/tenantService";
 import { listPortfolioRentals, listPortfolioUnits } from "../services/portfolioRentalRepository";
+import { listRentAdjustments } from "../services/rentAdjustmentRepository";
 
 type TenantInfo = { firstName: string; lastName: string; phone: string; email: string };
 type TenantContractInfo = {
@@ -1674,14 +1675,9 @@ export default function Mietuebersicht({
       setReportSourceErrors(old => ({ ...old, adjustments: "" }));
       setRentAdjustmentsLoading(true);
       try {
-        const { data, error } = await supabase
-          .from("rent_adjustments")
-          .select("id,property_id,object_label,tenant_name,effective_date,effective_end_date,old_cold_rent,old_operating_costs,old_total_rent,new_cold_rent,new_operating_costs,new_total_rent,note,created_at")
-          .order("effective_date", { ascending: false, nullsFirst: false });
-
-        if (error) throw error;
+        const data = await listRentAdjustments();
         if (cancelled) return;
-        setRentAdjustments((data ?? []) as unknown as RentAdjustmentRow[]);
+        setRentAdjustments(data as unknown as RentAdjustmentRow[]);
       } catch (error) {
         if (cancelled) return;
         setReportSourceErrors(old => ({ ...old, adjustments: "Mietanpassungen konnten nicht geladen werden." }));

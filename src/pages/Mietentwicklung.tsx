@@ -4,6 +4,7 @@ import { MIETBESTANDTEIL_NK_CATEGORY, isPureRentBackPayment } from "../lib/finan
 import { explicitRentYearMonth, rentPaymentCutoffDay } from "../lib/rentMonth";
 import { supabase } from "../lib/supabase";
 import { listPortfolioRentals } from "../services/portfolioRentalRepository";
+import { insertRentAdjustment, listRentAdjustments, updateRentAdjustment } from "../services/rentAdjustmentRepository";
 import { useAppData, type AppObject, type FinanceEntry } from "../state/AppDataContext";
 
 type PortfolioPropertyRow = {
@@ -897,17 +898,12 @@ export default function Mietentwicklung() {
       setLoadingRentals(true);
       setLoadError(null);
       try {
-        const [propertiesRes, rentals, adjustmentsRes] = await Promise.all([
+        const [propertiesRes, rentals, adjustments] = await Promise.all([
           supabase.from("portfolio_properties").select("id,name,core_property_id"),
           listPortfolioRentals({ ascending: true }),
-          supabase
-            .from("rent_adjustments")
-            .select("id,property_id,object_label,tenant_name,effective_date,effective_end_date,reason,status,old_cold_rent,old_operating_costs,old_total_rent,new_cold_rent,new_operating_costs,new_total_rent,note,document_name,created_at")
-            .eq("is_deleted", false)
-            .order("effective_date", { ascending: false }),
+          listRentAdjustments(),
         ]);
         if (propertiesRes.error) throw propertiesRes.error;
-        if (adjustmentsRes.error) throw adjustmentsRes.error;
         if (cancelled) return;
 
         setPortfolioProperties(((propertiesRes.data ?? []) as PortfolioPropertyRow[]).map((row) => ({
@@ -929,7 +925,7 @@ export default function Mietentwicklung() {
           created_at: row.created_at ?? null,
           updated_at: row.updated_at ?? null,
         })));
-        setManualAdjustments(((adjustmentsRes.data ?? []) as ManualRentAdjustment[]).map((row) => ({
+        setManualAdjustments((adjustments as unknown as ManualRentAdjustment[]).map((row) => ({
           id: String(row.id),
           property_id: row.property_id ? String(row.property_id) : null,
           object_label: row.object_label ?? "",
@@ -1277,19 +1273,17 @@ export default function Mietentwicklung() {
         new_total_rent: newTotal,
         note: adjustmentForm.note.trim() || null,
       };
-      const { error } = editingAdjustmentId
-        ? await supabase
-          .from("rent_adjustments")
-          .update(payload)
-          .eq("id", editingAdjustmentId)
-        : await supabase.from("rent_adjustments").insert({
+      if (editingAdjustmentId) {
+        await updateRentAdjustment(editingAdjustmentId, payload);
+      } else {
+        await insertRentAdjustment({
           user_id: userId,
           property_id: row.object.id,
           object_label: row.displayLabel,
           tenant_name: row.tenantName,
           ...payload,
         });
-      if (error) throw error;
+      }
 
       setActionMessage(editingAdjustmentId ? "Mietanpassung wurde aktualisiert." : "Mietanpassung wurde gespeichert und in die Historie übernommen.");
       setEditingAdjustmentId(null);
