@@ -660,7 +660,7 @@ export async function syncTenantEndFromVacancy(input: {
   const objectCode = cleanText(input.objectCode);
   const data = await listTenantContracts({ userId, propertyId });
 
-  const candidates = (data as TenantContract[]).filter((contract) => {
+  const propertyCandidates = (data as TenantContract[]).filter((contract) => {
     const contractStartDate = toIsoDate(contract.start_date);
     // Ein Leerstand darf nur den bis zum Vortag bereits laufenden Vertrag
     // beenden. Spaeter beginnende Anschlussvertraege bleiben unangetastet.
@@ -669,16 +669,28 @@ export async function syncTenantEndFromVacancy(input: {
     const endDate = normalizedContractEndDate(contract);
     if (endDate && endDate <= tenantEndDate) return false;
     if (objectCode && contract.object_code && contract.object_code !== objectCode) return false;
-    return unitMatches(input.unitLabel, contract.unit_label);
+    return true;
   });
+  let candidates = propertyCandidates.filter((contract) => unitMatches(input.unitLabel, contract.unit_label));
+
+  // Einteilige Wohnobjekte besitzen historisch teilweise keinen unit_label.
+  // Ein generisches „Wohnung“-Label aus dem Leerstandsformular darf den
+  // eindeutig einzigen laufenden Objektvertrag trotzdem beenden. Bei mehreren
+  // Verträgen bleibt die Zuordnung absichtlich streng und unverändert.
+  const genericResidentialUnit = ["wohnung", "gesamte immobilie", "hauptwohnung"]
+    .includes(normalizeText(input.unitLabel));
+  if (!candidates.length && propertyCandidates.length === 1 && genericResidentialUnit && !cleanText(propertyCandidates[0].unit_label)) {
+    candidates = propertyCandidates;
+  }
 
   if (!candidates.length) return 0;
 
   const contractIds = candidates.map((contract) => contract.id);
   const tenantIds = [...new Set(candidates.map((contract) => contract.tenant_id).filter(Boolean))];
+  const contractStatus = deriveRentalContractStatus(null, tenantEndDate);
   const { error: updateError } = await supabase
     .from("tenant_contracts")
-    .update({ end_date: tenantEndDate, status: "ended" })
+    .update({ end_date: tenantEndDate, status: contractStatus })
     .in("id", contractIds)
     .eq("user_id", userId);
 
@@ -686,7 +698,7 @@ export async function syncTenantEndFromVacancy(input: {
 
   for (const tenantId of tenantIds) {
     const activeContracts = await listTenantContracts({ tenantId, userId });
-    if ((activeContracts as TenantContract[]).some((contract) => isContractCurrentOrFuture(contract, vacancyStartDate))) continue;
+    if ((activeContracts as TenantContract[]).some((contract) => isContractCurrentOrFuture(contract, todayDateKey()))) continue;
 
     const { error: tenantError } = await supabase
       .from("tenant_profiles")

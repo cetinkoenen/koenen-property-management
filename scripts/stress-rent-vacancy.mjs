@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 const roundCurrency = (value) => Math.round(Number(value || 0) * 100) / 100;
 const money = (value) => (Number.isFinite(Number(value)) ? roundCurrency(Number(value)) : 0);
@@ -192,6 +193,20 @@ const tests = [
     assert.equal(effectiveVacancyStartDate(vacancy), "2026-06-01", "Manueller Kündigungs-Leerstand muss seinen Beginn behalten");
     assert.equal(isVacancyEffectivelyActiveInRange(vacancy, "2026-06-01", "2026-07-31"), true);
     assert.equal(isVacancyEffectivelyActiveInRange(vacancy, "2026-08-01", "2026-08-31"), false);
+  },
+  () => {
+    const plannedColmarerVacancy = {
+      vacancy_type: "manual",
+      status: "planned",
+      start_date: "2027-02-01",
+      end_date: null,
+    };
+    assert.equal(isVacancyEffectivelyActiveInRange(plannedColmarerVacancy, "2027-01-01", "2027-01-31"), false, "Januar 2027 bleibt für Colmarer mietpflichtig");
+    assert.equal(isVacancyEffectivelyActiveInRange(plannedColmarerVacancy, "2027-02-01", "2027-02-28"), true, "Colmarer muss ab Februar 2027 als Leerstand erscheinen");
+    assert.equal(isVacancyEffectivelyActiveInRange({ ...plannedColmarerVacancy, status: "ended" }, "2027-02-01", "2027-02-28"), false, "Archivierte Leerstände dürfen den Mieteingang nicht überschreiben");
+
+    const rentOverviewSource = readFileSync(new URL("../src/pages/Mietuebersicht.tsx", import.meta.url), "utf8");
+    assert.match(rentOverviewSource, /vacancyCandidate = vacancies\.find\([\s\S]*isVacancyEffectivelyActiveInRange\(candidate, period\.start, period\.end\)/, "Der Zahlungskalender muss den wirksamen Leerstandsstatus verwenden");
   },
   () => {
     const lilienthaler = { id: "lilienthaler-id", code: "Objekt_1" };

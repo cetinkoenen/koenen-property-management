@@ -8,6 +8,7 @@ import { rentBalancePart } from "../lib/rentPaymentBalance";
 import { uniqueFinanceEntries } from "../lib/uniqueFinanceEntries";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
 import {
+  isVacancyEffectivelyActiveInRange,
   isVacancyInRange,
   listDerivedVacanciesFromEndedRentals,
   listVacancies,
@@ -1743,7 +1744,7 @@ export default function Mietuebersicht({
             const periodTenant = tenantInfoFromContract(periodContract);
             const tenantForMatch = tenantHasAnyValue(periodTenant) ? periodTenant : tenantInfo[tenantKey] ?? tenantInfo[object.id] ?? emptyTenant;
             const tenantContract = periodContract ? tenantContractInfoFromContract(periodContract) : null;
-            const vacancyCandidate = vacancies.find((candidate) => vacancyMatchesUnit(candidate, object, unit) && isVacancyInRange(candidate, period.start, period.end));
+            const vacancyCandidate = vacancies.find((candidate) => vacancyMatchesUnit(candidate, object, unit) && isVacancyEffectivelyActiveInRange(candidate, period.start, period.end));
             let unitBookings = relevantBookings.filter(unit.matcher);
 
             if (isFuertherWohnungUnit(object.label, unit.ref)) {
@@ -2309,7 +2310,7 @@ export default function Mietuebersicht({
 	                          const monthNumber = index + 1;
 	                          const monthRange = monthRangeFromYearMonth(selectedPeriod.year, monthNumber);
 	                          const monthVacancy = vacancies.find((candidate) =>
-	                            vacancyMatchesUnit(candidate, annualObject, annualUnit) && isVacancyInRange(candidate, monthRange.start, monthRange.end)
+	                            vacancyMatchesUnit(candidate, annualObject, annualUnit) && isVacancyEffectivelyActiveInRange(candidate, monthRange.start, monthRange.end)
 	                          );
 	                          const monthContract = tenantContractRows.find((candidate) =>
 	                            isContractInMonth(candidate, monthRange.start, monthRange.end) && contractMatchesUnit(candidate, annualObject, annualUnit)
