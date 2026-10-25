@@ -1371,6 +1371,17 @@ function vacancyMatchesUnit(vacancy: UnitVacancy, object: { id: string; code: st
 
   if (!vacancyUnit) return true;
 
+  // Bei einteiligen Wohnobjekten lautet die technische Zeile „hauptmiete“
+  // bzw. in der Jahresansicht „main“, während das Leerstandsformular bewusst
+  // das verständliche Label „Wohnung“ speichert. Diese beiden Darstellungen
+  // gehören zur selben Einheit. Stellplätze bleiben durch den Block oben
+  // weiterhin streng über ihre P25x-Referenz getrennt.
+  const genericResidentialVacancy = ["wohnung", "hauptwohnung", "gesamte immobilie"].includes(vacancyUnit);
+  const genericResidentialUnit = [unitRef, unitTitle].some((value) =>
+    ["main", "hauptmiete", "miete", "wohnung", "hauptwohnung", "gesamte immobilie"].includes(value)
+  );
+  if (genericResidentialVacancy && genericResidentialUnit) return true;
+
   if (vacancyUnit.includes(unitRef) || unitRef.includes(vacancyUnit) || vacancyUnit.includes(unitTitle) || unitTitle.includes(vacancyUnit)) return true;
   if (compactVacancyUnit && (compactUnitRef.includes(compactVacancyUnit) || compactUnitTitle.includes(compactVacancyUnit))) return true;
 

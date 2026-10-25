@@ -207,6 +207,7 @@ const tests = [
 
     const rentOverviewSource = readFileSync(new URL("../src/pages/Mietuebersicht.tsx", import.meta.url), "utf8");
     assert.match(rentOverviewSource, /vacancyCandidate = vacancies\.find\([\s\S]*isVacancyEffectivelyActiveInRange\(candidate, period\.start, period\.end\)/, "Der Zahlungskalender muss den wirksamen Leerstandsstatus verwenden");
+    assert.match(rentOverviewSource, /genericResidentialVacancy[\s\S]*genericResidentialUnit[\s\S]*return true/, "Das Leerstandslabel Wohnung muss zur einteiligen Hauptmiete passen");
   },
   () => {
     const lilienthaler = { id: "lilienthaler-id", code: "Objekt_1" };
