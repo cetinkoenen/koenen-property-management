@@ -2,6 +2,7 @@ import { supabase } from "../lib/supabase";
 import { isReadonlyApprovalEmail } from "../auth/accessControl";
 import { listPortfolioRentals } from "./portfolioRentalRepository";
 import { syncTenantEndFromVacancy } from "./tenantService";
+import { canonicalUnitLabel, canonicalizeUnitRow } from "../lib/canonicalUnitLabel";
 
 export type VacancyStatus = "active" | "planned" | "ended";
 export type VacancyType = "manual" | "contract_ended" | "notice" | "other";
@@ -153,7 +154,7 @@ export async function listVacancies(filters: VacancyFilters = {}): Promise<UnitV
 
   const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []) as UnitVacancy[];
+  return ((data ?? []) as UnitVacancy[]).map((row) => canonicalizeUnitRow(row, row.object_label));
 }
 
 function addOneDay(value: string): string {
@@ -240,7 +241,11 @@ export async function createVacancy(input: VacancyInput): Promise<UnitVacancy> {
     property_id: propertyId,
     object_code: cleanText(input.objectCode),
     object_label: cleanText(input.objectLabel),
-    unit_label: cleanText(input.unitLabel),
+    unit_label: canonicalUnitLabel({
+      objectLabel: input.objectLabel,
+      objectCode: input.objectCode,
+      unitLabel: input.unitLabel,
+    }),
     vacancy_type: input.vacancyType ?? "manual",
     status: input.status ?? "active",
     start_date: cleanText(input.startDate),
@@ -264,7 +269,11 @@ export async function updateVacancy(id: string, input: Partial<VacancyInput>): P
   const payload = {
     object_code: input.objectCode === undefined ? undefined : cleanText(input.objectCode),
     object_label: input.objectLabel === undefined ? undefined : cleanText(input.objectLabel),
-    unit_label: input.unitLabel === undefined ? undefined : cleanText(input.unitLabel),
+    unit_label: input.unitLabel === undefined ? undefined : canonicalUnitLabel({
+      objectLabel: input.objectLabel,
+      objectCode: input.objectCode,
+      unitLabel: input.unitLabel,
+    }),
     vacancy_type: input.vacancyType,
     status: input.status,
     start_date: input.startDate === undefined ? undefined : cleanText(input.startDate),

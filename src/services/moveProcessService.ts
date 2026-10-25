@@ -1,6 +1,7 @@
 import { supabase } from "../lib/supabase";
 import { isReadonlyApprovalEmail } from "../auth/accessControl";
 import { listTenantContracts } from "./tenantService";
+import { canonicalUnitLabel, canonicalizeUnitRow } from "../lib/canonicalUnitLabel";
 
 export type MoveProcessType = "einzug" | "auszug" | "wechsel";
 export type MoveProcessStatus = "offen" | "in_bearbeitung" | "erledigt" | "archiviert";
@@ -142,7 +143,7 @@ export async function listMoveProcesses(): Promise<MoveProcess[]> {
   const { data, error } = await query;
 
   if (error) throw error;
-  return (data ?? []) as MoveProcess[];
+  return ((data ?? []) as MoveProcess[]).map((row) => canonicalizeUnitRow(row));
 }
 
 export async function createMoveProcess(input: MoveProcessInput): Promise<MoveProcess> {
@@ -155,7 +156,7 @@ export async function createMoveProcess(input: MoveProcessInput): Promise<MovePr
       tenant_contract_id: cleanText(input.tenantContractId),
       property_id: cleanText(input.propertyId),
       object_code: cleanText(input.objectCode),
-      unit_label: cleanText(input.unitLabel),
+      unit_label: canonicalUnitLabel({ objectCode: input.objectCode, unitLabel: input.unitLabel }),
       process_type: input.processType,
       status: input.status,
       handover_date: cleanText(input.handoverDate),
@@ -182,7 +183,7 @@ export async function saveMoveProcess(input: MoveProcessInput & { id?: string | 
       tenant_contract_id: cleanText(input.tenantContractId),
       property_id: cleanText(input.propertyId),
       object_code: cleanText(input.objectCode),
-      unit_label: cleanText(input.unitLabel),
+      unit_label: canonicalUnitLabel({ objectCode: input.objectCode, unitLabel: input.unitLabel }),
       process_type: input.processType,
       status: input.status === "erledigt" ? "archiviert" : input.status,
       handover_date: cleanText(input.handoverDate),

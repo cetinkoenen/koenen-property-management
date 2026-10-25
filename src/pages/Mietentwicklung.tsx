@@ -6,6 +6,7 @@ import { supabase } from "../lib/supabase";
 import { listPortfolioRentals } from "../services/portfolioRentalRepository";
 import { insertRentAdjustment, listRentAdjustments, updateRentAdjustment } from "../services/rentAdjustmentRepository";
 import { useAppData, type AppObject, type FinanceEntry } from "../state/AppDataContext";
+import { canonicalUnitLabel } from "../lib/canonicalUnitLabel";
 
 type PortfolioPropertyRow = {
   id: string;
@@ -385,17 +386,21 @@ function friendlyUnitLabel(object: AppObject, rental: PortfolioRentalRow, index:
   const looksTechnicalId = /^[0-9a-f]{16,}$/i.test(compactLabel) || compactLabel.length >= 24;
 
   if (isRosensteinObject(object)) {
-    if (rawLabel.includes("P250")) return "P250 - E008440000121";
-    if (rawLabel.includes("P253")) return "P253 - E008440000122";
-    if (rawLabel.includes("P254")) return "P254 - E008440000123";
-    return `Garage ${index + 1}`;
+    if (rawLabel.includes("P250")) return "P250";
+    if (rawLabel.includes("P253")) return "P253";
+    if (rawLabel.includes("P254")) return "P254";
+    return ["P250", "P253", "P254"][index] ?? `Stellplatz ${index + 1}`;
   }
   if (isFuertherObject(object)) {
-    if (money(rental.rent_monthly) <= 100 || isGarageLikeText(`${rental.unit_id ?? ""} ${rental.rent_type ?? ""}`)) return "Garage";
-    return "Wohnung";
+    if (money(rental.rent_monthly) <= 100 || isGarageLikeText(`${rental.unit_id ?? ""} ${rental.rent_type ?? ""}`)) return "Garage 01";
+    return "Wohnung 03";
   }
-  if (looksTechnicalId) return isGarageLikeText(rawLabel) ? "Garage" : "Wohnung";
-  return rawLabel;
+  return canonicalUnitLabel({
+    objectLabel: object.label,
+    objectCode: object.code,
+    unitLabel: looksTechnicalId ? null : rawLabel,
+    rentType: rental.rent_type,
+  }) ?? (isGarageLikeText(rawLabel) ? "Garage" : "Wohnung");
 }
 
 function completeKnownUnitBreakdown(
@@ -405,7 +410,7 @@ function completeKnownUnitBreakdown(
   if (!isRosensteinObject(object)) return units;
 
   const byLabel = new Map(units.map((unit) => [unit.label, unit]));
-  return ["P250 - E008440000121", "P253 - E008440000122", "P254 - E008440000123"].map((label) => byLabel.get(label) ?? {
+  return ["P250", "P253", "P254"].map((label) => byLabel.get(label) ?? {
     key: `${object.id}-${label}`,
     label,
     amount: 0,
@@ -1056,7 +1061,7 @@ export default function Mietentwicklung() {
         rowKey: object.id,
         object,
         displayLabel: object.label,
-        unitName: "Wohnung / Objekt",
+        unitName: canonicalUnitLabel({ objectLabel: object.label, objectCode: object.code }) ?? "Wohnung / Objekt",
         currentExpected: current.expected,
         currentActual: current.actual,
         netRent,

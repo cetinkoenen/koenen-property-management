@@ -55,6 +55,9 @@ const loanEntryAddPage = await read("src/pages/LoanEntryAdd.tsx");
 const loanImportPage = await read("src/pages/LoanImport.tsx");
 const billingWorkspaceRepository = await read("src/services/billingWorkspaceRepository.ts");
 const reportCenterPage = await read("src/pages/ReportCenter.tsx");
+const canonicalUnitLabels = await read("src/lib/canonicalUnitLabel.ts");
+const canonicalUnitMigration = await read("supabase/migrations/20261025223000_canonical_unit_labels.sql");
+const shadowUnitMigration = await read("supabase/migrations/20261025224500_deactivate_duplicate_shadow_units.sql");
 
 assert.doesNotMatch(investment, /localStorage/, "Investment-Bericht darf Vermögensdaten nicht mehr aus localStorage laden");
 assert.doesNotMatch(appData, /localStorage\.(?:getItem|setItem)/, "Zentrale App-Daten dürfen keinen browserweiten Fallback als zweite Fachquelle verwenden");
@@ -210,7 +213,20 @@ assert.match(rentOverview, /adjustmentStartDates\[0\] \?\? contractStartDates\[0
 assert.match(rentOverview, /isRosensteinObject\(object\.label\)[\s\S]*rosensteinStartDates\[0\]/, "Rosenstein muss die Vorperiode aus dem frühesten zentralen Objekt-Vermietungsbeginn neutralisieren");
 assert.match(cockpit, /text\.includes\("mietbestandteil"\)/, "Das Cockpit muss separat gebuchte Mietbestandteile in der Gesamtmiete berücksichtigen");
 assert.match(cockpit, /isFuertherLabel\(objectLabel\)[\s\S]{0,300}?isGarageReference\(contractText\) === isGarageReference\(bookingText\)/, "Das Cockpit muss Fürther Wohnung und Garage bei Zahlungen strikt trennen");
-assert.match(cockpit, /cockpitUnitLabel[\s\S]{0,400}?"Garage" : "Wohnung"/, "Fürther muss im Cockpit mit lesbaren separaten Einheiten erscheinen");
+assert.match(cockpit, /cockpitUnitLabel[\s\S]{0,400}?canonicalUnitLabel/, "Das Cockpit muss Einheiten über die zentrale Bezeichnungsregel anzeigen");
+for (const label of ["Haus 01", "Wohnung 01", "Wohnung 02", "Wohnung 03", "Wohnung 04", "Garage 01"]) {
+  assert.match(canonicalUnitLabels, new RegExp(label), `${label} muss in der zentralen Einheitenbezeichnung definiert sein`);
+  assert.match(canonicalUnitMigration, new RegExp(label), `${label} muss auch in der verbindlichen Datenbankmigration enthalten sein`);
+}
+for (const label of ["P250", "P253", "P254"]) {
+  assert.match(canonicalUnitMigration, new RegExp(label), `${label} muss in der verbindlichen Datenbankmigration enthalten sein`);
+  assert.match(rentOverview, new RegExp(`title: "${label}"`), `${label} muss in der Mieteingang-Übersicht kanonisch angezeigt werden`);
+}
+assert.match(tenantService, /rows\.map\(\(row\) => canonicalizeUnitRow\(row\)\)/, "Alle Mietvertragskonsumenten müssen dieselbe zentrale Einheitenbezeichnung erhalten");
+assert.match(canonicalUnitMigration, /before insert or update of object_code, unit_label, rent_type on public\.tenant_contracts/, "Neue und geänderte Mietverträge müssen serverseitig automatisch normalisiert werden");
+assert.match(canonicalUnitMigration, /before insert or update of object_code, object_label, unit_label on public\.unit_vacancies/, "Neue und geänderte Leerstände müssen serverseitig automatisch normalisiert werden");
+assert.match(canonicalUnitMigration, /update public\.portfolio_units unit[\s\S]*from public\.portfolio_properties property/, "Die zentrale Portfolio-Einheitenquelle muss auf dieselben Namen migriert werden");
+assert.match(shadowUnitMigration, /is_active = false[\s\S]*core-shadow/, "Technische Schatteneinheiten dürfen nicht als zweite sichtbare Einheitenquelle aktiv bleiben");
 const cockpitContractQuery = cockpit.match(/\.from\("tenant_contracts"\)[\s\S]{0,300}?\.eq\("is_deleted", false\)/)?.[0] ?? "";
 assert.doesNotMatch(cockpitContractQuery, /\.in\("status"/, "Das Cockpit darf einen im Berichtsmonat gültigen Vertrag nicht wegen eines vorzeitig gepflegten Status ausblenden");
 assert.match(cockpit, /contract\.start_date && contract\.start_date > end[\s\S]{0,350}?effectiveEndDate && effectiveEndDate < start/, "Das Cockpit muss die Monatsgültigkeit jedes Vertrags aus den zentralen Start- und Enddaten bestimmen");

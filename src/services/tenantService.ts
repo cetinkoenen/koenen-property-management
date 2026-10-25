@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import { isReadonlyApprovalEmail } from "../auth/accessControl";
+import { canonicalUnitLabel, canonicalizeUnitRow } from "../lib/canonicalUnitLabel";
 
 export type TenantStatus = "active" | "notice" | "former" | "prospect";
 export type RentalContractStatus = "active" | "vacant" | "ended" | "planned";
@@ -132,7 +133,7 @@ export async function listTenantContracts(
     if (page.length < pageSize) break;
   }
 
-  return rows;
+  return rows.map((row) => canonicalizeUnitRow(row));
 }
 
 export type TenantInput = {
@@ -225,7 +226,11 @@ function buildTenantContractPayload(userId: string, tenantId: string, contractIn
     tenant_id: tenantId,
     property_id: cleanText(contractInput.propertyId),
     object_code: cleanText(contractInput.objectCode),
-    unit_label: cleanText(contractInput.unitLabel),
+    unit_label: canonicalUnitLabel({
+      objectCode: contractInput.objectCode,
+      unitLabel: contractInput.unitLabel,
+      rentType: contractInput.rentType,
+    }),
     rent_type: cleanText(contractInput.rentType),
     cold_rent: money(contractInput.coldRent),
     operating_costs: money(contractInput.operatingCosts),

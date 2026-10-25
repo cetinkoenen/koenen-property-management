@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 import { MIETBESTANDTEIL_NK_CATEGORY, isPureRentBackPayment } from "../lib/financeEntryLabels";
 import { explicitRentYearMonth, rentPaymentCutoffDay, shiftIsoDateByMonthsClamped } from "../lib/rentMonth";
 import { rentBalancePart } from "../lib/rentPaymentBalance";
+import { canonicalUnitLabel } from "../lib/canonicalUnitLabel";
 import { uniqueFinanceEntries } from "../lib/uniqueFinanceEntries";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
 import {
@@ -1047,7 +1048,7 @@ function getUnitDefinitions(objectLabel: string): UnitDefinition[] {
     return [
       {
         ref: "wohnung",
-        title: "Wohnung",
+        title: "Wohnung 03",
         expectedMode: "largest",
         matcher: (booking) => {
           const text = normalizeReferenceText(bookingReferenceText(booking));
@@ -1065,7 +1066,7 @@ function getUnitDefinitions(objectLabel: string): UnitDefinition[] {
       },
       {
         ref: "garage",
-        title: "Garage",
+        title: "Garage 01",
         matcher: (booking) => {
           const text = normalizeReferenceText(bookingReferenceText(booking));
           return text.includes("garage") || text.includes("tiefgarage") || text.includes("tg") || text.includes("stellplatz");
@@ -1080,9 +1081,9 @@ function getUnitDefinitions(objectLabel: string): UnitDefinition[] {
 
   if (normalizedLabel.includes("rosenstein")) {
     const garages = [
-      { ref: "P250 - E008440000121", title: "Garage 1" },
-      { ref: "P253 - E008440000122", title: "Garage 2" },
-      { ref: "P254 - E008440000123", title: "Garage 3" },
+      { ref: "P250 - E008440000121", title: "P250" },
+      { ref: "P253 - E008440000122", title: "P253" },
+      { ref: "P254 - E008440000123", title: "P254" },
     ];
 
     // Rosensteinstraße hat laut Bestand nur 3 Garagen/Stellplätze und keine Wohnung.
@@ -1114,7 +1115,11 @@ function getUnitDefinitions(objectLabel: string): UnitDefinition[] {
     }));
   }
 
-  return [{ ref: "hauptmiete", title: "Miete", matcher: () => true }];
+  return [{
+    ref: "hauptmiete",
+    title: canonicalUnitLabel({ objectLabel }) ?? "Miete",
+    matcher: () => true,
+  }];
 }
 
 function isFuertherObject(objectLabel: string): boolean {

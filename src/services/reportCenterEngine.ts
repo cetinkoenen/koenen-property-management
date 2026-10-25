@@ -8,6 +8,7 @@ import { rentBalancePart } from '../lib/rentPaymentBalance';
 import { effectiveRentYearMonth, rentPaymentCutoffDay } from '../lib/rentMonth';
 import { buildTaxReportPreflight, taxPreflightModule } from './taxReportPreflight';
 import { allocateRosensteinThird, detectRosensteinTaxUnit, detectRosensteinTaxUnits, isRosensteinLabel, ROSENSTEIN_TAX_UNITS, rosensteinTaxUnitLabel, type RosensteinTaxUnitCode } from '../lib/rosensteinTaxUnit';
+import { canonicalUnitLabel } from '../lib/canonicalUnitLabel';
 
 export type ReportRecord = Record<string, unknown>;
 export type ReportSources = Record<string, ReportRecord[]>;
@@ -102,6 +103,12 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   });
   const scoped = (r: ReportRecord) => !input.objectId || objectFor(r)?.id === input.objectId;
   const label = (r: ReportRecord) => objectFor(r)?.label ?? (text(r.object_label || r.property_label || r.property_name) || 'Nicht zugeordnet / Portfolio');
+  const unitLabel = (r: ReportRecord, fallback = 'Gesamte Immobilie') => canonicalUnitLabel({
+    objectLabel: label(r),
+    objectCode: text(r.object_code || r.objekt_code),
+    unitLabel: text(r.unit_label || r.unit_name || fallback),
+    rentType: text(r.rent_type),
+  }) ?? fallback;
   const recordUnit = (r: ReportRecord) => detectRosensteinTaxUnit(r.unit_label, r.unit_name, r.name, r.reference, r.object_code, r.objekt_code, r.note, r.notes, r.title, r.file_name, r.grund);
   const unitScoped = (r: ReportRecord) => !input.rosensteinUnit || recordUnit(r) === input.rosensteinUnit;
   const profiles = (o: AppObject): ReportRecord => Object.assign(
@@ -141,7 +148,12 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     if (unassigned.length !== remaining.length) return null;
     return remaining[unassigned.indexOf(r)] ?? null;
   };
-  const rentalUnitLabel = (r: ReportRecord) => text(allUnits.find(unit => unit.id === r.unit_id)?.name || inferredRentalUnitCode(r) || r.unit_label || 'Gesamte Immobilie');
+  const rentalUnitLabel = (r: ReportRecord) => canonicalUnitLabel({
+    objectLabel: label(r),
+    objectCode: text(r.object_code || r.objekt_code),
+    unitLabel: text(allUnits.find(unit => unit.id === r.unit_id)?.name || inferredRentalUnitCode(r) || r.unit_label),
+    rentType: text(r.rent_type),
+  }) ?? 'Gesamte Immobilie';
   const contracts = (s.tenant_contracts ?? []).filter(r => scoped(r) && unitScoped(r) && r.is_deleted !== true && r.status !== 'vacant');
   const rentals = rawRentals.filter(r => !input.rosensteinUnit || inferredRentalUnitCode(r) === input.rosensteinUnit);
   const rentalHistory = rentals
@@ -207,7 +219,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     const periodTo = text(meta.periodTo || `${meta.billingYear ?? billing.year}-12-31`).slice(0,10);
     return records(ws.apartments).filter(a => a.active !== false && text(a.tenantName)).map(a => ({ object, tenant: text(a.tenantName), unit: text(a.label), from: periodFrom, to: periodTo, area: a.area, advancePayments: n(a.advancePayments), occupancyMonths: n(a.occupancyMonths), source: 'Nebenkostenabrechnung' as const, workspace: ws }));
   }).filter(p => (!input.objectId || p.object?.id === input.objectId) && (!input.rosensteinUnit || detectRosensteinTaxUnit(p.unit) === input.rosensteinUnit) && p.from <= to && p.to >= from);
-  const contractPeriods: TenantPeriod[] = contracts.map(c => ({ object: objectFor(c), tenant: name(c), unit: text(c.unit_label), from: text(c.start_date || '0000-01-01').slice(0,10), to: text(c.end_date || '9999-12-31').slice(0,10), area: areaForUnit(objectFor(c),c.unit_label), source: 'Mietvertrag' as const }));
+  const contractPeriods: TenantPeriod[] = contracts.map(c => ({ object: objectFor(c), tenant: name(c), unit: unitLabel(c), from: text(c.start_date || '0000-01-01').slice(0,10), to: text(c.end_date || '9999-12-31').slice(0,10), area: areaForUnit(objectFor(c),c.unit_label), source: 'Mietvertrag' as const }));
   const meaningfulTenant = (value: unknown) => {
     const normalized = normalizePerson(value);
     return normalized && !['nicht gepflegt','nicht zugeordnet','nicht eindeutig zugeordnet'].includes(normalized) && normalized !== '';

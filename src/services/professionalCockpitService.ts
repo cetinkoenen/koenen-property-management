@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase";
 import { effectiveRentDate, rentPaymentCutoffDay } from "../lib/rentMonth";
+import { canonicalUnitLabel } from "../lib/canonicalUnitLabel";
 import { listFinanceEntries } from "./financeEntryRepository";
 import { listObjectDirectory } from "./objectDirectoryService";
 import { listTenantContracts } from "./tenantService";
@@ -298,8 +299,12 @@ function bookingMatchesContract(
 }
 
 function cockpitUnitLabel(contract: ContractRow, objectLabel: string): string | null {
-  if (!isFuertherLabel(objectLabel)) return contract.unit_label;
-  return isGarageReference(`${contract.unit_label ?? ""} ${contract.rent_type ?? ""}`) ? "Garage" : "Wohnung";
+  return canonicalUnitLabel({
+    objectLabel,
+    objectCode: contract.object_code,
+    unitLabel: contract.unit_label,
+    rentType: contract.rent_type,
+  });
 }
 
 function vacancyMatchesContract(vacancy: UnitVacancy, contract: ContractRow): boolean {
