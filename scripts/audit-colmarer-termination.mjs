@@ -51,8 +51,8 @@ const query = async (table, select, limit = 1_000) => {
 };
 
 const objects = await query("v_object_dropdown", "value,object_id,property_id,objekt_code,label", 100);
-const contracts = await query("tenant_contracts", "id,tenant_id,property_id,object_code,unit_label,start_date,end_date,status,is_deleted,updated_at", 500);
-const vacancies = await query("unit_vacancies", "id,property_id,object_code,object_label,unit_label,vacancy_type,status,start_date,end_date,reason,notes,is_deleted,created_at,updated_at", 500);
+const contracts = await query("tenant_contracts", "id,user_id,tenant_id,property_id,object_code,unit_label,start_date,end_date,status,is_deleted,updated_at", 500);
+const vacancies = await query("unit_vacancies", "id,user_id,property_id,object_code,object_label,unit_label,vacancy_type,status,start_date,end_date,reason,notes,is_deleted,created_at,updated_at", 500);
 const moves = await query("move_processes", "id,tenant_id,tenant_contract_id,property_id,object_code,unit_label,process_type,status,handover_date,deposit_status,checklist,notes,created_at,updated_at", 500);
 const portfolioProperties = await query("portfolio_properties", "id,core_property_id,name", 100);
 const rentals = await query("portfolio_property_rentals", "id,property_id,unit_id,start_date,end_date,rent_monthly,kaltmiete_laut_mietvertrag,nebenkosten,gesamt_mietkosten,created_at,updated_at", 500);
