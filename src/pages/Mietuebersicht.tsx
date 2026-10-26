@@ -1908,7 +1908,7 @@ export default function Mietuebersicht({
               tenantKey: `${tenantKey}::${period.year}-${String(period.month).padStart(2, "0")}`,
               tenantLookupKey: tenantKey,
               label: object.label,
-              unitLabel: units.length > 1 ? unit.title : undefined,
+              unitLabel: unit.title,
               referenceLabel: units.length > 1 ? unit.ref : undefined,
               paidAmount,
               expectedAmount,

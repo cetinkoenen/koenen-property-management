@@ -136,6 +136,7 @@ for (const [source, label] of [
   assert.doesNotMatch(source, /\.from\("portfolio_property_rentals"\)/, `${label} darf keine parallele Vermietungszeitreihe abfragen`);
 }
 assert.match(rentOverview, /listPortfolioUnits\(\)/, "Mieteingang muss lesbare Einheiten über die zentrale Einheitenquelle laden");
+assert.match(rentOverview, /unitLabel: unit\.title/, "Mieteingang muss die kanonische Einheit auch bei Objekten mit nur einer Einheit sichtbar ausgeben");
 assert.doesNotMatch(rentOverview, /\.from\("portfolio_units"\)/, "Mieteingang darf Einheiten nicht parallel direkt abfragen");
 assert.match(rentAdjustmentRepository, /function listRentAdjustments[\s\S]*\.from\("rent_adjustments"\)[\s\S]*\.eq\("is_deleted", false\)[\s\S]*\.range\(offset, offset \+ pageSize - 1\)/, "Die zentrale Mietanpassungsquelle muss ausschließlich aktive Datensätze vollständig paginiert laden");
 for (const [source, label] of [[rentOverview, "Mieteingang"], [rentDevelopment, "Mietentwicklung"]]) {
