@@ -10,6 +10,8 @@ const appDataContext = await readFile(new URL("../src/state/AppDataContext.tsx",
 const exposeService = await readFile(new URL("../src/lib/uploadExpose.ts", import.meta.url), "utf8");
 const consistencyEngine = await readFile(new URL("../src/services/financeConsistencyEngine.ts", import.meta.url), "utf8");
 const financeAudit = await readFile(new URL("./audit-finance-entries.mjs", import.meta.url), "utf8");
+const taxYearAudit = await readFile(new URL("./audit-tax-year-readiness.mjs", import.meta.url), "utf8");
+const unsafeRuleMigration = await readFile(new URL("../supabase/migrations/20261026090000_deactivate_unsafe_tax_presort_rule.sql", import.meta.url), "utf8");
 const p254ReferenceFix = await readFile(
   new URL("../supabase/migrations/20260927150000_fix_p254_finance_reference_typo.sql", import.meta.url),
   "utf8",
@@ -33,6 +35,10 @@ assert.doesNotMatch(appDataContext, /from\("properties"\)\.select\([^\n]*living_
 assert.match(exposeService, /message\.toLowerCase\(\)\.includes\("object not found"\)/, "Ein veralteter Exposé-Verweis darf das Laden aller übrigen Exposés nicht blockieren");
 assert.match(dataCheckPage, /issue_code !== "missing_documents"/, "Fehlende Dokument-Uploads dürfen nicht als Konsistenzfehler gewertet werden");
 assert.match(consistencyEngine, /today\.getDate\(\) > 10/, "Der laufende Monat darf erst nach der Zahlungskalender-Kulanz als fehlend gelten");
+assert.match(taxYearAudit, /openRuleChanges/, "Steuerjahres-Audit muss ausstehende Vorsortierungsänderungen prüfen");
+assert.match(taxYearAudit, /creditRateSplitMismatch/, "Steuerjahres-Audit muss Zins-/Tilgungsdifferenzen prüfen");
+assert.match(unsafeRuleMigration, /is_active = false/, "Unsichere globale Steuerregel muss deaktiviert werden");
+assert.match(unsafeRuleMigration, /Historical finance entries are intentionally left unchanged/, "Bereits geprüfte Buchungen dürfen durch die Regelbereinigung nicht verändert werden");
 assert.match(consistencyEngine, /resolveChfLoanSplitRule[\s\S]*loan-increase-chf-[\s\S]*severity: "ok"/, "Bestaetigte CHF-Darlehen duerfen bei wechselkursbedingtem EUR-Restschuldanstieg keine falsche Warnung erzeugen");
 assert.match(financeAudit, /invalid_rosenstein_unit_reference[\s\S]*E008440000123/, "Die Finanzpruefung muss eine falsche P254-Einheitenreferenz erkennen");
 assert.match(p254ReferenceFix, /set note = 'P254 - E008440000123 Nachzahlungen'[\s\S]*and note = 'P254 - E008440000124 Nachzahlungen'/, "Der belegte P254-Tippfehler muss auf die zentrale Einheitenreferenz korrigiert werden");

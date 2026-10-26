@@ -4,8 +4,12 @@ import { resolve } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 
 const PROJECT_REF = "ufqfrotpefxtwczuqrxf";
-const START_DATE = "2024-01-01";
-const END_DATE = new Date().toISOString().slice(0, 10);
+const START_DATE = process.env.AUDIT_START_DATE || "2024-01-01";
+const END_DATE = process.env.AUDIT_END_DATE || new Date().toISOString().slice(0, 10);
+
+if (!/^\d{4}-\d{2}-\d{2}$/.test(START_DATE) || !/^\d{4}-\d{2}-\d{2}$/.test(END_DATE) || START_DATE > END_DATE) {
+  throw new Error("AUDIT_START_DATE/AUDIT_END_DATE müssen einen gültigen, aufsteigenden Zeitraum im Format YYYY-MM-DD bilden.");
+}
 
 function loadEnv(fileName) {
   const filePath = resolve(process.cwd(), fileName);
