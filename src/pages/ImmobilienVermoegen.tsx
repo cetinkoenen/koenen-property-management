@@ -24,7 +24,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import { EmptyState, PageHeader, SectionPanel } from "@/components/ui/professional";
+import { EmptyState, PageHeader } from "@/components/ui/professional";
 import { useAuth } from "@/auth/AuthProvider";
 import { isAdminEmail } from "@/auth/accessControl";
 import { portfolioGalleryItems, type PortfolioGalleryItem } from "@/data/portfolioGallery";
@@ -1329,16 +1329,24 @@ function StandardRentInfoPanel({
   ];
 
   return (
-    <article className="overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-5 py-4">
-        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Mietdaten</p>
-        <h2 className="text-xl font-black text-slate-950">{title}</h2>
-        <p className="mt-1 text-sm font-bold leading-6 text-slate-500">Mieterinformationen und Mietkosten sind getrennt gepflegt.</p>
+    <article className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.05)]">
+      <div className="flex items-start gap-3 border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80 px-5 py-5 sm:px-6">
+        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#edf7f4] text-[#255f6f] ring-1 ring-[#cce9e2]">
+          <BadgeEuro size={19} />
+        </span>
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.17em] text-[#255f6f]">Mietdaten</p>
+          <h2 className="mt-0.5 text-xl font-black tracking-[-0.02em] text-slate-950">{title}</h2>
+          <p className="mt-1 text-sm font-bold leading-6 text-slate-500">Mieterinformationen, Mietkosten und Kaution in einer gemeinsamen Objektakte.</p>
+        </div>
       </div>
 
-      <div className="grid gap-4 bg-slate-50/70 p-5 xl:grid-cols-[1.1fr_0.9fr]">
-        <section className="rounded-[18px] border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="text-base font-black text-slate-950">Mieterinformationen</h3>
+      <div className="grid items-stretch gap-4 bg-slate-50/50 p-4 sm:p-5 lg:grid-cols-2">
+        <section className="flex h-full flex-col rounded-[18px] border border-slate-200/90 bg-white p-4 transition hover:border-slate-300 sm:p-5">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <h3 className="text-base font-black text-slate-950">Mieterinformationen</h3>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Kontakt</span>
+          </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             {[
               ["firstName", "Name", "Name"],
@@ -1358,8 +1366,11 @@ function StandardRentInfoPanel({
           </div>
         </section>
 
-        <section className="rounded-[18px] border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="text-base font-black text-slate-950">Mietkosten</h3>
+        <section className="flex h-full flex-col rounded-[18px] border border-slate-200/90 bg-white p-4 transition hover:border-slate-300 sm:p-5">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <h3 className="text-base font-black text-slate-950">Mietkosten</h3>
+            <span className="rounded-full bg-[#edf7f4] px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#255f6f]">Vertrag</span>
+          </div>
           <div className="mt-4 grid gap-3">
             {[
               ["coldRent", "Kaltmiete"],
@@ -1396,7 +1407,7 @@ function StandardRentInfoPanel({
         </section>
       </div>
 
-      <div className="flex flex-col gap-2 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-2 border-t border-slate-100 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-end">
         <button
           type="button"
           disabled={!isAdmin}
@@ -2019,15 +2030,22 @@ function DetailPage({
                 )}
             </div>
 
-            {DETAIL_TEMPLATE_SECTIONS.map((section) => {
+            {DETAIL_TEMPLATE_SECTIONS.map((section, sectionIndex) => {
               const Icon = section.icon;
+              const fieldKeys = section.columns.flatMap((column) => column.fields);
+              const completedFields = fieldKeys.filter((fieldKey) => {
+                if (fieldKey === "remainingDebt") return finance.lastBalance > 0;
+                return String(card.draft[fieldKey] ?? "").trim().length > 0;
+              }).length;
+              const completionPercent = fieldKeys.length ? Math.round((completedFields / fieldKeys.length) * 100) : 0;
               return (
                 <Fragment key={section.id}>
                 <article id={section.id} className="scroll-mt-28 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.05)]">
-                  <div className="flex flex-col gap-3 border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                  <div className="flex flex-col gap-4 border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                     <div className="flex items-start gap-3">
-                      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#edf7f4] text-[#255f6f] ring-1 ring-[#cce9e2]">
+                      <span className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#edf7f4] text-[#255f6f] ring-1 ring-[#cce9e2]">
                         <Icon size={19} />
+                        <span className="absolute -right-1.5 -top-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-[#255f6f] px-1 text-[9px] font-black text-white">{sectionIndex + 1}</span>
                       </span>
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-[0.17em] text-[#255f6f]">{section.pageLabel}</p>
@@ -2035,46 +2053,56 @@ function DetailPage({
                         <p className="mt-1 text-sm font-bold leading-6 text-slate-500">{section.subtitle}</p>
                       </div>
                     </div>
+                    <div className="min-w-[190px] rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Datenstand</span>
+                        <strong className="text-xs font-black text-[#255f6f]">{completedFields}/{fieldKeys.length}</strong>
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100" aria-label={`${completionPercent} Prozent vollständig`}>
+                        <div className="h-full rounded-full bg-[#6fb9a8] transition-all" style={{ width: `${completionPercent}%` }} />
+                      </div>
+                    </div>
                   </div>
-                  <div className="grid gap-4 bg-slate-50/50 p-4 sm:p-5 lg:grid-cols-2 2xl:grid-cols-3">
+                  <div className="divide-y divide-slate-200 bg-slate-50/50 px-4 sm:px-5">
                     {section.columns.map((column) => (
-                      <div key={column.title} className="rounded-[18px] border border-slate-200/90 bg-white p-4 transition hover:border-slate-300 sm:p-5">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
+                      <section key={column.title} className="grid gap-5 py-5 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-7 lg:py-6">
+                        <div className="self-start">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
                           <h3 className="text-base font-black text-slate-950">{column.title}</h3>
+                          <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">{column.fields.length} Felder</span>
+                          </div>
+                          {column.description ? <p className="mt-2 text-xs font-bold leading-5 text-slate-500">{column.description}</p> : null}
                           {isAdmin ? (
-                            <span className="inline-flex min-h-7 items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 text-[11px] font-black uppercase tracking-[0.12em] text-emerald-700">
-                              Bearbeitbar
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => onSave(card.id)}
+                              className="mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#b9ddd4] bg-[#edf7f4] px-3 text-xs font-black text-[#255f6f] transition hover:border-[#6fb9a8] hover:bg-[#dff1ec] focus:outline-none focus:ring-2 focus:ring-teal-200"
+                              aria-label={`${column.title} speichern`}
+                            >
+                              <Save size={15} /> Gruppe speichern
+                            </button>
                           ) : null}
                         </div>
-                        {column.description ? <p className="mt-1 text-sm font-bold leading-6 text-slate-500">{column.description}</p> : null}
-                        <div className="mt-4 grid gap-3">
-                          {column.fields.map((fieldKey) => {
-                            const field = FIELD_BY_KEY.get(fieldKey);
-                            if (!field) return null;
-                            return (
-                              <DetailField
-                                key={field.key}
-                                field={field}
-                                value={field.key === "remainingDebt" ? String(finance.lastBalance) : card.draft[field.key] ?? ""}
-                                disabled={!isAdmin || field.key === "remainingDebt"}
-                                onChange={(value) => onUpdate(card.id, field.key, value)}
-                              />
-                            );
-                          })}
+                        <div className="min-w-0">
+                          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                            {column.fields.map((fieldKey) => {
+                              const field = FIELD_BY_KEY.get(fieldKey);
+                              if (!field) return null;
+                              return (
+                                <div key={field.key} className={field.key === "modernizations" ? "sm:col-span-2 xl:col-span-3" : "min-w-0"}>
+                                  <DetailField
+                                    field={field}
+                                    value={field.key === "remainingDebt" ? String(finance.lastBalance) : card.draft[field.key] ?? ""}
+                                    disabled={!isAdmin || field.key === "remainingDebt"}
+                                    onChange={(value) => onUpdate(card.id, field.key, value)}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {renderAction(column.action)}
                         </div>
-                        {renderAction(column.action)}
-                        {isAdmin ? (
-                          <button
-                            type="button"
-                            onClick={() => onSave(card.id)}
-                            className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#255f6f] px-4 text-sm font-black text-white shadow-sm transition hover:bg-[#1d4f5d] focus:outline-none focus:ring-2 focus:ring-teal-200"
-                            aria-label={`${column.title} speichern`}
-                          >
-                            <Save size={17} /> {column.title} speichern
-                          </button>
-                        ) : null}
-                      </div>
+                      </section>
                     ))}
                   </div>
                 </article>
@@ -2082,25 +2110,37 @@ function DetailPage({
               );
             })}
             <div id="objektnotizen" className="scroll-mt-28">
-              <SectionPanel title="Notizen" description="Freier Bereich für manuelle Ergänzungen, Bankhinweise oder spätere Prüfnotizen.">
-                <textarea
-                  className="min-h-32 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-950 shadow-sm outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
-                  value={card.draft.notes ?? ""}
-                  disabled={!isAdmin}
-                  onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onUpdate(card.id, "notes", event.target.value)}
-                />
-              </SectionPanel>
+              <article className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.05)]">
+                <div className="flex items-start gap-3 border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80 px-5 py-5 sm:px-6">
+                  <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#edf7f4] text-[#255f6f] ring-1 ring-[#cce9e2]">
+                    <FileText size={19} />
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.17em] text-[#255f6f]">Objektakte</p>
+                    <h2 className="mt-0.5 text-xl font-black tracking-[-0.02em] text-slate-950">Notizen</h2>
+                    <p className="mt-1 text-sm font-bold leading-6 text-slate-500">Manuelle Ergänzungen, Bankhinweise und spätere Prüfnotizen.</p>
+                  </div>
+                </div>
+                <div className="bg-slate-50/50 p-4 sm:p-5">
+                  <textarea
+                    className="min-h-36 w-full resize-y rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm font-bold leading-6 text-slate-950 outline-none transition hover:border-slate-300 focus:border-[#6fb9a8] focus:ring-2 focus:ring-[#cce9e2] disabled:bg-slate-100 disabled:text-slate-500"
+                    value={card.draft.notes ?? ""}
+                    disabled={!isAdmin}
+                    onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onUpdate(card.id, "notes", event.target.value)}
+                  />
+                </div>
+              </article>
             </div>
 
-            <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-[24px] border border-white/70 bg-white/90 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm font-bold text-slate-600">{!isAdmin ? "Nur-Lesen-Zugang: Die Detailmaske ist geschützt." : saveStatus ?? "Jede Eigenschaftsgruppe kann direkt oder gemeinsam gespeichert und danach erneut bearbeitet werden. Nur die Restschuld wird ausschließlich auf der Seite Darlehen gepflegt."}</p>
+            <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-[20px] border border-slate-200/80 bg-white/92 p-3 shadow-[0_16px_40px_rgba(15,23,42,0.12)] backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:px-4">
+              <p className="text-xs font-bold leading-5 text-slate-500">{!isAdmin ? "Nur-Lesen-Zugang: Die Detailmaske ist geschützt." : saveStatus ?? "Alle Änderungen dieser Objektakte gemeinsam speichern. Die Restschuld bleibt zentral in Darlehen gepflegt."}</p>
               <button
                 type="button"
                 onClick={() => onSave(card.id)}
                 disabled={!isAdmin}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#255f6f] px-5 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#255f6f] px-5 text-sm font-black text-white shadow-sm transition hover:bg-[#1d4f5d] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
               >
-                <Save size={18} /> Detailmaske speichern
+                <Save size={17} /> Objektakte speichern
               </button>
             </div>
           </div> : null}

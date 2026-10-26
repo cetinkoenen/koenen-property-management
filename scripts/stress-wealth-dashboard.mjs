@@ -15,6 +15,9 @@ assert.match(wealthSource, /PROPERTY_DETAIL_TABS[\s\S]*shortLabel[\s\S]*descript
 assert.match(wealthSource, /Aktueller Bereich[\s\S]*activeTabConfig\.label/, "Der Objektkopf muss auf jeder Unterseite den aktuellen Fachbereich anzeigen");
 assert.match(wealthSource, /sticky top-\[76px\][\s\S]*overflow-x-auto/, "Die mobile Immobilien-Navigation muss unterhalb der App-Kopfzeile fixiert und horizontal scrollbar bleiben");
 assert.match(wealthSource, /Digitale Objektakte[\s\S]*Dokumentenstatus[\s\S]*Direkt zu/, "Die Objektübersicht muss Foto, Dokumentstatus und Abschnittsnavigation professionell bündeln");
+assert.match(wealthSource, /Datenstand[\s\S]*completedFields[\s\S]*completionPercent/, "Jeder Objektakten-Abschnitt muss seinen Vollständigkeitsstand sichtbar machen");
+assert.match(wealthSource, /divide-y divide-slate-200[\s\S]*lg:grid-cols-\[220px_minmax\(0,1fr\)\]/, "Objektakten-Gruppen müssen als einheitliche horizontale Formularzeilen statt unterschiedlich großer Unterkarten erscheinen");
+assert.match(wealthSource, /grid gap-3 sm:grid-cols-2 xl:grid-cols-3/, "Feldeingaben müssen die verfügbare Desktopbreite in einem gleichmäßigen Raster nutzen");
 
 const EMPTY_DRAFT = {
   name: "",
