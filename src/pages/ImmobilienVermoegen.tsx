@@ -2,7 +2,9 @@ import { Fragment, lazy, Suspense, useCallback, useEffect, useRef, useMemo, useS
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
+  BadgeEuro,
   Building2,
+  ChartNoAxesCombined,
   Check,
   ChevronDown,
   CircleAlert,
@@ -15,6 +17,7 @@ import {
   Landmark,
   MapPin,
   PlusCircle,
+  ReceiptText,
   Save,
   ShieldCheck,
   Upload,
@@ -923,8 +926,10 @@ function DetailField({
   disabled?: boolean;
 }) {
   const commonClass = [
-    "min-h-11 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-950 shadow-sm outline-none transition focus:border-teal-300 focus:ring-2 focus:ring-teal-100",
-    disabled ? "bg-slate-100 text-slate-500" : "bg-white",
+    "min-h-11 rounded-xl border px-3 py-2 text-sm font-bold text-slate-950 outline-none transition",
+    disabled
+      ? "border-slate-200 bg-slate-100 text-slate-500"
+      : "border-slate-200 bg-slate-50/60 hover:border-slate-300 hover:bg-white focus:border-[#6fb9a8] focus:bg-white focus:ring-2 focus:ring-[#cce9e2]",
   ].join(" ");
 
   if (field.type === "select") {
@@ -944,7 +949,7 @@ function DetailField({
 
   if (field.type === "checkbox") {
     return (
-      <label className={["flex min-h-[68px] items-center gap-3 rounded-2xl border border-slate-200 px-3 py-2 text-sm font-black shadow-sm", disabled ? "bg-slate-100 text-slate-500" : "bg-white text-slate-700"].join(" ")}>
+      <label className={["flex min-h-[60px] items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black transition", disabled ? "bg-slate-100 text-slate-500" : "bg-slate-50/60 text-slate-700 hover:border-slate-300 hover:bg-white"].join(" ")}>
         <input
           type="checkbox"
           checked={value === "Ja"}
@@ -1208,7 +1213,7 @@ function RentDataField({
     <label className="grid gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
       {label}
       <input
-        className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-950 shadow-sm outline-none transition focus:border-teal-300 focus:ring-2 focus:ring-teal-100 disabled:bg-slate-100 disabled:text-slate-500"
+        className="min-h-11 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm font-bold text-slate-950 outline-none transition hover:border-slate-300 hover:bg-white focus:border-[#6fb9a8] focus:bg-white focus:ring-2 focus:ring-[#cce9e2] disabled:bg-slate-100 disabled:text-slate-500"
         value={value}
         disabled={disabled}
         placeholder={placeholder}
@@ -1546,12 +1551,17 @@ function PropertySpecialistAreaNotice({ mainPagePath, mainPageLabel }: PropertyS
   return (
     <aside
       aria-label="Hinweis zur gefilterten Objektansicht"
-      className="flex flex-col gap-3 rounded-[18px] border border-sky-200 bg-sky-50 px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col gap-3 rounded-[20px] border border-slate-200 bg-white px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] sm:flex-row sm:items-center sm:justify-between"
     >
-      <p className="flex max-w-4xl items-start gap-2 text-sm font-bold leading-6 text-sky-950">
-        <Info aria-hidden="true" className="mt-0.5 shrink-0 text-sky-700" size={18} />
-        <span>Dies ist eine gefilterte Informationsübersicht für dieses Objekt. Für Detailbearbeitungen oder die Gesamtübersicht nutzen Sie die Hauptseite.</span>
-      </p>
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#edf7f4] text-[#255f6f] ring-1 ring-[#cce9e2]">
+          <Info aria-hidden="true" size={17} />
+        </span>
+        <div>
+          <p className="text-sm font-black text-slate-800">Objektbezogene Ansicht</p>
+          <p className="mt-0.5 max-w-4xl text-xs font-bold leading-5 text-slate-500">Dies ist eine gefilterte Informationsübersicht für dieses Objekt. Für Detailbearbeitungen oder die Gesamtübersicht nutzen Sie die Hauptseite.</p>
+        </div>
+      </div>
       <Link
         to={mainPagePath}
         className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#255f6f] px-4 text-center text-sm font-black !text-white no-underline shadow-sm transition hover:bg-[#1d4d5a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#255f6f]"
@@ -1728,12 +1738,12 @@ function PropertyRentReceiptOverview({ rentObjectId, propertyLabel }: { rentObje
 
 type PropertyDetailTab = "overview" | "rent" | "cashflow" | "loan" | "utilities";
 
-const PROPERTY_DETAIL_TABS: Array<{ key: PropertyDetailTab; label: string; hash: string }> = [
-  { key: "overview", label: "Objektübersicht", hash: "objektuebersicht" },
-  { key: "rent", label: "Mieteingang", hash: "miete" },
-  { key: "cashflow", label: "Cashflow", hash: "cashflow" },
-  { key: "loan", label: "Darlehen", hash: "darlehen" },
-  { key: "utilities", label: "Nebenkosten", hash: "nebenkosten" },
+const PROPERTY_DETAIL_TABS: Array<{ key: PropertyDetailTab; label: string; shortLabel: string; description: string; hash: string; icon: typeof Home }> = [
+  { key: "overview", label: "Objektübersicht", shortLabel: "Übersicht", description: "Stammdaten & Objektakte", hash: "objektuebersicht", icon: Home },
+  { key: "rent", label: "Mieteingang", shortLabel: "Miete", description: "Soll, Ist & Verlauf", hash: "miete", icon: BadgeEuro },
+  { key: "cashflow", label: "Cashflow", shortLabel: "Cashflow", description: "Ertrag & Entwicklung", hash: "cashflow", icon: ChartNoAxesCombined },
+  { key: "loan", label: "Darlehen", shortLabel: "Darlehen", description: "Finanzierung & Tilgung", hash: "darlehen", icon: Landmark },
+  { key: "utilities", label: "Nebenkosten", shortLabel: "Nebenkosten", description: "Abrechnung & Status", hash: "nebenkosten", icon: ReceiptText },
 ];
 
 function propertyDetailTabFromHash(hash: string): PropertyDetailTab {
@@ -1812,6 +1822,18 @@ function DetailPage({
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${tab.hash}`);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const activeTabConfig = PROPERTY_DETAIL_TABS.find((tab) => tab.key === activeTab) ?? PROPERTY_DETAIL_TABS[0];
+  const propertyName = card.draft.name || card.row?.property_name || "Immobilie";
+  const propertyAddress = [
+    card.draft.street && `${card.draft.street} ${card.draft.houseNumber}`.trim(),
+    [card.draft.postalCode, card.draft.city].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", ") || "Adresse noch nicht vollständig gepflegt";
+  const heroMetrics = [
+    { label: "Marktwert", value: formatCurrencyExact(finance.value), tone: "text-slate-950" },
+    { label: "Restschuld", value: formatCurrencyExact(finance.lastBalance), tone: "text-slate-950" },
+    { label: `Cashflow ${year}`, value: formatCurrencyExact(finance.netCashflow), tone: finance.netCashflow >= 0 ? "text-emerald-700" : "text-rose-700" },
+    { label: `Mieteingang ${year}`, value: formatCurrencyExact(finance.rentIncome), tone: "text-[#255f6f]" },
+  ];
   const appendValue = (key: string, value: string) => {
     const current = key === "modernizations" ? removeModernizationAutoBlock(card.draft[key] ?? "") : card.draft[key]?.trim();
     onUpdate(card.id, key, current ? `${current}\n${value}` : value);
@@ -1837,86 +1859,135 @@ function DetailPage({
   };
 
   return (
-    <div className="space-y-5">
-      <section className="rounded-[24px] border border-white/80 bg-white/90 p-5 shadow-[0_18px_44px_rgba(51,65,85,0.08)] backdrop-blur">
-        {activeTab === "overview" ? <div className="mb-5 flex flex-col gap-3 border-b border-slate-200 pb-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Immobilienvermögen</p>
-            <h1 className="mt-2 text-xl font-black text-slate-950 sm:text-2xl">{card.draft.name || "Immobilie"}</h1>
-            <p className="mt-1 text-sm font-bold text-slate-500">
-              {[card.draft.street && `${card.draft.street} ${card.draft.houseNumber}`.trim(), [card.draft.postalCode, card.draft.city].filter(Boolean).join(" ")]
-                .filter(Boolean)
-                .join(", ") || "Adresse offen"}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => navigate("/immobilienvermoegen")}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-800 shadow-sm"
-          >
-            <ArrowLeft size={17} /> Zur Übersicht
-          </button>
-        </div> : null}
-
-        <nav aria-label="Immobilienbereiche" role="tablist" className="mb-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-          {PROPERTY_DETAIL_TABS.map((tab) => (
+    <div className="space-y-5 pb-8">
+      <section className="relative overflow-hidden rounded-[28px] border border-slate-200/80 bg-gradient-to-br from-white via-white to-[#edf7f4] shadow-[0_20px_55px_rgba(15,23,42,0.08)]">
+        <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-[#9dd9ca]/20 blur-3xl" aria-hidden="true" />
+        <div className="relative grid gap-6 px-5 py-6 lg:grid-cols-[minmax(0,1fr)_minmax(460px,0.9fr)] lg:px-7 lg:py-7">
+          <div className="min-w-0">
             <button
-              key={tab.key}
               type="button"
-              role="tab"
-              aria-selected={activeTab === tab.key}
-              aria-controls={`property-tab-${tab.key}`}
-              onClick={() => selectTab(tab)}
-              className={["inline-flex min-h-11 items-center justify-center rounded-xl px-3 text-center text-sm font-black transition", activeTab === tab.key ? "bg-[#255f6f] text-white" : "border border-slate-200 bg-white text-slate-700 hover:border-teal-200 hover:bg-teal-50"].join(" ")}
+              onClick={() => navigate("/immobilienvermoegen")}
+              className="inline-flex min-h-9 items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-3 text-xs font-black text-slate-600 shadow-sm transition hover:border-[#9dd9ca] hover:text-[#255f6f]"
             >
-              {tab.label}
+              <ArrowLeft size={15} /> Immobilienvermögen
             </button>
-          ))}
-        </nav>
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-[#255f6f] px-3 py-1 text-[10px] font-black uppercase tracking-[0.17em] text-white">Objektakte</span>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-slate-600">{card.draft.usageType || "Nutzung offen"}</span>
+              {isAdmin ? <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">Bearbeitbar</span> : null}
+            </div>
+            <h1 className="mt-3 text-3xl font-black tracking-[-0.035em] text-slate-950 sm:text-4xl">{propertyName}</h1>
+            <p className="mt-2 flex items-start gap-2 text-sm font-bold leading-6 text-slate-500">
+              <MapPin className="mt-0.5 shrink-0 text-[#255f6f]" size={17} /> {propertyAddress}
+            </p>
+            <div className="mt-5">
+              <p className="text-[10px] font-black uppercase tracking-[0.17em] text-slate-400">Aktueller Bereich</p>
+              <p className="mt-1 text-sm font-black text-slate-800">{activeTabConfig.label} <span className="font-bold text-slate-400">· {activeTabConfig.description}</span></p>
+            </div>
+          </div>
 
+          <div className="grid grid-cols-2 gap-3 self-end">
+            {heroMetrics.map((metric) => (
+              <div key={metric.label} className="min-w-0 rounded-2xl border border-white/80 bg-white/85 px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.06)] backdrop-blur">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">{metric.label}</p>
+                <b className={`mt-2 block truncate text-base font-black sm:text-lg ${metric.tone}`}>{metric.value}</b>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="sticky top-[76px] z-20 rounded-[22px] border border-slate-200/80 bg-white/92 p-2 shadow-[0_12px_35px_rgba(15,23,42,0.08)] backdrop-blur-xl xl:top-3">
+        <nav aria-label="Immobilienbereiche" role="tablist" className="flex min-w-0 gap-2 overflow-x-auto overscroll-x-contain pb-1 sm:pb-0">
+          {PROPERTY_DETAIL_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const selected = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-controls={`property-tab-${tab.key}`}
+                onClick={() => selectTab(tab)}
+                className={[
+                  "group flex min-h-[58px] min-w-[150px] flex-1 items-center gap-3 rounded-2xl px-3 text-left transition",
+                  selected ? "bg-[#255f6f] text-white shadow-sm" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950",
+                ].join(" ")}
+              >
+                <span className={["inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl", selected ? "bg-white/15 text-white" : "bg-slate-100 text-[#255f6f] group-hover:bg-white"].join(" ")}>
+                  <Icon size={18} />
+                </span>
+                <span className="min-w-0">
+                  <b className="block truncate text-sm font-black">{tab.shortLabel}</b>
+                  <span className={["mt-0.5 hidden truncate text-[10px] font-bold xl:block", selected ? "text-white/70" : "text-slate-400"].join(" ")}>{tab.description}</span>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+      </section>
+
+      <section className="min-w-0">
         <div className="space-y-5">
           {activeTab === "overview" ? <div id="property-tab-overview" role="tabpanel" aria-label="Objektübersicht" className="space-y-5">
-            <article className="grid gap-4 rounded-[18px] border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[280px_1fr]">
-              <PropertyImageButton image={image} label={card.draft.name || "Immobilie"} className="min-h-[190px]" onOpen={onImageOpen} />
-              <div className="flex flex-col justify-center">
-                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Objektfoto</p>
-                <h2 className="mt-2 text-xl font-black text-slate-950">{image?.title ?? card.draft.name ?? "Immobilie"}</h2>
-                <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-slate-500">
-                  Fotoquelle: Portfolio-Galerie. Ein Klick auf das Foto öffnet die vergrößerte Ansicht.
-                </p>
-              </div>
-            </article>
-            {isRosensteinCard(card) ? <RosensteinUnitOverview entries={entries} year={year} parkingUnits={parkingUnits} /> : null}
-
-            <article className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
-              <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <article className="grid overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)] lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.2fr)]">
+              <PropertyImageButton image={image} label={propertyName} className="min-h-[240px] rounded-none border-0 shadow-none lg:min-h-[300px]" onOpen={onImageOpen} />
+              <div className="flex min-w-0 flex-col justify-between gap-6 p-5 sm:p-6">
                 <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Objektakte</p>
-                  <h2 className="text-xl font-black text-slate-950">Exposé</h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[10px] font-black uppercase tracking-[0.17em] text-[#255f6f]">Digitale Objektakte</p>
+                    <span className="h-1 w-1 rounded-full bg-slate-300" />
+                    <p className="text-[10px] font-black uppercase tracking-[0.17em] text-slate-400">Exposé & Stammdaten</p>
+                  </div>
+                  <h2 className="mt-3 text-2xl font-black tracking-[-0.025em] text-slate-950">{image?.title ?? propertyName}</h2>
+                  <p className="mt-2 max-w-2xl text-sm font-bold leading-6 text-slate-500">
+                    Alle Objekt-, Miet- und Finanzinformationen werden in einer zentralen Akte zusammengeführt. Das Exposé nutzt dieselben geprüften Datenquellen.
+                  </p>
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Dokumentenstatus</p>
+                    <p className="mt-1 text-sm font-black text-slate-700">
+                      {uploadedExpose ? `Hinterlegt · ${uploadedExpose.fileName}` : "Noch kein Exposé-PDF hinterlegt"}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => onExposePreview(card, extra, finance)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-800 shadow-sm">
-                    <Eye size={17} /> Ansehen
+                  <button type="button" onClick={() => onExposePreview(card, extra, finance)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-800 shadow-sm transition hover:bg-slate-50">
+                    <Eye size={17} /> Vorschau
                   </button>
-                  <button type="button" onClick={() => onExposeGenerate(card, extra, finance)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-800 shadow-sm">
+                  <button type="button" onClick={() => onExposeGenerate(card, extra, finance)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-800 shadow-sm transition hover:bg-slate-50">
                     <FileText size={17} /> PDF erstellen
                   </button>
-                  <button type="button" disabled={!isAdmin} onClick={() => onExposeUpload(propertyId)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#255f6f] px-4 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600">
-                    <Upload size={17} /> PDF hochladen
+                  <button type="button" disabled={!isAdmin} onClick={() => onExposeUpload(propertyId)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#255f6f] px-4 text-sm font-black text-white shadow-sm transition hover:bg-[#1d4d5a] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600">
+                    <Upload size={17} /> Hochladen
                   </button>
                   {uploadedExpose ? (
-                    <a href={uploadedExpose.dataUrl} download={uploadedExpose.fileName} className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 no-underline">
+                    <a href={uploadedExpose.dataUrl} download={uploadedExpose.fileName} className="inline-flex min-h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 no-underline transition hover:bg-slate-100">
                       Download
                     </a>
                   ) : null}
                 </div>
               </div>
-              <p className="px-5 py-4 text-sm font-bold leading-6 text-slate-500">
-                {uploadedExpose ? `Aktuell hinterlegt: ${uploadedExpose.fileName}` : "Noch kein PDF hochgeladen. Ein Exposé kann aus den aktuellen Immobilien- und Finanzdaten vorbereitet werden."}
-              </p>
             </article>
+            {isRosensteinCard(card) ? <RosensteinUnitOverview entries={entries} year={year} parkingUnits={parkingUnits} /> : null}
 
-            {isRosensteinCard(card) ? (
+            <nav aria-label="Abschnitte der Objektakte" className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                <span className="shrink-0 px-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Direkt zu</span>
+                {[
+                  ["mietstammdaten", "Mietdaten"],
+                  ...DETAIL_TEMPLATE_SECTIONS.map((section) => [section.id, section.title]),
+                  ["objektnotizen", "Notizen"],
+                ].map(([id, label]) => (
+                  <a key={id} href={`#${id}`} className="inline-flex min-h-9 shrink-0 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-black text-slate-600 no-underline transition hover:border-[#9dd9ca] hover:bg-[#edf7f4] hover:text-[#255f6f]">
+                    {label}
+                  </a>
+                ))}
+              </div>
+            </nav>
+
+            <div id="mietstammdaten" className="scroll-mt-28">
+              {isRosensteinCard(card) ? (
                   <RosensteinRentInfoPanel
                     entries={entries}
                     year={year}
@@ -1946,27 +2017,28 @@ function DetailPage({
                   onDepositSave={onDepositSave}
                 />
                 )}
+            </div>
 
             {DETAIL_TEMPLATE_SECTIONS.map((section) => {
               const Icon = section.icon;
               return (
                 <Fragment key={section.id}>
-                <article className="rounded-[18px] border border-slate-200 bg-white shadow-sm">
-                  <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <article id={section.id} className="scroll-mt-28 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.05)]">
+                  <div className="flex flex-col gap-3 border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                     <div className="flex items-start gap-3">
-                      <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
+                      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#edf7f4] text-[#255f6f] ring-1 ring-[#cce9e2]">
                         <Icon size={19} />
                       </span>
                       <div>
-                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">{section.pageLabel}</p>
-                        <h2 className="text-xl font-black text-slate-950">{section.title}</h2>
+                        <p className="text-[10px] font-black uppercase tracking-[0.17em] text-[#255f6f]">{section.pageLabel}</p>
+                        <h2 className="mt-0.5 text-xl font-black tracking-[-0.02em] text-slate-950">{section.title}</h2>
                         <p className="mt-1 text-sm font-bold leading-6 text-slate-500">{section.subtitle}</p>
                       </div>
                     </div>
                   </div>
-                  <div className="grid gap-5 bg-slate-50/70 p-5 lg:grid-cols-2 2xl:grid-cols-3">
+                  <div className="grid gap-4 bg-slate-50/50 p-4 sm:p-5 lg:grid-cols-2 2xl:grid-cols-3">
                     {section.columns.map((column) => (
-                      <div key={column.title} className="rounded-[16px] border border-slate-200 bg-white p-4 shadow-sm">
+                      <div key={column.title} className="rounded-[18px] border border-slate-200/90 bg-white p-4 transition hover:border-slate-300 sm:p-5">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <h3 className="text-base font-black text-slate-950">{column.title}</h3>
                           {isAdmin ? (
@@ -2009,14 +2081,16 @@ function DetailPage({
                 </Fragment>
               );
             })}
-            <SectionPanel title="Notizen" description="Freier Bereich für manuelle Ergänzungen, Bankhinweise oder spätere Prüfnotizen.">
-              <textarea
-                className="min-h-32 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-950 shadow-sm outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
-                value={card.draft.notes ?? ""}
-                disabled={!isAdmin}
-                onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onUpdate(card.id, "notes", event.target.value)}
-              />
-            </SectionPanel>
+            <div id="objektnotizen" className="scroll-mt-28">
+              <SectionPanel title="Notizen" description="Freier Bereich für manuelle Ergänzungen, Bankhinweise oder spätere Prüfnotizen.">
+                <textarea
+                  className="min-h-32 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-950 shadow-sm outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
+                  value={card.draft.notes ?? ""}
+                  disabled={!isAdmin}
+                  onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onUpdate(card.id, "notes", event.target.value)}
+                />
+              </SectionPanel>
+            </div>
 
             <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-[24px] border border-white/70 bg-white/90 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm font-bold text-slate-600">{!isAdmin ? "Nur-Lesen-Zugang: Die Detailmaske ist geschützt." : saveStatus ?? "Jede Eigenschaftsgruppe kann direkt oder gemeinsam gespeichert und danach erneut bearbeitet werden. Nur die Restschuld wird ausschließlich auf der Seite Darlehen gepflegt."}</p>

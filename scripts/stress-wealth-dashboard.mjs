@@ -11,6 +11,10 @@ assert.match(wealthSource, /\[storageId\]: \{/, "Die zentrale Objekt-ID muss bei
 assert.match(wealthSource, /field\.key === "remainingDebt"/, "Die zentrale Restschuld muss auf der Vermögensseite schreibgeschützt bleiben");
 assert.match(cashflowDashboardSource, /ReferenceLine[\s\S]*value: "TODAY"[\s\S]*visibleTodayMonthKey/, "Alle zeitbezogenen Vermögen-und-Cashflow-Charts müssen den heutigen Monat mit einer TODAY-Linie markieren");
 assert.match(wealthSource, /CentralWealthCashflowDashboard[\s\S]*lockedPropertyId[\s\S]*lockedPropertyLabel/, "Immobilien-Detailseiten müssen dieselbe zentrale TODAY-fähige Cashflow-Komponente verwenden");
+assert.match(wealthSource, /PROPERTY_DETAIL_TABS[\s\S]*shortLabel[\s\S]*description[\s\S]*icon:/, "Alle Immobilien-Unterseiten müssen dieselbe kompakte, beschriftete Tab-Navigation verwenden");
+assert.match(wealthSource, /Aktueller Bereich[\s\S]*activeTabConfig\.label/, "Der Objektkopf muss auf jeder Unterseite den aktuellen Fachbereich anzeigen");
+assert.match(wealthSource, /sticky top-\[76px\][\s\S]*overflow-x-auto/, "Die mobile Immobilien-Navigation muss unterhalb der App-Kopfzeile fixiert und horizontal scrollbar bleiben");
+assert.match(wealthSource, /Digitale Objektakte[\s\S]*Dokumentenstatus[\s\S]*Direkt zu/, "Die Objektübersicht muss Foto, Dokumentstatus und Abschnittsnavigation professionell bündeln");
 
 const EMPTY_DRAFT = {
   name: "",
