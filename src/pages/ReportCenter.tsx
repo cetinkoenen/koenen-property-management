@@ -10,6 +10,7 @@ import { reportCsv, reportWorkbook } from '../lib/reportCenterExport';
 import type { RentAnnualReportSnapshot } from './Mietuebersicht';
 import { isRosensteinLabel, ROSENSTEIN_TAX_UNITS, rosensteinTaxUnitLabel, type RosensteinTaxUnitCode } from '../lib/rosensteinTaxUnit';
 import { listBillingWorkspaces } from '../services/billingWorkspaceRepository';
+import { prepareTaxAdvisorPdf } from '../services/reportCenterPdf';
 import './ReportCenter.css';
 import './ReportCenterEnhancements.css';
 const RentOverview = lazy(()=>import('./Mietuebersicht'));
@@ -46,33 +47,7 @@ function ChartPreview({chart}:{chart:NonNullable<ReportModule['charts']>[number]
 }
 const euroPreview=(value:number)=>new Intl.NumberFormat('de-DE',{style:'currency',currency:'EUR'}).format(value);
 
-function pdfSections(modules: ReportModule[]): ReportModule[] {
-  const repeatedColumns = 3;
-  const columnsPerPart = 6;
-  const maxColumnsPerTable = repeatedColumns + columnsPerPart;
-
-  return modules.map((module) => ({
-    ...module,
-    tables: module.tables?.flatMap((table) => {
-      if (table.headers.length <= maxColumnsPerTable) return [table];
-      const parts: typeof table[] = [];
-      for (let start = repeatedColumns; start < table.headers.length; start += columnsPerPart) {
-        const end = Math.min(start + columnsPerPart, table.headers.length);
-        const detailHeaders = table.headers.slice(start, end);
-        parts.push({
-          ...table,
-          title: `${table.title} · ${detailHeaders[0]} bis ${detailHeaders.at(-1)}`,
-          headers: [...table.headers.slice(0, repeatedColumns), ...detailHeaders],
-          rows: table.rows.map((row) => [
-            ...row.slice(0, repeatedColumns),
-            ...row.slice(start, end),
-          ]),
-        });
-      }
-      return parts;
-    }),
-  }));
-}
+const reportDate=(value:string)=>new Date(`${value}T00:00:00`).toLocaleDateString('de-DE');
 export default function ReportCenter({portfolio=false}:{portfolio?:boolean}){
   const app=useAppData();const year=new Date().getFullYear();
   const [from,setFrom]=useState(`${year}-01-01`);const [to,setTo]=useState(`${year}-12-31`);const [objectId,setObjectId]=useState('');
@@ -111,7 +86,8 @@ export default function ReportCenter({portfolio=false}:{portfolio?:boolean}){
     if(blocked)return;
     const title=portfolio?chosen[0].title:'Steuerberater-Report';
     if(format==='pdf'){
-      openProfessionalPdfReport({documentName:`${title}-${selectedRosensteinUnit??(objectId||'alle')}-${from}-${to}`,title,subtitle:'Könen Property Management',meta:[{label:'Zeitraum',value:`${from} bis ${to}`},{label:'Objekt',value:selectedObject?.label??'Alle Immobilien'},...(selectedRosensteinUnit?[{label:'Einheit',value:rosensteinTaxUnitLabel(selectedRosensteinUnit)}]:[]),{label:'Erstellt',value:new Date().toLocaleString('de-DE')}],sections:pdfSections(chosen),landscape:true});
+      const prepared=prepareTaxAdvisorPdf(chosen);
+      openProfessionalPdfReport({documentName:`${title}-${selectedRosensteinUnit??(objectId||'alle')}-${from}-${to}`,title:portfolio?title:`Steuerberater-Report ${selectedYear}`,subtitle:portfolio?'Professionelle Immobilien- und Portfolioanalyse':'Strukturierte Jahresakte · Anlage V und Buchungsnachweise',meta:[{label:'Zeitraum',value:`${reportDate(from)} – ${reportDate(to)}`},{label:'Objekt',value:selectedObject?.label??'Alle Immobilien'},...(selectedRosensteinUnit?[{label:'Einheit',value:rosensteinTaxUnitLabel(selectedRosensteinUnit)}]:[])],metrics:portfolio?chosen[0]?.metrics:prepared.metrics,sections:prepared.sections,landscape:true});
       setMessage('Druckansicht geöffnet. Im Druckdialog „Als PDF sichern“ wählen.');return;
     }
     const blob=format==='excel'?new Blob([reportWorkbook(chosen) as BlobPart],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}):new Blob([reportCsv(chosen)],{type:'text/csv;charset=utf-8'});

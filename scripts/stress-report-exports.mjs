@@ -29,6 +29,7 @@ const p254BillingTenantMigration = await readFile(new URL("../supabase/migration
 const taxPreflight = await readFile(new URL("../src/services/taxReportPreflight.ts", import.meta.url), "utf8");
 const reportCenter = await readFile(new URL("../src/services/reportCenterEngine.ts", import.meta.url), "utf8");
 const reportCenterPage = await readFile(new URL("../src/pages/ReportCenter.tsx", import.meta.url), "utf8");
+const reportCenterPdf = await readFile(new URL("../src/services/reportCenterPdf.ts", import.meta.url), "utf8");
 const rentOverviewPage = await readFile(new URL("../src/pages/Mietuebersicht.tsx", import.meta.url), "utf8");
 const rosensteinTaxUnit = await readFile(new URL("../src/lib/rosensteinTaxUnit.ts", import.meta.url), "utf8");
 
@@ -84,10 +85,13 @@ assert.match(taxPreflight, /Steuerkennzeichen widerspricht einer Sperrregel[\s\S
 assert.match(reportCenter, /buildTaxReportPreflight[\s\S]*const entries = preflight\.entries/, "Alle Steuerberater-Module müssen dieselbe bereinigte Buchungsmenge verwenden");
 assert.match(reportCenter, /euro\(c\.deposit_amount\)/, "Der Steuerberater-Report muss die vereinbarte Kaution direkt aus dem Mietvertrag übernehmen");
 assert.match(reportCenter, /Kaution \(vereinbart\)/, "Die vereinbarte Kaution muss im Vertragsdaten-Report sichtbar sein");
-assert.match(reportCenter, /tenant_contracts\.deposit_amount[\s\S]*Historische Berichtsjahre/, "Die Kautionsquelle und ihre jahresbezogene Vertragslogik müssen im Report dokumentiert sein");
+assert.match(reportCenter, /Kaution wird ausschließlich aus dem für den Berichtszeitraum gültigen Mietvertrag übernommen/, "Die Kautionsquelle und ihre jahresbezogene Vertragslogik müssen im Report professionell dokumentiert sein");
 assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'validation'[\s\S]*'cover'/, "Datenprüfung und Management Summary müssen den Steuerberater-Report eröffnen");
 assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'objects'[\s\S]*'acquisition'[\s\S]*'tenants'/, "Anschaffungskosten müssen im Steuerberater-Report verbindlich nach den Objektdaten folgen");
 assert.match(reportCenterPage, /taxPreflightBlocked[\s\S]*Export gesperrt: Die Datenprüfung enthält blockierende Punkte/, "Blockierende Datenfehler müssen den Export sichtbar verhindern");
+assert.match(reportCenterPdf, /if \(module\.id === 'cover'\) return \[\]/, "Das Kennzahlenmodul darf nicht als zweites Deckblatt gedruckt werden");
+assert.match(reportCenterPdf, /if \(!table\.rows\.length\) return \[\]/, "Leere Nachweistabellen dürfen keine unnötigen PDF-Seiten erzeugen");
+assert.match(reportCenterPdf, /wantedMetrics[\s\S]*Steuerlich vorbereitetes Ergebnis/, "Die wichtigsten Steuerkennzahlen müssen auf dem eigentlichen Deckblatt erscheinen");
 assert.match(reportCenterPage, /Vorschau anzeigen[\s\S]*showPreview[\s\S]*chosen\.map/, "Große Berichtstabellen dürfen erst auf ausdrücklichen Wunsch als Bildschirmvorschau aufgebaut werden");
 assert.match(reportCenterPage, /headlessAnnualReport/, "Das Reportcenter muss die Mietkonto-Quelle ohne eine zweite sichtbare Jahresmatrix laden");
 assert.match(rentOverviewPage, /if \(headlessAnnualReport\) return null;/, "Die eingebettete Mietkonto-Quelle muss im kopflosen Reportmodus nur Daten liefern");

@@ -30,6 +30,7 @@ export type PdfReportChart = {
 export type PdfReportSection = {
   title: string;
   subtitle?: string;
+  variant?: "summary" | "core" | "appendix";
   metrics?: PdfReportMetric[];
   tables?: PdfReportTable[];
   paragraphs?: string[];
@@ -188,15 +189,27 @@ function euroChart(value: number): string {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(value);
 }
 
-function sectionHtml(section: PdfReportSection) {
+function uniqueParagraphs(paragraphs: string[] = []): string[] {
+  const seen = new Set<string>();
+  return paragraphs.filter((paragraph) => {
+    const key = paragraph.replace(/\s+/g, " ").trim().toLocaleLowerCase("de-DE");
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function sectionHtml(section: PdfReportSection, sectionLabel: string) {
+  const variant = section.variant ?? "core";
   return `
-    <section class="section">
+    <section class="section section-${variant}">
       <div class="section-head">
+        <div class="section-kicker">${sectionLabel}</div>
         <h2>${escapeHtml(section.title)}</h2>
         ${section.subtitle ? `<p>${escapeHtml(section.subtitle)}</p>` : ""}
       </div>
       ${metricHtml(section.metrics)}
-      ${(section.paragraphs ?? []).map((text) => `<p class="body-text">${escapeHtml(text)}</p>`).join("")}
+      ${uniqueParagraphs(section.paragraphs).map((text) => `<p class="body-text">${escapeHtml(text)}</p>`).join("")}
       ${(section.charts ?? []).map(chartHtml).join("")}
       ${(section.tables ?? []).map(tableHtml).join("")}
     </section>
@@ -205,6 +218,16 @@ function sectionHtml(section: PdfReportSection) {
 
 export function buildProfessionalPdfReportHtml(options: PdfReportOptions) {
   const printedAt = formatPrintedAt();
+  let coreIndex = 0;
+  let appendixIndex = 0;
+  const renderedSections = options.sections.map((section) => {
+    const label = section.variant === "summary"
+      ? "Prüfstatus"
+      : section.variant === "appendix"
+        ? `Anlage ${++appendixIndex}`
+        : `Kapitel ${++coreIndex}`;
+    return sectionHtml(section, label);
+  }).join("");
   return `<!doctype html>
 <html lang="de">
 <head>
@@ -285,6 +308,17 @@ export function buildProfessionalPdfReportHtml(options: PdfReportOptions) {
       font-size: 15px;
       font-weight: 650;
     }
+    .document-purpose {
+      display: inline-flex;
+      margin-top: 18px;
+      border: 1px solid #b7d8cf;
+      border-radius: 10px;
+      background: #edf9f5;
+      color: #145c4d;
+      padding: 8px 11px;
+      font-size: 11px;
+      font-weight: 900;
+    }
     .meta-row {
       display: flex;
       gap: 10px;
@@ -351,6 +385,16 @@ export function buildProfessionalPdfReportHtml(options: PdfReportOptions) {
       font-size: 20px;
       font-weight: 950;
     }
+    .section-kicker {
+      margin-bottom: 6px;
+      color: #0f766e;
+      font-size: 9px;
+      font-weight: 950;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .section-appendix .section-kicker { color: #64748b; }
+    .section-appendix .section-head h2 { font-size: 18px; }
     .section-head p {
       margin: 7px 0 0;
       color: #64748b;
@@ -421,6 +465,7 @@ export function buildProfessionalPdfReportHtml(options: PdfReportOptions) {
       font-weight: 650;
     }
     tr:last-child td { border-bottom: 0; }
+    tbody tr:nth-child(even):not(.summary-row) td { background: #fbfdff; }
     tr.summary-row td {
       font-weight: 950;
       border-bottom: 4px double #64748b;
@@ -514,14 +559,15 @@ export function buildProfessionalPdfReportHtml(options: PdfReportOptions) {
       <div class="eyebrow">Koenen Property Management · PDF-Bericht</div>
       <h1>${escapeHtml(options.title)}</h1>
       ${options.subtitle ? `<p class="subtitle">${escapeHtml(options.subtitle)}</p>` : ""}
+      <div class="document-purpose">Prüf- und Übergabeunterlage für die steuerliche Bearbeitung</div>
       <div class="meta-row">
         <div class="meta-pill">Dokument: ${escapeHtml(options.documentName)}</div>
-        <div class="meta-pill">Printed: ${escapeHtml(printedAt)}</div>
+        <div class="meta-pill">Erstellt: ${escapeHtml(printedAt)}</div>
         ${(options.meta ?? []).map((item) => `<div class="meta-pill">${escapeHtml(item.label)}: ${escapeHtml(item.value)}</div>`).join("")}
       </div>
       ${metricHtml(options.metrics, "hero")}
     </section>
-    ${options.sections.map(sectionHtml).join("")}
+    ${renderedSections}
     <div class="footer">
       <span>${escapeHtml(FOOTER_TEXT)}</span>
       <span>${escapeHtml(options.documentName)}</span>

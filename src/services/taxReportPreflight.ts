@@ -293,7 +293,7 @@ export function taxPreflightModule(result: TaxPreflightResult): ReportModule {
       { label: "Berechnete Werte", value: String(result.calculatedValues), hint: "Nachvollziehbar aus Stammdaten/Historie" },
     ],
     paragraphs: [
-      "Die Vorprüfung arbeitet ausschließlich auf den zentralen Mietverträgen, Mietanpassungen, Immobilien-Stammdaten und finance_entry. Sie ändert keine unsicheren Werte verdeckt.",
+      "Die Vorprüfung arbeitet ausschließlich mit den zentral gepflegten Mietverträgen, Mietanpassungen, Immobilien-Stammdaten und dem Buchungsjournal. Sie ändert keine unsicheren Werte verdeckt.",
       "Automatisch berücksichtigt werden nur eindeutige Berechnungen und der Schutz vor exakten Importdublettten. Unsichere Zuordnungen bleiben bis zur Bestätigung gesperrt.",
     ],
     tables: [{

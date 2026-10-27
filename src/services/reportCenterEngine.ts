@@ -41,12 +41,12 @@ export const taxAdvisorReportIds = [
   'tenants',
   'adjustments',
   'eur',
-  'journal',
+  'loan-interest',
+  'utilities',
   'mileage',
   'vacancy',
-  'utilities',
   'proofs',
-  'loan-interest',
+  'journal',
 ] as const;
 export const portfolioReportIds = ['wealth-statement', 'register', 'acquisition', 'loans', 'arrears', 'cashflow', 'loan-interest'] as const;
 export const euro = (v: unknown) => v == null || v === '' ? 'Nicht gepflegt' : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(parseLocaleNumber(v, 0));
@@ -286,7 +286,17 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const reportingUnits = rentRows.map(row => ({ object: input.objects.find(o => o.id === row.objectId), row }));
   const rented = reportingUnits.filter(({row}) => row.months.some(m => m.month >= firstMonth && m.month <= lastMonth && m.expected > 0)).length;
   const table = (title: string, headers: string[], rows: PdfReportTable['rows'], subtitle?: string): PdfReportTable => ({ title, headers, rows, subtitle });
-  const module = (id: string, tables: PdfReportTable[], paragraphs: string[] = []): ReportModule => ({ id, title: reportNames.find(r => r[0] === id)![1], tables, paragraphs });
+  const module = (id: string, tables: PdfReportTable[], paragraphs: string[] = []): ReportModule => ({
+    id,
+    title: reportNames.find(r => r[0] === id)![1],
+    tables,
+    paragraphs,
+    variant: id === 'validation' || id === 'cover'
+      ? 'summary'
+      : ['journal','mileage','vacancy','utilities','proofs'].includes(id)
+        ? 'appendix'
+        : 'core',
+  });
   const rentNote = 'Soll/Ist folgt dem zentralen Mietkonto nach Mietmonat. Bei Teilmonaten wird der vollständige betroffene Mietmonat gezeigt. Künftige Monate sind neutral; Rückstände berücksichtigen nur fällige Monate.';
   const arrears = rentRows.map(r => [r.objectLabel, r.unitLabel, tenantForRentRow(r), euro(r.months.filter(m => m.month >= firstMonth && m.month <= lastMonth && `${from.slice(0,4)}-${String(m.month).padStart(2,'0')}-01` <= today).reduce((v,m) => v + rentBalancePart(m.expected,m.paid,'open'),0))]);
   const incomeGroups = new Map<string, number>(['Kaltmiete','Nebenkostenzahlungen','Nebenkostennachzahlungen','Mahngebühren'].map(k => [k,0]));
@@ -392,7 +402,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     const monthStart = `${from.slice(0,4)}-${String(m.month).padStart(2,'0')}-01`;
     return `${euro(m.paid)} / ${euro(m.expected)} · ${paymentMatrixStatus(m, monthStart, today)}`;
   })]));
-  const tenants = module('tenants',[table('Vertragsdaten',['Objekt','Einheit','Mieter','Von','Bis','Kaltmiete','NK','Sonstiges','Gesamtmiete','Fläche m²','€/m²','Kaution (vereinbart)'],contractRows),matrix],[rentNote,'Kaution bezeichnet den gespeicherten Vertragsbetrag aus der zentralen Quelle tenant_contracts.deposit_amount; ein Zahlungseingang wird daraus nicht abgeleitet. Historische Berichtsjahre verwenden jeweils den im betreffenden Mietvertrag vereinbarten Betrag.']);
+  const tenants = module('tenants',[table('Vertragsdaten',['Objekt','Einheit','Mieter','Von','Bis','Kaltmiete','NK','Sonstiges','Gesamtmiete','Fläche m²','€/m²','Kaution (vereinbart)'],contractRows),matrix],[rentNote,'Die vereinbarte Kaution wird ausschließlich aus dem für den Berichtszeitraum gültigen Mietvertrag übernommen. Ein Zahlungseingang wird daraus nicht abgeleitet.']);
   if (billingPeriods.length) tenants.tables?.splice(1,0,table('Vermietungszeiträume aus gespeicherten Abrechnungen',['Objekt','Einheit','Mieter','Von','Bis','Fläche m²','NK-Vorauszahlungen','Monate','Quelle'],billingPeriods.map(p=>[p.object?.label ?? 'Nicht zugeordnet',p.unit,p.tenant,p.from,p.to,str(p.area),euro(p.advancePayments),p.occupancyMonths ?? '—',p.source])));
   let balance = 0;
   const journal = module('journal',[table('Alle Geldbewegungen',['Datum','Einheit / Objekt','Mieter','Typ','Kategorie','Beschreibung','Eingang (+)','Ausgaben (-)','Saldo'],[...entries].sort((a,b) => text(a.booking_date).localeCompare(text(b.booking_date)) || text(a.id).localeCompare(text(b.id))).map(e => {
@@ -442,9 +452,9 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     ['Gesamtmiete monatlich', rent ? euro(reportingUnits.reduce((sum,{row}) => sum + (row.months.find(month => month.month === Number(referenceDate.slice(5,7)))?.expected ?? 0),0)) : 'Nicht vollständig gepflegt'],
     ['Vermietungsquote im Zeitraum', reportingUnits.length ? percent(rented/reportingUnits.length*100) : '—'],
   ]);
-  const areaStatus = objects.map(o => { const area=areaForObject(o); const parkingOnly=/rosenstein/i.test(o.label); return [o.label,str(area),area?'Vollständig':'Fehlt',parkingOnly?'Immobilienvermögen · Stellplatzfläche je TG-Einheit':'Immobilienvermögen · property_extra_info']; });
+  const areaStatus = objects.map(o => { const area=areaForObject(o); const parkingOnly=/rosenstein/i.test(o.label); return [o.label,str(area),area?'Vollständig':'Fehlt',parkingOnly?'Immobilienvermögen · Stellplatzfläche je TG-Einheit':'Immobilienvermögen · Objektakte']; });
   const unitDetails = reportingUnits.map(({object,row}) => { const parking=isParkingText(row.unitLabel); const area=areaForUnit(object,row.unitLabel); const activeInPeriod=row.months.some(m=>m.month>=firstMonth&&m.month<=lastMonth&&m.expected>0); return [row.objectLabel,row.unitLabel,parking?'Stellplatz / Garage':'Wohnung',str(area),activeInPeriod?'Vermietet im Zeitraum':'Ohne Soll-Miete im Zeitraum',tenantForRentRow(row)]; });
-  const objectModule = module('objects',[table('Datenvollständigkeit Fläche',['Objekt','Fläche m²','Status','Hauptquelle'],areaStatus),table('Eckdaten · Stand zum Periodenende',['Objekt','Einheiten','Wohnen','Gewerbe','Garagen / Stellplätze','Unklassifiziert','Fläche m²','Nutzfläche m²','Kalt monatlich','NK monatlich','Gesamt monatlich','Kalt €/m²','Vermietungsquote'],objectRows),table('Einheiten-Details aus dem Mietkonto',['Objekt','Einheit','Art','Fläche m²','Status','Mieter'],unitDetails)],['Einheiten und Belegungsstatus stammen aus dem zentralen Mietkonto. Flächen werden direkt aus Immobilienvermögen/property_extra_info übernommen; sie werden nicht in einer zweiten Report-Datenquelle gespeichert. Bei Rosenstein gilt die dort gepflegte Fläche je TG-Stellplatz.']);
+  const objectModule = module('objects',[table('Datenvollständigkeit Fläche',['Objekt','Fläche m²','Status','Hauptquelle'],areaStatus),table('Eckdaten · Stand zum Periodenende',['Objekt','Einheiten','Wohnen','Gewerbe','Garagen / Stellplätze','Unklassifiziert','Fläche m²','Nutzfläche m²','Kalt monatlich','NK monatlich','Gesamt monatlich','Kalt €/m²','Vermietungsquote'],objectRows),table('Einheiten-Details aus dem Mietkonto',['Objekt','Einheit','Art','Fläche m²','Status','Mieter'],unitDetails)],['Einheiten und Belegungsstatus stammen aus dem zentralen Mietkonto; Flächen aus der jeweiligen Objektakte im Immobilienvermögen. Bei Rosenstein gilt die dort gepflegte Fläche je TG-Stellplatz.']);
   objectModule.tables?.unshift(portfolioStats);
   const rentalHistoryRows = rentalHistory.map(r => {
     const object = objectFor(r);
@@ -457,7 +467,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     table('Mietsituation aus Vermietungszeiträumen',['Objekt','Einheit','Von','Bis','Kaltmiete','NK','Warmmiete','Fläche m²','Kalt €/m²','Hauptquelle'],rentalHistoryRows),
     table('Mietanpassungen im Zeitraum',['Objekt','Mieter','Wirksam ab / letzte Anpassung','Bis','Kalt alt','Kalt neu','NK alt','NK neu','Gesamt neu'],adjustments.filter(a=>dateIn(a.effective_date,from,to)).map(a=>[label(a),tenantForDate(a,text(a.effective_date)) ?? str(a.tenant_name),str(a.effective_date),str(a.effective_end_date),euro(a.old_cold_rent),euro(a.new_cold_rent),euro(a.old_operating_costs),euro(a.new_operating_costs),euro(a.new_total_rent)])),
     table('Fehlende Miete',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears),
-  ],[rentNote,'Historische Mietwerte stammen ausschließlich aus portfolio_property_rentals. Manuelle Anpassungen bleiben ergänzende Ereignisse und überschreiben die Vermietungszeiträume nicht.']);
+  ],[rentNote,'Historische Mietwerte stammen ausschließlich aus den belegten Vermietungszeiträumen. Manuelle Anpassungen bleiben ergänzende Ereignisse und überschreiben diese Zeiträume nicht.']);
   const mileage = module('mileage',[table('Einzelnachweis',['Datum','Objekt','Anlass','Start','Ziel','km','Hin/Rück','Betrag'],(s.mileage_trips ?? []).filter(r=>scoped(r)&&dateIn(r.datum,from,to)&&(!input.rosensteinUnit||unitScoped(r))).map(r=>[r.datum,label(r),r.grund,r.start_adresse,r.zieladresse,n(r.distanz_km),r.hin_und_rueckfahrt?'Ja':'Nein',euro(r.berechneter_betrag ?? r.reisekosten_betrag)]).map(r=>r.map(v=>str(v))))]);
   const vacancies = (s.unit_vacancies ?? []).filter(r=>scoped(r)&&overlaps(r,from,to)&&(!input.rosensteinUnit||unitScoped(r)));
   const vacancy = module('vacancy',[table('Leerstände',['Objekt','Einheit','Von','Bis','Status','Grund','Notiz'],vacancies.map(r=>[label(r),str(r.unit_label),str(r.start_date),str(r.end_date),str(r.status),str(r.reason),str(r.notes)]))]);
@@ -711,12 +721,12 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   });
   const loanInterest = module('loan-interest',[
     table('Jahresübersicht Tilgungsplan je Immobilie',['Immobilie / Einheit','Jahr','Zinsen (steuerlich relevant / Werbungskosten)','Tilgung (steuerlich nicht relevant)','Kapitaldienst Plan','Restschuld Jahresende','Quelle'],loanYears.map(r=>[loanReportLabel(r),Number(r.year),euro(r.interest),euro(r.principal),euro(n(r.interest)+n(r.principal)),euro(r.balance),str(r.source)]),'Nach Immobilie und innerhalb der Immobilie chronologisch nach Jahr sortiert.'),
-    table('Gebuchte Tilgung & Zinsen je Jahr',['Immobilie','Jahr','Gebuchte Raten','Zinsen Ist (steuerlich relevant / Werbungskosten)','Tilgung Ist (steuerlich nicht relevant)','Buchungen'],bookedYears.map(r=>[r.object,r.year,euro(r.rates),euro(r.interest),euro(r.principal),r.count]),'Ist-Buchungen; bei fehlender Buchungsaufteilung wird ausschließlich der passende Monatswert aus property_loan_rate_plan verwendet.'),
+    table('Gebuchte Tilgung & Zinsen je Jahr',['Immobilie','Jahr','Gebuchte Raten','Zinsen Ist (steuerlich relevant / Werbungskosten)','Tilgung Ist (steuerlich nicht relevant)','Buchungen'],bookedYears.map(r=>[r.object,r.year,euro(r.rates),euro(r.interest),euro(r.principal),r.count]),'Ist-Buchungen; bei fehlender Aufteilung wird ausschließlich der passende Monatswert aus dem hinterlegten Tilgungsplan verwendet.'),
     table(`Monatsdetails · ${from} bis ${to}`,['Immobilie','Buchungsmonat','Status','Kreditrate','Zinsen (steuerlich relevant / Werbungskosten)','Tilgung (steuerlich nicht relevant)','Gebühren','Restschuld','Quelle'],[
       ...loanEntries.map(entry=>{const split=splitForEntry(entry);const fee=split.interest==null||split.principal==null?null:Math.max(0,roundMoney(Math.abs(n(entry.amount))-split.interest-split.principal));return[loanReportLabel(entry),text(entry.booking_date).slice(0,7),'Gebucht',euro(Math.abs(n(entry.amount))),euro(split.interest),euro(split.principal),euro(fee),split.plan?.closing_balance==null?'—':euro(split.plan.closing_balance),split.source];}),
       ...plannedFallback.map(plan=>[loanReportLabel(plan),text(plan.plan_date).slice(0,7),text(plan.plan_date).slice(0,10)<=today?'Plan · nicht gebucht':'Plan',euro(plan.payment_amount),euro(plan.interest_amount),euro(plan.principal_amount),euro(plan.fee_amount),euro(plan.closing_balance),str(plan.source_file)]),
     ].sort((a,b)=>String(a[0]).localeCompare(String(b[0]),'de')||String(a[1]).localeCompare(String(b[1]))),'Ist-Buchungen haben Vorrang. Ein importierter Monatsplan erscheint nur, wenn für dieselbe Immobilie und denselben Monat keine Kreditrate gebucht wurde.'),
-  ],['Steuerliche Trennung: Zinsen sind bei vermieteten Immobilien als Werbungskosten steuerlich relevant. Tilgung ist steuerlich nicht relevant und wird ausschließlich informativ dokumentiert.','Single Source of Truth: Tatsächliche Raten stammen aus Buchungen/finance_entry. Die dort gespeicherte Zins-/Tilgungsaufteilung hat Vorrang; nur bei fehlender Aufteilung wird der exakt passende Immobilienmonat aus Darlehen/property_loan_rate_plan verwendet. Jahresplan und Restschuld stammen aus Darlehen/property_loan_ledger. Im Report werden keine Darlehenswerte separat gespeichert oder doppelt gezählt.',...(input.rosensteinUnit? [`Einheitenfilter: ${rosensteinTaxUnitLabel(input.rosensteinUnit)}. Gemeinsame Darlehenswerte des Gesamtobjekts werden centgenau zu einem Drittel verteilt. Die Summe aus P250, P253 und P254 entspricht exakt dem Gesamtwert.`]:[])]);
+  ],['Steuerliche Trennung: Nur der Zinsanteil vermieteter Immobilien wird als Werbungskosten vorbereitet. Die Tilgung bleibt informativ und wird nicht steuerlich abgezogen.','Datenherkunft: Gebuchte Kreditraten haben Vorrang. Fehlt dort die Zins-/Tilgungsaufteilung, wird ausschließlich der passende Monat des hinterlegten Tilgungsplans verwendet. Jahreswerte und Restschuld stammen aus dem zentralen Darlehensbestand; eine Doppelzählung ist ausgeschlossen.',...(input.rosensteinUnit? [`Einheitenfilter: ${rosensteinTaxUnitLabel(input.rosensteinUnit)}. Gemeinsame Darlehenswerte des Gesamtobjekts werden centgenau zu einem Drittel verteilt. Die Summe aus P250, P253 und P254 entspricht exakt dem Gesamtwert.`]:[])]);
   loanInterest.metrics=[
     {label:'Gebuchte Zinsen',value:euro(periodInterest)},
     {label:'Gebuchte Tilgung',value:euro(periodPrincipal)},
@@ -732,5 +742,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
       {label:'Tilgung',values:chartPrincipal,color:'#c9972b'},
     ],
   }]:[];
-  return [taxPreflightModule(preflight),cover,eur,tenants,journal,objectModule,changeModule,mileage,vacancy,utilities,proofs,wealthStatement,register,acquisition,loans,module('arrears',[table('Offene Zahlungen',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears),matrix],[rentNote]),cashflow,loanInterest];
+  const validation = taxPreflightModule(preflight);
+  validation.variant = 'summary';
+  return [validation,cover,eur,tenants,journal,objectModule,changeModule,mileage,vacancy,utilities,proofs,wealthStatement,register,acquisition,loans,module('arrears',[table('Offene Zahlungen',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears),matrix],[rentNote]),cashflow,loanInterest];
 }

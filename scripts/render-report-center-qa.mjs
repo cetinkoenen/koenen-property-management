@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 
 const bundleDir = await mkdtemp(join(tmpdir(), "tax-advisor-qa-"));
 await build({
-  entryPoints: ["src/services/reportCenterEngine.ts", "src/lib/professionalPdfReport.ts"],
+  entryPoints: ["src/services/reportCenterEngine.ts", "src/services/reportCenterPdf.ts", "src/lib/professionalPdfReport.ts"],
   bundle: true,
   platform: "node",
   format: "esm",
@@ -15,6 +15,7 @@ await build({
 });
 
 const { buildReportCenter, taxAdvisorReportIds } = await import(pathToFileURL(join(bundleDir, "services/reportCenterEngine.js")));
+const { prepareTaxAdvisorPdf } = await import(pathToFileURL(join(bundleDir, "services/reportCenterPdf.js")));
 const { buildProfessionalPdfReportHtml } = await import(pathToFileURL(join(bundleDir, "lib/professionalPdfReport.js")));
 
 const objects = [{ id: "fuerther", code: "Objekt_4", label: "Fürther Str. 74", livingAreaM2: 82 }];
@@ -38,12 +39,14 @@ const sources = {
 const modules = buildReportCenter({ objects, entries, loans: [], sources, rent, from: "2025-01-01", to: "2025-12-31", objectId: "", today: "2026-09-15" });
 const moduleById = new Map(modules.map((module) => [module.id, module]));
 const sections = taxAdvisorReportIds.flatMap((id) => moduleById.get(id) ?? []);
+const prepared = prepareTaxAdvisorPdf(sections);
 const html = buildProfessionalPdfReportHtml({
   documentName: "Steuerberater-Report-QA-2025",
   title: "Steuerberater-Report 2025",
   subtitle: "Visuelle Regression",
   meta: [{ label: "Zeitraum", value: "01.01.2025 bis 31.12.2025" }],
-  sections,
+  metrics: prepared.metrics,
+  sections: prepared.sections,
   landscape: true,
 });
 
