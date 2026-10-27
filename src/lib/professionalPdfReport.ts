@@ -256,6 +256,7 @@ export function buildProfessionalPdfReportHtml(options: PdfReportOptions) {
     }
     .hero {
       position: relative;
+      isolation: isolate;
       border: 1px solid #dbe3ea;
       border-radius: 28px;
       background: linear-gradient(135deg, #ffffff 0%, #f8fbff 58%, #eefaf4 100%);
@@ -276,6 +277,12 @@ export function buildProfessionalPdfReportHtml(options: PdfReportOptions) {
         linear-gradient(rgba(37, 99, 235, 0.06) 1px, transparent 1px),
         linear-gradient(90deg, rgba(37, 99, 235, 0.06) 1px, transparent 1px);
       background-size: 20px 20px;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .hero > * {
+      position: relative;
+      z-index: 1;
     }
     .eyebrow {
       color: #2563eb;
@@ -531,7 +538,17 @@ export function buildProfessionalPdfReportHtml(options: PdfReportOptions) {
     }
     @media print {
       * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-      .hero { break-after: page; }
+      .hero {
+        break-after: page;
+        background: #f8fbff;
+      }
+      .hero::after { display: none !important; }
+      .hero-metrics, .metric-card { isolation: isolate; }
+      .metric-card,
+      .meta-pill,
+      .document-purpose,
+      .chart-block { box-shadow: none !important; filter: none !important; }
+      .metric-card { background: #ffffff !important; }
       .section {
         break-before: page;
         break-inside: auto;

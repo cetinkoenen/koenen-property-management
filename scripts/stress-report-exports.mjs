@@ -30,6 +30,7 @@ const taxPreflight = await readFile(new URL("../src/services/taxReportPreflight.
 const reportCenter = await readFile(new URL("../src/services/reportCenterEngine.ts", import.meta.url), "utf8");
 const reportCenterPage = await readFile(new URL("../src/pages/ReportCenter.tsx", import.meta.url), "utf8");
 const reportCenterPdf = await readFile(new URL("../src/services/reportCenterPdf.ts", import.meta.url), "utf8");
+const professionalPdfReport = await readFile(new URL("../src/lib/professionalPdfReport.ts", import.meta.url), "utf8");
 const rentOverviewPage = await readFile(new URL("../src/pages/Mietuebersicht.tsx", import.meta.url), "utf8");
 const rosensteinTaxUnit = await readFile(new URL("../src/lib/rosensteinTaxUnit.ts", import.meta.url), "utf8");
 
@@ -92,6 +93,8 @@ assert.match(reportCenterPage, /taxPreflightBlocked[\s\S]*Export gesperrt: Die D
 assert.match(reportCenterPdf, /if \(module\.id === 'cover'\) return \[\]/, "Das Kennzahlenmodul darf nicht als zweites Deckblatt gedruckt werden");
 assert.match(reportCenterPdf, /if \(!table\.rows\.length\) return \[\]/, "Leere Nachweistabellen dürfen keine unnötigen PDF-Seiten erzeugen");
 assert.match(reportCenterPdf, /wantedMetrics[\s\S]*Steuerlich vorbereitetes Ergebnis/, "Die wichtigsten Steuerkennzahlen müssen auf dem eigentlichen Deckblatt erscheinen");
+assert.match(professionalPdfReport, /\.hero::after \{ display: none !important; \}/, "Das dekorative Deckblattraster darf in der Druckansicht nicht über Kennzahlen laufen");
+assert.match(professionalPdfReport, /\.metric-card,[\s\S]*box-shadow: none !important; filter: none !important;/, "Kennzahlenkarten dürfen im Druck keine überlappenden Schattenflächen erzeugen");
 assert.match(reportCenterPage, /Vorschau anzeigen[\s\S]*showPreview[\s\S]*chosen\.map/, "Große Berichtstabellen dürfen erst auf ausdrücklichen Wunsch als Bildschirmvorschau aufgebaut werden");
 assert.match(reportCenterPage, /headlessAnnualReport/, "Das Reportcenter muss die Mietkonto-Quelle ohne eine zweite sichtbare Jahresmatrix laden");
 assert.match(rentOverviewPage, /if \(headlessAnnualReport\) return null;/, "Die eingebettete Mietkonto-Quelle muss im kopflosen Reportmodus nur Daten liefern");

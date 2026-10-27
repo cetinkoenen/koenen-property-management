@@ -244,7 +244,7 @@ assert.match(pdfSource, /td\.money-cell \{ text-align: right; white-space: nowra
 assert.match(pdfSource, /class="payment-amount"/, 'Payment matrix values must render in separate Ist/Soll lines');
 assert.match(pdfSource, /normalized\.includes\("teilweise"\)[\s\S]*normalized\.includes\("fehlt"\)/, 'Teilzahlungen und fehlende Mieten müssen im PDF als echte offene Positionen eingefärbt bleiben');
 assert.match(pdfSource, /<colgroup>/, 'PDF tables need weighted column widths');
-assert.match(pdfSource, /\.hero \{ break-after: page; \}/, 'The cover page must end before the first report section');
+assert.match(pdfSource, /\.hero \{[\s\S]*?break-after: page;/, 'The cover page must end before the first report section');
 assert.match(pdfSource, /class="report-chart"/, 'Tilgung-und-Zins-Diagramme müssen im PDF als echte Grafik ausgegeben werden');
 assert.match(pdfSource, /class="\$\{isSummaryRow\(row\) \? "summary-row" : ""\}"/, 'Summen- und Ergebniszeilen müssen im PDF eigens markiert werden');
 assert.match(pdfSource, /tr\.summary-row td[\s\S]*font-weight: 950;[\s\S]*border-bottom: 4px double/, 'Summenzeilen müssen fett und mit doppelter Abschlusslinie formatiert sein');
