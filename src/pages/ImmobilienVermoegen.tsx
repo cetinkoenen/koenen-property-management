@@ -925,8 +925,10 @@ function DetailField({
   onChange: (value: string) => void;
   disabled?: boolean;
 }) {
+  const fieldShellClass = "flex h-full min-w-0 flex-col gap-2";
+  const fieldLabelClass = "flex min-h-8 items-end text-[11px] font-black uppercase leading-4 tracking-[0.12em] text-slate-500 sm:min-h-10";
   const commonClass = [
-    "min-h-11 rounded-xl border px-3 py-2 text-sm font-bold text-slate-950 outline-none transition",
+    "h-11 min-h-11 w-full rounded-xl border px-3 py-2 text-sm font-bold text-slate-950 outline-none transition",
     disabled
       ? "border-slate-200 bg-slate-100 text-slate-500"
       : "border-slate-200 bg-slate-50/60 hover:border-slate-300 hover:bg-white focus:border-[#6fb9a8] focus:bg-white focus:ring-2 focus:ring-[#cce9e2]",
@@ -934,8 +936,8 @@ function DetailField({
 
   if (field.type === "select") {
     return (
-      <label className="grid gap-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-        {field.label}
+      <label className={fieldShellClass}>
+        <span className={fieldLabelClass}>{field.label}</span>
         <select className={commonClass} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
           {(field.options ?? [""]).map((option) => (
             <option key={option || "empty"} value={option}>
@@ -949,25 +951,28 @@ function DetailField({
 
   if (field.type === "checkbox") {
     return (
-      <label className={["flex min-h-[60px] items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black transition", disabled ? "bg-slate-100 text-slate-500" : "bg-slate-50/60 text-slate-700 hover:border-slate-300 hover:bg-white"].join(" ")}>
-        <input
-          type="checkbox"
-          checked={value === "Ja"}
-          disabled={disabled}
-          onChange={(event) => onChange(event.target.checked ? "Ja" : "Nein")}
-          className="h-5 w-5 accent-teal-700"
-        />
-        {field.label}
-      </label>
+      <div className={fieldShellClass}>
+        <span className={fieldLabelClass}>{field.label}</span>
+        <label className={["flex h-11 min-h-11 items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm font-black transition", disabled ? "bg-slate-100 text-slate-500" : "bg-slate-50/60 text-slate-700 hover:border-slate-300 hover:bg-white"].join(" ")}>
+          <input
+            type="checkbox"
+            checked={value === "Ja"}
+            disabled={disabled}
+            onChange={(event) => onChange(event.target.checked ? "Ja" : "Nein")}
+            className="h-5 w-5 accent-teal-700"
+          />
+          <span>{value === "Ja" ? "Ja" : "Nein"}</span>
+        </label>
+      </div>
     );
   }
 
   if (field.key === "modernizations") {
     return (
-      <label className="grid gap-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-        {field.label}
+      <label className={fieldShellClass}>
+        <span className={fieldLabelClass}>{field.label}</span>
         <textarea
-          className={`${commonClass} min-h-36 resize-y leading-6`}
+          className={`${commonClass} h-auto min-h-36 resize-y leading-6`}
           value={value}
           disabled={disabled}
           placeholder={field.placeholder}
@@ -978,8 +983,8 @@ function DetailField({
   }
 
   return (
-    <label className="grid gap-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">
-      {field.label}
+    <label className={fieldShellClass}>
+      <span className={fieldLabelClass}>{field.label}</span>
       <input
         className={commonClass}
         type={field.type === "date" ? "date" : "text"}
@@ -1210,10 +1215,10 @@ function RentDataField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="grid gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
-      {label}
+    <label className="flex h-full min-w-0 flex-col gap-2">
+      <span className="flex min-h-8 items-end text-[11px] font-black uppercase leading-4 tracking-[0.14em] text-slate-500">{label}</span>
       <input
-        className="min-h-11 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm font-bold text-slate-950 outline-none transition hover:border-slate-300 hover:bg-white focus:border-[#6fb9a8] focus:bg-white focus:ring-2 focus:ring-[#cce9e2] disabled:bg-slate-100 disabled:text-slate-500"
+        className="h-11 min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm font-bold text-slate-950 outline-none transition hover:border-slate-300 hover:bg-white focus:border-[#6fb9a8] focus:bg-white focus:ring-2 focus:ring-[#cce9e2] disabled:bg-slate-100 disabled:text-slate-500"
         value={value}
         disabled={disabled}
         placeholder={placeholder}
@@ -2084,12 +2089,12 @@ function DetailPage({
                           ) : null}
                         </div>
                         <div className="min-w-0">
-                          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          <div className="grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3">
                             {column.fields.map((fieldKey) => {
                               const field = FIELD_BY_KEY.get(fieldKey);
                               if (!field) return null;
                               return (
-                                <div key={field.key} className={field.key === "modernizations" ? "sm:col-span-2 xl:col-span-3" : "min-w-0"}>
+                                <div key={field.key} className={field.key === "modernizations" ? "h-full sm:col-span-2 xl:col-span-3" : "h-full min-w-0"}>
                                   <DetailField
                                     field={field}
                                     value={field.key === "remainingDebt" ? String(finance.lastBalance) : card.draft[field.key] ?? ""}

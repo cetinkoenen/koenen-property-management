@@ -17,7 +17,10 @@ assert.match(wealthSource, /sticky top-\[76px\][\s\S]*overflow-x-auto/, "Die mob
 assert.match(wealthSource, /Digitale Objektakte[\s\S]*Dokumentenstatus[\s\S]*Direkt zu/, "Die Objektübersicht muss Foto, Dokumentstatus und Abschnittsnavigation professionell bündeln");
 assert.match(wealthSource, /Datenstand[\s\S]*completedFields[\s\S]*completionPercent/, "Jeder Objektakten-Abschnitt muss seinen Vollständigkeitsstand sichtbar machen");
 assert.match(wealthSource, /divide-y divide-slate-200[\s\S]*lg:grid-cols-\[220px_minmax\(0,1fr\)\]/, "Objektakten-Gruppen müssen als einheitliche horizontale Formularzeilen statt unterschiedlich großer Unterkarten erscheinen");
-assert.match(wealthSource, /grid gap-3 sm:grid-cols-2 xl:grid-cols-3/, "Feldeingaben müssen die verfügbare Desktopbreite in einem gleichmäßigen Raster nutzen");
+assert.match(wealthSource, /grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3/, "Feldeingaben müssen die verfügbare Desktopbreite in einem gleichmäßigen Raster nutzen");
+assert.match(wealthSource, /fieldLabelClass = "flex min-h-8 items-end[^"]*sm:min-h-10"/, "Alle Immobilienfelder müssen eine einheitliche Beschriftungshöhe für bündige Eingaben reservieren");
+assert.match(wealthSource, /"h-11 min-h-11 w-full rounded-xl border/, "Eingaben und Auswahlfelder müssen dieselbe feste Steuerelementhöhe verwenden");
+assert.match(wealthSource, /value === "Ja" \? "Ja" : "Nein"/, "Checkbox-Felder müssen mit derselben Feldstruktur und einem eindeutigen Ja-Nein-Wert erscheinen");
 
 const EMPTY_DRAFT = {
   name: "",
