@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const wealthSource = readFileSync(new URL("../src/pages/ImmobilienVermoegen.tsx", import.meta.url), "utf8");
 const cashflowDashboardSource = readFileSync(new URL("../src/pages/WealthCashflowDashboard.tsx", import.meta.url), "utf8");
+const monthlyLoanCashflowSource = readFileSync(new URL("../src/lib/monthlyLoanCashflow.ts", import.meta.url), "utf8");
 assert.match(wealthSource, /inputMode=\{field\.type === "number" \? "decimal" : undefined\}/, "Gespeicherte Zahlenfelder müssen auch mit deutscher Dezimalschreibweise erneut editierbar bleiben");
 assert.match(wealthSource, /Bearbeitbar/, "Eigenschaftsgruppen müssen ihren Bearbeitungsstatus sichtbar anzeigen");
 assert.match(wealthSource, /aria-label=\{`\$\{column\.title\} speichern`\}/, "Jede Eigenschaftsgruppe muss eine eigene Speicheraktion anbieten");
@@ -10,6 +11,9 @@ assert.match(wealthSource, /const storageId = card\?\.row\?\.property_id \?\? id
 assert.match(wealthSource, /\[storageId\]: \{/, "Die zentrale Objekt-ID muss beim lokalen Formularzustand Vorrang haben");
 assert.match(wealthSource, /field\.key === "remainingDebt"/, "Die zentrale Restschuld muss auf der Vermögensseite schreibgeschützt bleiben");
 assert.match(cashflowDashboardSource, /ReferenceLine[\s\S]*value: "TODAY"[\s\S]*visibleTodayMonthKey/, "Alle zeitbezogenen Vermögen-und-Cashflow-Charts müssen den heutigen Monat mit einer TODAY-Linie markieren");
+assert.match(cashflowDashboardSource, /resolveMonthlyLoanCashflow/, "Das Kreditraten-Diagramm muss die zentrale Buchung-vor-Plan-Logik verwenden");
+assert.match(monthlyLoanCashflowSource, /isCreditRateBooking[\s\S]*objectsWithUnlinkedBooking[\s\S]*fallbackPlans/, "Gebuchte Kreditraten müssen den Tilgungsplan objekt- und monatsgenau verdrängen");
+assert.match(monthlyLoanCashflowSource, /bookedAmount \+ plannedFallbackAmount/, "Planwerte dürfen gebuchte Kreditraten nur für andere, noch ungeklärte Objektmonate ergänzen");
 assert.match(wealthSource, /CentralWealthCashflowDashboard[\s\S]*lockedPropertyId[\s\S]*lockedPropertyLabel/, "Immobilien-Detailseiten müssen dieselbe zentrale TODAY-fähige Cashflow-Komponente verwenden");
 assert.match(wealthSource, /PROPERTY_DETAIL_TABS[\s\S]*shortLabel[\s\S]*description[\s\S]*icon:/, "Alle Immobilien-Unterseiten müssen dieselbe kompakte, beschriftete Tab-Navigation verwenden");
 assert.match(wealthSource, /Aktueller Bereich[\s\S]*activeTabConfig\.label/, "Der Objektkopf muss auf jeder Unterseite den aktuellen Fachbereich anzeigen");

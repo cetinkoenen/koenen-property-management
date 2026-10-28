@@ -394,14 +394,13 @@ export async function findLoanRatePlanForBooking(input: {
 }
 
 /**
- * Zentrale Monatsquelle für Dashboard-Auswertungen. Die UI berechnet keine
- * Annuitäten aus Darlehens-Stammdaten, sondern liest ausschließlich den
- * importierten Tilgungsplan.
+ * Planquelle für Dashboard-Auswertungen. Tatsächliche Kreditraten-Buchungen
+ * bleiben die Ist-Hauptquelle; der Tilgungsplan ergänzt fehlende Monate.
  */
 export async function listLoanRatePlanRowsForYear(year: number): Promise<LoanRatePlanRow[]> {
   const { data, error } = await supabase
     .from("property_loan_rate_plan")
-    .select("property_id,object_id,objekt_code,property_key,property_name,plan_date,plan_year,plan_month,payment_amount,interest_amount,fee_amount,principal_amount,closing_balance,source_file,source_row,source_kind,quality_status,quality_note")
+    .select("id,property_id,object_id,objekt_code,property_key,property_name,plan_date,plan_year,plan_month,payment_amount,interest_amount,fee_amount,principal_amount,closing_balance,source_file,source_row,source_kind,quality_status,quality_note")
     .eq("plan_year", year)
     .order("plan_date", { ascending: true });
   if (error) throw error;
