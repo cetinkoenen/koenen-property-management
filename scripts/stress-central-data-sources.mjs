@@ -256,6 +256,9 @@ assert.match(loanOverview, /const propertyLocked = Boolean\(fixedPropertyId \|\|
 assert.match(loanOverview, /if \(propertyLocked\) \{[\s\S]{0,500}?return rows\.filter/, "Eine Immobilienakte darf nur die Darlehensdaten ihres fest gewählten Objekts anzeigen");
 assert.match(wealth, /<PropertyUtilitiesKpiDashboard[\s\S]{0,300}?propertyId=\{centralRentObjectId\(card, objects\)\}/, "Jede Immobilienakte muss das zentrale Nebenkosten-KPI-Dashboard verwenden");
 assert.match(wealth, /Vereinbarte Kaution/, "Die Mietkosten jeder Immobilienakte müssen die vereinbarte Kaution anzeigen");
+assert.match(wealth, /data-deposit-editor[\s\S]{0,1800}?grid min-w-0 gap-3 border-t border-blue-100 pt-3[\s\S]{0,1200}?sm:w-auto sm:justify-self-end/, "Kautionsquelle und Speicheraktion müssen ohne Überlagerung in einem responsiven Raster stehen");
+assert.match(wealth, /border-t border-slate-100 pt-5[\s\S]{0,200}?data-rent-summary/, "Die Mietkennzahlen müssen visuell und räumlich vom Kautionseditor getrennt sein");
+assert.match(wealth, /grid items-start gap-4 bg-slate-50\/50/, "Mieter- und Mietkostenkarten dürfen sich nicht gegenseitig auf eine fehlerhafte Höhe strecken");
 assert.match(wealth, /ownerOccupied[\s\S]{0,800}?Schreibgeschützt, solange der Nutzungstyp „Eigennutzung“ ist/, "Die Kaution muss bei Eigennutzung sichtbar und schreibgeschützt bleiben");
 assert.match(wealth, /depositContractsForCard[\s\S]{0,1800}?contract\.deposit_amount/, "Die Immobilienakte muss Kautionen direkt aus dem passenden aktiven Mietvertrag lesen");
 assert.match(tenantService, /updateTenantContractDepositAmount[\s\S]{0,900}?\.from\("tenant_contracts"\)[\s\S]{0,500}?deposit_amount/, "Kautionsänderungen müssen ausschließlich in der zentralen Mietvertragsquelle gespeichert werden");

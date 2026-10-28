@@ -1264,12 +1264,16 @@ function AgreedDepositFields({
   }
 
   return (
-    <div className="grid gap-3">
+    <div className="grid min-w-0 gap-3">
       {contracts.map((contract) => {
         const value = drafts[contract.contractId] ?? (contract.depositAmount == null ? "" : contract.depositAmount.toFixed(2).replace(".", ","));
         const labelSuffix = contracts.length > 1 ? ` · ${contract.unitLabel}` : "";
         return (
-          <div key={contract.contractId} className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3">
+          <div
+            key={contract.contractId}
+            className="isolate grid min-w-0 gap-3 overflow-hidden rounded-2xl border border-blue-100 bg-blue-50/60 p-4"
+            data-deposit-editor
+          >
             <RentDataField
               label={`Vereinbarte Kaution${labelSuffix}`}
               value={value}
@@ -1277,18 +1281,18 @@ function AgreedDepositFields({
               placeholder="0,00"
               onChange={(nextValue) => onDraftChange(contract.contractId, nextValue)}
             />
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-bold text-slate-500">Vertragsquelle · {contract.tenantName}</span>
+            <div className="grid min-w-0 gap-3 border-t border-blue-100 pt-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <span className="min-w-0 break-words text-xs font-bold leading-5 text-slate-500">Vertragsquelle · {contract.tenantName}</span>
               <button
                 type="button"
                 disabled={disabled}
                 onClick={() => void onSave(contract.contractId)}
-                className="inline-flex min-h-9 items-center rounded-xl bg-[#255f6f] px-3 text-xs font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600"
+                className="relative inline-flex min-h-10 w-full items-center justify-center whitespace-nowrap rounded-xl bg-[#255f6f] px-4 text-xs font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 sm:w-auto sm:justify-self-end"
               >
                 Kaution speichern
               </button>
             </div>
-            {statuses[contract.contractId] ? <p className="mt-2 text-xs font-bold text-slate-600" role="status">{statuses[contract.contractId]}</p> : null}
+            {statuses[contract.contractId] ? <p className="min-w-0 break-words text-xs font-bold leading-5 text-slate-600" role="status">{statuses[contract.contractId]}</p> : null}
           </div>
         );
       })}
@@ -1346,8 +1350,8 @@ function StandardRentInfoPanel({
         </div>
       </div>
 
-      <div className="grid items-stretch gap-4 bg-slate-50/50 p-4 sm:p-5 lg:grid-cols-2">
-        <section className="flex h-full flex-col rounded-[18px] border border-slate-200/90 bg-white p-4 transition hover:border-slate-300 sm:p-5">
+      <div className="grid items-start gap-4 bg-slate-50/50 p-4 sm:p-5 lg:grid-cols-2">
+        <section className="flex min-w-0 flex-col rounded-[18px] border border-slate-200/90 bg-white p-4 transition hover:border-slate-300 sm:p-5">
           <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <h3 className="text-base font-black text-slate-950">Mieterinformationen</h3>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Kontakt</span>
@@ -1371,7 +1375,7 @@ function StandardRentInfoPanel({
           </div>
         </section>
 
-        <section className="flex h-full flex-col rounded-[18px] border border-slate-200/90 bg-white p-4 transition hover:border-slate-300 sm:p-5">
+        <section className="flex min-w-0 flex-col rounded-[18px] border border-slate-200/90 bg-white p-4 transition hover:border-slate-300 sm:p-5">
           <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <h3 className="text-base font-black text-slate-950">Mietkosten</h3>
             <span className="rounded-full bg-[#edf7f4] px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#255f6f]">Vertrag</span>
@@ -1401,11 +1405,11 @@ function StandardRentInfoPanel({
               onSave={onDepositSave}
             />
           </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <div className="mt-5 grid min-w-0 gap-3 border-t border-slate-100 pt-5 sm:grid-cols-3" data-rent-summary>
             {rentSummary.map((item) => (
-              <div key={item.label} className={["rounded-2xl border px-3 py-3", item.highlight ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50"].join(" ")}>
+              <div key={item.label} className={["min-w-0 rounded-2xl border px-3 py-3", item.highlight ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-slate-50"].join(" ")}>
                 <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">{item.label}</p>
-                <b className={["mt-1 block text-sm font-black", item.highlight ? "text-emerald-700" : "text-slate-950"].join(" ")}>{item.value}</b>
+                <b className={["mt-1 block break-words text-sm font-black", item.highlight ? "text-emerald-700" : "text-slate-950"].join(" ")}>{item.value}</b>
               </div>
             ))}
           </div>
