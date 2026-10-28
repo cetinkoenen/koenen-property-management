@@ -110,6 +110,8 @@ const categoryAliases = new Map([
   ["bewirtungskosten", "Bewirtungskosten"],
   ["buero porto", "Büro / Porto"],
   ["porto", "Büro / Porto"],
+  ["inserat", "Inserat / Vermietungswerbung"],
+  ["vermietungswerbung", "Inserat / Vermietungswerbung"],
   ["allgemein", "Allgemein"],
   ["erwerbsnebenkosten anschaffungskosten", "Erwerbsnebenkosten / Anschaffungskosten"],
 ]);
@@ -119,7 +121,7 @@ const validByType = {
   expense: new Set([
     "Abfallgebühr", "Allgemein", "Verwaltungskosten", "Bewirtungskosten",
     "Erwerbsnebenkosten / Anschaffungskosten", "Fahrtkosten", "Grundsteuer",
-    "Handy & Internet", "Kontoführungsgebühr", "Kreditrate", "Büro / Porto",
+    "Handy & Internet", "Kontoführungsgebühr", "Kreditrate", "Büro / Porto", "Inserat / Vermietungswerbung",
     "Schonsteinfeger", "Software", "Steuer", "Steuerberater", "Capex", "Reparatur",
     "Versicherung", "Wartung", "Kaution",
   ]),

@@ -251,6 +251,7 @@ export function classifyTaxRelevance(entry: TaxRuleEntry, objectLabel?: string |
     Software: "Software (Werbungskosten)",
     Steuerberater: "Steuerberater (Werbungskosten)",
     "Büro / Porto": "Büro / Porto (Werbungskosten)",
+    "Inserat / Vermietungswerbung": "Inserat / Vermietungswerbung (Werbungskosten)",
   };
 
   if (fullExpenseGroups[canonicalCategory]) {

@@ -888,7 +888,7 @@ function openAdvisorPdf(payload: AdvisorExportPayload) {
           ["4", "Schuldzinsen", formatTaxCurrency(report.loanInterest), "Tilgung ausgeschlossen"],
           ["5", "Erhaltungsaufwand", formatTaxCurrency(report.maintenance), `${report.maintenanceDistributionYears} Jahr(e) Verteilung`],
           ["6", "Laufende Betriebs- & Nebenkosten", formatTaxCurrency(report.runningCosts), "Grundsteuer, Versicherung, Müll, Wartung"],
-          ["7", "Verwaltungskosten & Pauschalen", formatTaxCurrency(report.administrationCosts), "Verwaltung, Reisen, Bewirtung, Telefon/Internet, Pauschale"],
+          ["7", "Verwaltung & sonstige Werbungskosten", formatTaxCurrency(report.administrationCosts), "Verwaltung, Inserate, Reisen, Bewirtung, Telefon/Internet, Pauschale"],
         ],
       },
       {

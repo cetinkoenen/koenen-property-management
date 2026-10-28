@@ -189,6 +189,8 @@ assert.match(app, /Bodenrichtwert \(€\/m²\)[\s\S]*Primärenergiebedarf \(kWh\
 
 assert.match(financeCategories, /Allgemeinstrom/, "Tiefgaragenstrom muss als eigene steuerliche Ausgabenkategorie erfasst werden können");
 assert.match(financeCategories, /Instandhaltungsrücklage/, "Rücklagenzuführungen müssen getrennt von sofort abzugsfähigen Ausgaben erfasst werden können");
+assert.match(financeCategories, /Inserat \/ Vermietungswerbung/, "Vermietungsinserate müssen als eigene objektbezogene Werbungskosten erfasst werden können");
+assert.match(taxEngine, /Sonstige Werbungskosten[\s\S]*Anlage V Zeilen 80-82/, "Vermietungsinserate müssen im Anlage-V-Report als sonstige Werbungskosten exportiert werden");
 assert.match(tgBilling, /WEG-Eigentümerabrechnung/, "Die Tiefgaragenseite muss Eigentümer- und Mieterabrechnung sichtbar trennen");
 assert.match(tgBilling, /Steuerbuchung erst nach tatsächlicher Zahlung/, "Offene WEG-Forderungen dürfen nicht vor Zahlung als Ausgabe behandelt werden");
 assert.match(rosensteinParkingStartMigration, /'periodFrom', '2025-11-14'[\s\S]*'periodTo', '2025-12-31'/, "Die P250-Mieterabrechnung muss mit dem bestätigten Mietbeginn am 14.11.2025 beginnen");
@@ -234,4 +236,4 @@ assert.match(tgBilling, /listTenantContracts[\s\S]*contractMatchesBillingPeriod[
 assert.match(tgBilling, /P254:[\s\S]*"P254"[\s\S]*"E008440000123"[\s\S]*"GARAGE3"/, "P254 muss auch über die zentrale Einheit Garage 3 eindeutig zum Mietvertrag aufgelöst werden");
 assert.match(p254BillingTenantMigration, /'tenantName', 'Sebastian Pilsl'[\s\S]*'recipientSalutation', 'Sehr geehrter Herr Pilsl,'[\s\S]*not ilike '%Güzel%'/, "P254/2025 darf nur Sebastian Pilsl als Zeitraum-Mieter führen");
 
-console.log("157 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");
+console.log("159 Stressfaelle fuer sichere und vollstaendige Berichtsexporte bestanden.");

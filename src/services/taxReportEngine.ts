@@ -579,6 +579,9 @@ function classifyBookingForAnlageV(entry: TaxReportEntry, profile: TaxObjectProf
     if (categoryMatches(entry, MAINTENANCE_CATEGORIES, profile) || includesAny(text, ["rücklagenentnahme", "ruecklagenentnahme"])) {
       return { categoryName: "Erhaltungsaufwand", officialFormLine: "Anlage V Zeilen 55-72", incomeAmount: 0, expenseAmount: value / getDistributionYears(entry), apportionableStatus: "Nein", reviewStatus: "Exportiert" };
     }
+    if (categoryMatches(entry, ["Inserat / Vermietungswerbung"], profile)) {
+      return { categoryName: "Sonstige Werbungskosten", officialFormLine: "Anlage V Zeilen 80-82", incomeAmount: 0, expenseAmount: value, apportionableStatus: "Nein", reviewStatus: "Exportiert" };
+    }
     if (entry.nk_relevant === true) {
       return { categoryName: "Umlagefähige Betriebskosten", officialFormLine: "Anlage V Zeilen 73-75", incomeAmount: 0, expenseAmount: value, apportionableStatus: "Ja", reviewStatus: "Exportiert" };
     }
@@ -772,7 +775,10 @@ function buildAnlageVReport(baseProfile: TaxObjectProfile, entries: TaxReportEnt
   const maintenanceRows = profileEntries.filter((_, index) => bookingRows[index]?.categoryName === "Erhaltungsaufwand");
   const maintenance = sumCurrency(bookingRows.filter((row) => row.categoryName === "Erhaltungsaufwand"), (row) => row.expenseAmount);
   const runningCosts = sumCurrency(bookingRows.filter((row) => row.categoryName === "Umlagefähige Betriebskosten"), (row) => row.expenseAmount);
-  const administrationCostsFromEntries = sumCurrency(bookingRows.filter((row) => row.categoryName === "Nicht umlagefähige Kosten / Verwaltung"), (row) => row.expenseAmount);
+  const administrationCostsFromEntries = sumCurrency(
+    bookingRows.filter((row) => row.categoryName === "Nicht umlagefähige Kosten / Verwaltung" || row.categoryName === "Sonstige Werbungskosten"),
+    (row) => row.expenseAmount,
+  );
   const businessMealRows = profileEntries.filter((entry) => entry.entry_type === "expense" && isBusinessMealCategory(canonicalCategoryForTax(entry, profile.label)));
   const businessMealDeductible = sumCurrency(businessMealRows, (entry) => calculateBusinessMealDeductible(amount(entry.amount)));
   const mileageRows = trips.filter((trip) => trip.steuerjahr === year && matchesProfileTrip(trip, profile));
@@ -1007,7 +1013,7 @@ export function buildAnlageVReportLines(report: AnlageVReport): string[] {
     `Feld 4a - Geldbeschaffungskosten: ${formatTaxCurrency(report.moneyProcurementCosts)}`,
     `Feld 5 - Erhaltungsaufwand: ${formatTaxCurrency(report.maintenance)}`,
     `Feld 6 - Laufende Betriebs- & Nebenkosten: ${formatTaxCurrency(report.runningCosts)}`,
-    `Feld 7 - Verwaltungskosten & Pauschalen: ${formatTaxCurrency(report.administrationCosts)}`,
+    `Feld 7 - Verwaltung & sonstige Werbungskosten: ${formatTaxCurrency(report.administrationCosts)}`,
     `  davon Portfolio-Ausgaben anteilig: ${formatTaxCurrency(report.portfolioAdministrationShare)}`,
     `  davon Bewirtungskosten (70% Anteil): ${formatTaxCurrency(report.businessMealDeductible)}`,
     `  davon Telekommunikation (20% gedeckelt, anteilig): ${formatTaxCurrency(report.telecommunicationDeductible)}`,
