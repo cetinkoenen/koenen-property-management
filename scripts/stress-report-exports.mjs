@@ -89,6 +89,8 @@ assert.match(reportCenter, /Kaution \(vereinbart\)/, "Die vereinbarte Kaution mu
 assert.match(reportCenter, /Kaution wird ausschließlich aus dem für den Berichtszeitraum gültigen Mietvertrag übernommen/, "Die Kautionsquelle und ihre jahresbezogene Vertragslogik müssen im Report professionell dokumentiert sein");
 assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'validation'[\s\S]*'cover'/, "Datenprüfung und Management Summary müssen den Steuerberater-Report eröffnen");
 assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'objects'[\s\S]*'acquisition'[\s\S]*'tenants'/, "Anschaffungskosten müssen im Steuerberater-Report verbindlich nach den Objektdaten folgen");
+assert.match(reportCenter, /const separatelyReported = excluded\.filter\(entry => !isAcquisitionEntry\(entry\) && !isLoanRateEntry\(entry\)\)/, "Anschaffungsbelege und Kreditraten dürfen nicht zusätzlich in der allgemeinen EÜR-Abgrenzung wiederholt werden");
+assert.match(reportCenter, /Erwerbs- und Anschaffungsbelege werden ausschließlich im Kapitel „Anschaffungskosten & AfA-Basis“[\s\S]*Kreditraten[\s\S]*ausschließlich im Kapitel „Tilgung & Zinsen“/, "Der Steuerreport muss die eindeutige fachliche Kapitelzuordnung dokumentieren");
 assert.match(reportCenterPage, /taxPreflightBlocked[\s\S]*Export gesperrt: Die Datenprüfung enthält blockierende Punkte/, "Blockierende Datenfehler müssen den Export sichtbar verhindern");
 assert.match(reportCenterPdf, /if \(module\.id === 'cover'\) return \[\]/, "Das Kennzahlenmodul darf nicht als zweites Deckblatt gedruckt werden");
 assert.match(reportCenterPdf, /if \(!table\.rows\.length\) return \[\]/, "Leere Nachweistabellen dürfen keine unnötigen PDF-Seiten erzeugen");

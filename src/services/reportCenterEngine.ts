@@ -342,6 +342,8 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     return { tenantCosts, balance, result: `${balance >= 0 ? 'Guthaben' : 'Nachzahlung'} · ${euro(Math.abs(balance))}` };
   };
   const excluded: FinanceEntry[] = [];
+  const isAcquisitionEntry = (entry: FinanceEntry) => /anschaffung|erwerbsneben|kaufpreis|grundbuch|notar|immobilienmakler|makler/i.test(`${text(entry.category)} ${text(entry.note)}`);
+  const isLoanRateEntry = (entry: FinanceEntry) => /kreditrate|darlehensrate/i.test(text(entry.category));
   for (const e of incomes) {
     const c = text(e.category).toLowerCase();
     if (e.tax_relevant === false || isOwnerOccupied(objectFor(e)) || /kaution|darlehensauszahlung|darlehensrate|kreditrate|umbuchung/.test(c)) { excluded.push(e); continue; }
@@ -379,10 +381,14 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const cover = module('cover', [table('Kennzahlen', ['Kennzahl','Summe'], [
     ['Alle Geldbewegungen: Einnahmen',euro(total(incomes))],['Alle Geldbewegungen: Ausgaben',euro(total(expenses))],['Alle Geldbewegungen: Saldo',euro(total(incomes)-total(expenses))],['Steuerlich vorbereitete Einnahmen (EÜR)',euro(revenue)],['Steuerlich vorbereitete Ausgaben (EÜR)',euro(deductible)],['Steuerlich vorbereitetes Ergebnis (EÜR)',euro(revenue-deductible)],['Soll-Mieten', rent ? euro(expected) : 'Wird geladen'],['Ist-Mieten',rent ? euro(paid) : 'Wird geladen'],['Zahlungsquote', expected ? percent(paid/expected*100, 2) : '—'],['Einheiten mit Soll-Miete / Mietkonto-Zeilen', rent ? `${rented}/${reportingUnits.length}` : 'Wird geladen'],
   ])], [rentNote, 'Alle Geldbewegungen stimmen mit dem Buchungsjournal überein. Die EÜR schließt Kautionen, Tilgung, Anschaffungskosten, als nicht steuerrelevant markierte Buchungen und die eigengenutzte Hohenloher Str. 78 aus.', ...(input.rosensteinUnit ? [`Berichtseinheit: ${rosensteinTaxUnitLabel(input.rosensteinUnit)}. Sämtliche einheitenbezogenen Tabellen und Nachweise sind auf diesen Stellplatz begrenzt.`] : [])]);
-  const eur = module('eur',[table('Einnahmen und Ausgaben',['Kategorie','Netto','Steuer','Brutto'],eurRows),table('Separat abzugrenzende Geldbewegungen',['Datum','Objekt','Mieter / Bezug','Kategorie','Beschreibung','Brutto'],excluded
+  const separatelyReported = excluded.filter(entry => !isAcquisitionEntry(entry) && !isLoanRateEntry(entry));
+  const eur = module('eur',[table('Einnahmen und Ausgaben',['Kategorie','Netto','Steuer','Brutto'],eurRows),table('Weitere separat abzugrenzende Geldbewegungen',['Datum','Objekt','Mieter / Bezug','Kategorie','Beschreibung','Brutto'],separatelyReported
     .slice()
     .sort((a,b) => text(a.booking_date).localeCompare(text(b.booking_date)) || text(a.id).localeCompare(text(b.id)))
-    .map(e => [e.booking_date,label(e),tenantForEntry(e),e.category,e.note,euro(e.amount)]))],['Regelmäßige Warmmieten werden anhand des gespeicherten Abrechnungszeitraums in Kaltmiete und Nebenkostenvorauszahlung aufgeteilt. Nicht belegbar aufteilbare Nachzahlungen bleiben gesondert ausgewiesen. AfA ist in diesem zahlungsbasierten Ergebnis nicht enthalten.']);
+    .map(e => [e.booking_date,label(e),tenantForEntry(e),e.category,e.note,euro(e.amount)]))],[
+      'Regelmäßige Warmmieten werden anhand des gespeicherten Abrechnungszeitraums in Kaltmiete und Nebenkostenvorauszahlung aufgeteilt. Nicht belegbar aufteilbare Nachzahlungen bleiben gesondert ausgewiesen. AfA ist in diesem zahlungsbasierten Ergebnis nicht enthalten.',
+      'Erwerbs- und Anschaffungsbelege werden ausschließlich im Kapitel „Anschaffungskosten & AfA-Basis“ fachlich ausgewiesen. Kreditraten sowie ihre Zins-/Tilgungsaufteilung erscheinen ausschließlich im Kapitel „Tilgung & Zinsen“. Das vollständige Buchungsjournal bleibt als lückenloser Belegnachweis erhalten.',
+    ]);
   const contractRows = contracts.filter(c => overlaps(c,from,to)).map(c => {
     const obj = objectFor(c);
     const residentialContracts = contracts.filter(x => objectFor(x)?.id === obj?.id && !isParkingText(x.unit_label));
@@ -641,7 +647,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   ];
   const register = module('register',[table('Portfolio-Register',['Objekt-ID','Immobilie','Straße','PLZ / Ort','Nutzung','Baujahr','Fläche','Kaufdatum'],objects.map(o=>{const p=profiles(o);return [o.code??o.id,o.label,str(p.street),`${text(p.postalCode)} ${text(p.city)}`,str(p.usageType),str(p.equipmentYear),str(p.totalArea??o.livingAreaM2),str(p.purchaseDate)];}))]);
   const acquisitionValue = (value: unknown) => input.rosensteinUnit && value != null && value !== '' ? allocateRosensteinThird(n(value),input.rosensteinUnit) : value;
-  const acquisitionEntries = expenses.filter(e=>/anschaffung|erwerbsneben|kaufpreis|grundbuch|notar|immobilienmakler|makler/i.test(`${text(e.category)} ${text(e.note)}`));
+  const acquisitionEntries = expenses.filter(isAcquisitionEntry);
   const acquisition = module('acquisition',[
     table(`Anschaffungskosten & AfA-Basis ${from.slice(0,4)}`,['Objekt / Einheit','Kaufdatum','Kaufpreis','Gebäudeanteil','Grund/Boden','Stellplatzanteil','Nutzen-/Lastenübergang'],objects.map(o=>{const p=profiles(o);return[input.rosensteinUnit?rosensteinTaxUnitLabel(input.rosensteinUnit):o.label,str(p.purchaseDate),euro(acquisitionValue(p.purchasePrice)),euro(acquisitionValue(p.buildingPurchasePrice)),euro(acquisitionValue(p.landPurchasePrice)),euro(acquisitionValue(p.parkingPurchasePrice)),str(p.transferBenefitsDate)];})),
     table('Erwerbs- und Anschaffungsbelege im Zeitraum',['Datum','Objekt / Einheit','Rechnung / Belegnummer','Kategorie','Gesamtbeleg','Anteil im Einzelreport','Zuordnung'],acquisitionEntries.map(e=>[

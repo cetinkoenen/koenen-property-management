@@ -151,6 +151,10 @@ assert.equal(p253Module('objects').tables[3].rows[0][3],'7','Einheitendetail mus
 assert.equal(p253Module('acquisition').tables[0].rows[0][2],'19.000,00 €','Gesamtkaufpreis muss exakt zu einem Drittel zugeordnet werden');
 assert.equal(p253Module('acquisition').tables[1].rows.find(row=>String(row[2]).includes('R20252087'))?.[5],'391,02 €','Notarrechnung muss mit Rechnungsnummer und exaktem Anteil erscheinen');
 assert.equal(p253Module('acquisition').tables[1].rows.find(row=>String(row[2]).includes('Immobilienmakler'))?.[5],'904,40 €','Maklerrechnung mit allen Stellplatzcodes ist ein gemeinsamer Beleg');
+assert.equal(p253Module('eur').tables[1].rows.some(row=>/Erwerbsnebenkosten|Anschaffungskosten/i.test(String(row[3]))),false,'Erwerbsbelege dürfen nicht zusätzlich in der allgemeinen EÜR-Abgrenzung erscheinen');
+assert.equal(p253Module('eur').tables[1].rows.some(row=>/Kreditrate|Darlehensrate/i.test(String(row[3]))),false,'Kreditraten dürfen nicht zusätzlich in der allgemeinen EÜR-Abgrenzung erscheinen');
+assert.match(p253Module('eur').paragraphs.join(' '),/ausschließlich im Kapitel „Anschaffungskosten & AfA-Basis“/,'Der Report muss die einmalige fachliche Darstellung der Erwerbsbelege erläutern');
+assert.match(p253Module('eur').paragraphs.join(' '),/ausschließlich im Kapitel „Tilgung & Zinsen“/,'Der Report muss die einmalige fachliche Darstellung der Kreditraten erläutern');
 assert.equal(p253Module('loan-interest').tables[0].rows.length,1,'Gesamtdarlehen muss anteilig P253 zugeordnet werden');
 assert.equal(p253Module('loan-interest').tables[0].rows[0][2],'284,48 €');
 assert.equal(p253Module('loan-interest').tables[2].rows.find(row=>row[1]==='2025-11')?.[3],'101,67 €','November-Kreditrate muss anteilig erscheinen');
@@ -173,6 +177,7 @@ assert.equal(decemberInterest.reduce((sum,value)=>sum+value,0).toFixed(2),'559.7
 const allRosensteinReport=buildReportCenter({objects:[rosensteinObject],entries:rosensteinEntries,loans:[],sources:rosensteinSources,rent:rosensteinRent,from:'2025-01-01',to:'2025-12-31',objectId:'rosen-core',today:'2026-09-23'});
 assert.equal(allRosensteinReport.find(module=>module.id==='tenants').tables[0].rows.length,3,'Gesamtreport muss alle drei Rosenstein-Stellplätze enthalten');
 assert.equal(allRosensteinReport.find(module=>module.id==='journal').tables[0].rows.length,11,'Gesamtreport darf direkte oder gemeinsame Rosenstein-Buchungen nicht verlieren');
+assert.equal(allRosensteinReport.find(module=>module.id==='eur').tables[1].rows.some(row=>/Erwerbsnebenkosten|Anschaffungskosten|Kreditrate|Darlehensrate/i.test(String(row[3]))),false,'Auch der Gesamtobjekt-Report darf Fachkapitel nicht in der EÜR-Abgrenzung duplizieren');
 assert.equal(allRosensteinReport.find(module=>module.id==='validation').metrics.find(metric=>metric.label==='Blocker')?.value,'0','Exakt als Gesamtmiete minus Kaltmiete ableitbare TG-Nebenkosten dürfen den Export nicht blockieren');
 assert.match(allRosensteinReport.find(module=>module.id==='validation').tables[0].rows.map(row=>row.join(' ')).join(' '),/7\.00 m²/,'Vorprüfung muss die zentrale Stellplatzfläche verwenden');
 
