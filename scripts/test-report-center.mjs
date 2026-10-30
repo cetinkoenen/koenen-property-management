@@ -184,7 +184,7 @@ assert.match(allRosensteinReport.find(module=>module.id==='validation').tables[0
 // Colmarer 2025: Mieterwechsel, Mietaufteilung, Kautionsrückgabe und NK-Abrechnung.
 const colmarerObjects=[{id:'colmarer-core',code:'COL',label:'Colmarer Str. 45',livingAreaM2:36,aliases:['colmarer-billing']}];
 const colmarerBillings=[
-  {meta:{billingYear:2025,propertyCode:'colmarer-billing',propertyLabel:'Colmarer Str. 45',periodFrom:'2025-01-01',periodTo:'2025-07-31'},apartments:[{label:'Wohnung 1',tenantName:'Cansu Kurt',area:36,occupancyMonths:7,advancePayments:770,active:true}],costs:[{label:'Abfall',amount:700,allocation:'directAmount',directAmount:700}]},
+  {meta:{billingYear:2025,propertyCode:'colmarer-billing',propertyLabel:'Colmarer Str. 45',periodFrom:'2025-01-01',periodTo:'2025-07-30'},apartments:[{label:'Wohnung 1',tenantName:'Cansu Kurt',area:36,occupancyMonths:7,advancePayments:770,active:true}],costs:[{label:'Abfall',amount:700,allocation:'directAmount',directAmount:700}]},
   {meta:{billingYear:2025,propertyCode:'colmarer-billing',propertyLabel:'Colmarer Str. 45',periodFrom:'2025-08-01',periodTo:'2025-12-31'},apartments:[{label:'Wohnung 2',tenantName:'Nicholas Kraeft-Wendte',area:36,occupancyMonths:5,advancePayments:600,active:true}],costs:[{label:'Abfall',amount:650,allocation:'directAmount',directAmount:650}]},
 ];
 const colmarerSources={portfolio_properties:[{id:'colmarer-billing',core_property_id:'colmarer-core'}],tenant_profiles:[{id:'nicholas',first_name:'Nicholas',last_name:'Kraeft-Wendte'}],tenant_contracts:[{id:'new-contract',tenant_id:'nicholas',property_id:'colmarer-core',unit_label:'Wohnung 2',start_date:'2025-08-01',end_date:null,status:'active',cold_rent:550,operating_costs:120,total_rent:670}],rent_adjustments:[{property_id:'colmarer-core',tenant_name:'Mieterdaten aus Vermietungszeitraum',effective_date:'2025-01-01',effective_end_date:'2025-07-31',old_cold_rent:475,new_cold_rent:485,old_operating_costs:110,new_operating_costs:110,new_total_rent:595}],billing_workspaces:[{object_id:'colmarer-billing',year:'2025',data:{billings:colmarerBillings.map((workspace,index)=>({id:`billing-${index}`,workspace}))}}]};
@@ -204,12 +204,27 @@ const colEur=label=>colModule('eur').tables[0].rows.find(r=>r[0]===label)?.[3];
 assert.equal(colEur('Kaltmiete'),'6.145,00 €');
 assert.equal(colEur('Nebenkostenzahlungen'),'1.370,00 €');
 assert.equal(colEur('Mietnachzahlung – Aufteilung Kalt/NK nicht belegt'),'192,09 €');
-assert.equal(colModule('eur').tables[1].rows.find(r=>r[3]==='Kaution'&&r[5]==='940,00 €')?.[2],'Cansu Kurt');
+assert.equal(colModule('eur').tables[1].rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='940,00 €')?.[2],'Cansu Kurt');
+assert.match(colModule('eur').tables[1].rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='1.650,00 €')?.[3],/Eingang \(\+\)/);
+assert.match(colModule('eur').tables[1].rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='940,00 €')?.[6],/Zurückgezahlt/);
+assert.match(colModule('eur').paragraphs.join(' '),/1\.650,00 € eingegangen, 940,00 € ausbezahlt; Netto-Bewegung 710,00 €/);
 assert.equal(colModule('journal').tables[0].rows.find(r=>r[0]==='2025-01-03')?.[2],'Cansu Kurt');
 assert.equal(colModule('adjustments').tables[1].rows[0][1],'Cansu Kurt');
+assert.deepEqual(colModule('tenants').tables[0].rows.map(row=>[row[2],row[3],row[4]]),[
+  ['Cansu Kurt','2025-01-01','2025-07-30'],
+  ['Nicholas Kraeft-Wendte','2025-08-01','2025-12-31'],
+]);
+assert.equal(colModule('tenants').tables[2].rows.length,2,'Die Zahlungsmatrix muss beim Mieterwechsel getrennte zeitbezogene Zeilen ausgeben');
+assert.equal(colModule('tenants').tables[2].rows[0][2],'Cansu Kurt');
+assert.notEqual(colModule('tenants').tables[2].rows[0][3],'—','Cansu muss Januar bis Juli zugeordnet sein');
+assert.equal(colModule('tenants').tables[2].rows[0][10],'—','Cansu darf ab August nicht mehr zugeordnet sein');
+assert.equal(colModule('tenants').tables[2].rows[1][3],'—','Nicholas darf vor August nicht zugeordnet sein');
+assert.notEqual(colModule('tenants').tables[2].rows[1][10],'—','Nicholas muss ab August zugeordnet sein');
 assert.equal(colModule('utilities').tables[1].rows.reduce((sum,r)=>sum+Number(String(r[4]).replace(/[^0-9,]/g,'').replace(',','.')),0).toFixed(2),'336.36');
-assert.match(colModule('utilities').tables[2].title,/Nebenkostenabrechnung für Cansu Kurt \(2025-01-01 bis 2025-07-31\)/);
-assert.match(colModule('utilities').tables[4].title,/Nebenkostenabrechnung für Nicholas Kraeft-Wendte \(2025-08-01 bis 2025-12-31\)/);
+assert.match(colModule('utilities').tables[2].title,/Anlage 1 · Nebenkostenabrechnung · Cansu Kurt · 2025-01-01 bis 2025-07-30/);
+assert.match(colModule('utilities').tables[2].subtitle,/Anlage 1 gehört ausschließlich zu Cansu Kurt/);
+assert.match(colModule('utilities').tables[4].title,/Anlage 2 · Nebenkostenabrechnung · Nicholas Kraeft-Wendte · 2025-08-01 bis 2025-12-31/);
+assert.match(colModule('utilities').tables[4].subtitle,/Anlage 2 gehört ausschließlich zu Nicholas Kraeft-Wendte/);
 assert.match(String(colModule('utilities').tables[2].rows[0][9]),/^Guthaben ·/);
 assert.match(String(colModule('utilities').tables[4].rows[0][9]),/^Nachzahlung ·/);
 const aliasReport=buildReportCenter({...input,sources:{...sources,portfolio_properties:[{id:'portfolio-shadow',core_property_id:'legacy-1',name:'Testobjekt Core Shadow'}],property_id_aliases:[{legacy_property_id:'legacy-1',object_id:'core-1'}],portfolio_units:[{id:'u-shadow',property_id:'portfolio-shadow',name:'Wohnung 1',unit_type:'apartment',is_active:true}]}});
@@ -251,6 +266,8 @@ assert.match(pdfSource, /normalized\.includes\("teilweise"\)[\s\S]*normalized\.i
 assert.match(pdfSource, /<colgroup>/, 'PDF tables need weighted column widths');
 assert.match(pdfSource, /\.hero \{[\s\S]*?break-after: page;/, 'The cover page must end before the first report section');
 assert.match(pdfSource, /class="report-chart"/, 'Tilgung-und-Zins-Diagramme müssen im PDF als echte Grafik ausgegeben werden');
+assert.match(pdfSource, /class="chart-value"/, 'Balkendiagramme müssen ihre Euro-Werte direkt als Datenbeschriftung ausgeben');
+assert.match(pdfSource, /euroChart\(value\)/, 'Diagramm-Datenbeschriftungen müssen als Euro-Beträge formatiert sein');
 assert.match(pdfSource, /class="\$\{isSummaryRow\(row\) \? "summary-row" : ""\}"/, 'Summen- und Ergebniszeilen müssen im PDF eigens markiert werden');
 assert.match(pdfSource, /tr\.summary-row td[\s\S]*font-weight: 950;[\s\S]*border-bottom: 4px double/, 'Summenzeilen müssen fett und mit doppelter Abschlusslinie formatiert sein');
 assert.match(pageSource, /taxAdvisorReportIds\.filter\(id=>selected\.includes\(id\)\)/, 'Der Steuerberaterbericht muss die fachlich definierte Modulreihenfolge verwenden');

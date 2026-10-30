@@ -84,9 +84,12 @@ assert.match(taxPreflight, /Kaltmiete aus historischer Mietanpassung übernommen
 assert.match(taxPreflight, /Mieteingang nicht zugeordnet[\s\S]*Verwendungszweck, Mietername und Betrag/, "Unzugeordnete Mieteingänge müssen mit einem nachvollziehbaren Matching geprüft werden");
 assert.match(taxPreflight, /Steuerkennzeichen widerspricht einer Sperrregel[\s\S]*Umlagekennzeichen widerspricht der BetrKV-Regel/, "Steuer- und Umlagekennzeichen müssen vor dem Export gegen die zentralen Regeln geprüft werden");
 assert.match(reportCenter, /buildTaxReportPreflight[\s\S]*const entries = preflight\.entries/, "Alle Steuerberater-Module müssen dieselbe bereinigte Buchungsmenge verwenden");
-assert.match(reportCenter, /euro\(c\.deposit_amount\)/, "Der Steuerberater-Report muss die vereinbarte Kaution direkt aus dem Mietvertrag übernehmen");
+assert.match(reportCenter, /contract\?\.deposit_amount==null\?'Nicht gepflegt':euro\(contract\.deposit_amount\)/, "Der Steuerberater-Report muss die vereinbarte Kaution direkt aus dem zeitlich passenden Mietvertrag übernehmen");
 assert.match(reportCenter, /Kaution \(vereinbart\)/, "Die vereinbarte Kaution muss im Vertragsdaten-Report sichtbar sein");
 assert.match(reportCenter, /Kaution wird ausschließlich aus dem für den Berichtszeitraum gültigen Mietvertrag übernommen/, "Die Kautionsquelle und ihre jahresbezogene Vertragslogik müssen im Report professionell dokumentiert sein");
+assert.match(reportCenter, /sameTenancyUnit[\s\S]*const tenancyPeriods = \[[\s\S]*billingPeriods[\s\S]*contractPeriods[\s\S]*rentPeriods/, "Historische Abrechnungszeiträume müssen aktuelle Verträge in Vertragsdaten und Zahlungsmatrix zeitlich übersteuern");
+assert.match(reportCenter, /Verwahrt · steuerneutral[\s\S]*Zurückgezahlt · steuerneutral/, "Kautionseingang und Kautionsauszahlung müssen eindeutig getrennt bezeichnet werden");
+assert.match(reportCenter, /Anlage \$\{utilityAttachmentIndex\} · Nebenkostenabrechnung[\s\S]*gehört ausschließlich zu/, "Jede Nebenkostenanlage muss Mieter und Zeitraum eindeutig nennen");
 assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'validation'[\s\S]*'cover'/, "Datenprüfung und Management Summary müssen den Steuerberater-Report eröffnen");
 assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'objects'[\s\S]*'acquisition'[\s\S]*'tenants'/, "Anschaffungskosten müssen im Steuerberater-Report verbindlich nach den Objektdaten folgen");
 assert.match(reportCenter, /const separatelyReported = excluded\.filter\(entry => !isAcquisitionEntry\(entry\) && !isLoanRateEntry\(entry\)\)/, "Anschaffungsbelege und Kreditraten dürfen nicht zusätzlich in der allgemeinen EÜR-Abgrenzung wiederholt werden");
@@ -97,6 +100,7 @@ assert.match(reportCenterPdf, /if \(!table\.rows\.length\) return \[\]/, "Leere 
 assert.match(reportCenterPdf, /wantedMetrics[\s\S]*Steuerlich vorbereitetes Ergebnis/, "Die wichtigsten Steuerkennzahlen müssen auf dem eigentlichen Deckblatt erscheinen");
 assert.match(professionalPdfReport, /\.hero::after \{ display: none !important; \}/, "Das dekorative Deckblattraster darf in der Druckansicht nicht über Kennzahlen laufen");
 assert.match(professionalPdfReport, /\.metric-card,[\s\S]*box-shadow: none !important; filter: none !important;/, "Kennzahlenkarten dürfen im Druck keine überlappenden Schattenflächen erzeugen");
+assert.match(professionalPdfReport, /class="chart-value"[\s\S]*euroChart\(value\)/, "Diagramme müssen sichtbare Euro-Datenbeschriftungen enthalten");
 assert.match(reportCenterPage, /Vorschau anzeigen[\s\S]*showPreview[\s\S]*chosen\.map/, "Große Berichtstabellen dürfen erst auf ausdrücklichen Wunsch als Bildschirmvorschau aufgebaut werden");
 assert.match(reportCenterPage, /headlessAnnualReport/, "Das Reportcenter muss die Mietkonto-Quelle ohne eine zweite sichtbare Jahresmatrix laden");
 assert.match(rentOverviewPage, /if \(headlessAnnualReport\) return null;/, "Die eingebettete Mietkonto-Quelle muss im kopflosen Reportmodus nur Daten liefern");

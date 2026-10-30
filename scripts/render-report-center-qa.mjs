@@ -18,23 +18,28 @@ const { buildReportCenter, taxAdvisorReportIds } = await import(pathToFileURL(jo
 const { prepareTaxAdvisorPdf } = await import(pathToFileURL(join(bundleDir, "services/reportCenterPdf.js")));
 const { buildProfessionalPdfReportHtml } = await import(pathToFileURL(join(bundleDir, "lib/professionalPdfReport.js")));
 
-const objects = [{ id: "fuerther", code: "Objekt_4", label: "Fürther Str. 74", livingAreaM2: 82 }];
+const objects = [{ id: "colmarer", code: "Objekt_3", label: "Colmarer Str. 45", livingAreaM2: 36 }];
 const entries = [
-  { id: "rent-1", object_id: "fuerther", booking_date: "2025-01-03", entry_type: "income", category: "Miete", amount: 650, note: "Wolfgang Stange" },
-  { id: "rate-1", object_id: "fuerther", booking_date: "2025-01-15", entry_type: "expense", category: "Kreditrate", amount: 438.53, note: "Darlehensrate" },
-  { id: "deposit-1", object_id: "fuerther", booking_date: "2025-02-01", entry_type: "income", category: "Kaution", amount: 1300, note: "Mietsicherheit" },
+  { id: "rent-old", object_id: "colmarer", booking_date: "2025-01-03", entry_type: "income", category: "Miete", amount: 595, note: "Cansu Kurt" },
+  { id: "rent-new", object_id: "colmarer", booking_date: "2025-08-03", entry_type: "income", category: "Miete", amount: 670, note: "Nicholas Kraeft-Wendte" },
+  { id: "rate-1", object_id: "colmarer", booking_date: "2025-01-15", entry_type: "expense", category: "Kreditrate", amount: 410.67, note: "Darlehensrate", loan_interest_amount: 160.67, loan_principal_amount: 250 },
+  { id: "deposit-in", object_id: "colmarer", booking_date: "2025-07-31", entry_type: "income", category: "Kaution", amount: 1650, note: "Mietsicherheit Nicholas Kraeft-Wendte" },
+  { id: "deposit-out", object_id: "colmarer", booking_date: "2025-08-04", entry_type: "expense", category: "Kaution", amount: 940, note: "Rückgabe Kaution Guthaben" },
 ];
-const months = Array.from({ length: 12 }, (_, index) => ({ month: index + 1, expected: 725, paid: index < 9 ? 725 : 0, open: 0, status: index < 9 ? "paid" : "none" }));
-const rent = { year: 2025, objectFilter: "", rows: [{ key: "wohnung", objectId: "fuerther", objectLabel: "Fürther Str. 74", unitLabel: "Wohnung", tenantName: "Wolfgang Stange", months }], totals: {}, propertyTotals: [], kpis: {} };
+const months = Array.from({ length: 12 }, (_, index) => ({ month: index + 1, expected: index < 7 ? 595 : 670, paid: index < 7 ? 595 : 670, open: 0, status: "paid" }));
+const rent = { year: 2025, objectFilter: "", rows: [{ key: "wohnung", objectId: "colmarer", objectLabel: "Colmarer Str. 45", unitLabel: "Wohnung 02", tenantName: "Nicholas Kraeft-Wendte", months }], totals: {}, propertyTotals: [], kpis: {} };
 const sources = {
-  tenant_profiles: [{ id: "wolfgang", first_name: "Wolfgang", last_name: "Stange" }],
-  tenant_contracts: [{ id: "contract", tenant_id: "wolfgang", property_id: "fuerther", unit_label: "Wohnung", start_date: "2024-01-01", status: "active", cold_rent: 650, operating_costs: 75, total_rent: 725 }],
-  property_extra: [{ property_id: "fuerther", wealth_profile: { totalArea: 82, street: "Fürther Str. 74", postalCode: "90429", city: "Nürnberg", equipmentYear: 1997 } }],
-  property_loan_ledger: [{ property_id: "fuerther", year: 2025, interest: 1662.36, principal: 3600, balance: 91000, source: "Darlehens-Ledger" }],
-  property_loan_rate_plan: [{ property_id: "fuerther", plan_date: "2025-01-31", payment_amount: 438.53, interest_amount: 138.53, principal_amount: 300, closing_balance: 91000, source_file: "Tilgungsplan Fürther.xlsx" }],
-  rent_adjustments: [],
-  portfolio_units: [{ id: "unit", property_id: "fuerther", name: "Wohnung", area_sqm: 82, is_active: true }],
-  billing_workspaces: [],
+  tenant_profiles: [{ id: "nicholas", first_name: "Nicholas", last_name: "Kraeft-Wendte" }],
+  tenant_contracts: [{ id: "contract", tenant_id: "nicholas", property_id: "colmarer", unit_label: "Wohnung 02", start_date: "2025-08-01", status: "active", cold_rent: 550, operating_costs: 120, total_rent: 670, deposit_amount: 1650 }],
+  property_extra: [{ property_id: "colmarer", wealth_profile: { totalArea: 36, street: "Colmarer Str. 45", postalCode: "28211", city: "Bremen", equipmentYear: 1997 } }],
+  property_loan_ledger: [{ property_id: "colmarer", year: 2025, interest: 1928.04, principal: 3000, balance: 105616, source: "Darlehens-Ledger" }],
+  property_loan_rate_plan: [{ property_id: "colmarer", plan_date: "2025-01-31", payment_amount: 410.67, interest_amount: 160.67, principal_amount: 250, closing_balance: 105616, source_file: "Tilgungsplan Colmarer.xlsx" }],
+  rent_adjustments: [{ property_id: "colmarer", tenant_name: "Cansu Kurt", effective_date: "2025-01-01", effective_end_date: "2025-07-30", new_cold_rent: 485, new_operating_costs: 110, new_total_rent: 595 }],
+  portfolio_units: [{ id: "unit", property_id: "colmarer", name: "Wohnung 02", area_sqm: 36, is_active: true }],
+  billing_workspaces: [{ object_id: "colmarer", year: "2025", data: { billings: [
+    { id: "anlage-1", workspace: { meta: { billingYear: 2025, propertyCode: "colmarer", propertyLabel: "Colmarer Str. 45", periodFrom: "2025-01-01", periodTo: "2025-07-30" }, apartments: [{ label: "Wohnung 02", tenantName: "Cansu Kurt", area: 36, occupancyMonths: 7, advancePayments: 770, active: true }], costs: [{ label: "Betriebskosten", amount: 700, allocation: "directAmount", directAmount: 700 }] } },
+    { id: "anlage-2", workspace: { meta: { billingYear: 2025, propertyCode: "colmarer", propertyLabel: "Colmarer Str. 45", periodFrom: "2025-08-01", periodTo: "2025-12-31" }, apartments: [{ label: "Wohnung 02", tenantName: "Nicholas Kraeft-Wendte", area: 36, occupancyMonths: 5, advancePayments: 600, active: true }], costs: [{ label: "Betriebskosten", amount: 650, allocation: "directAmount", directAmount: 650 }] } },
+  ] } }],
 };
 const modules = buildReportCenter({ objects, entries, loans: [], sources, rent, from: "2025-01-01", to: "2025-12-31", objectId: "", today: "2026-09-15" });
 const moduleById = new Map(modules.map((module) => [module.id, module]));

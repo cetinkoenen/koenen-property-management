@@ -178,7 +178,8 @@ function chartHtml(chart: PdfReportChart) {
     const x = groupStart + (groupWidth - barsWidth) / 2 + seriesIndex * barWidth;
     const y = top + plotHeight - barHeight;
     const color = series.color ?? defaultColors[seriesIndex % defaultColors.length];
-    return `<rect x="${x + 1}" y="${y}" width="${Math.max(2, barWidth - 2)}" height="${barHeight}" rx="3" fill="${escapeHtml(color)}"><title>${escapeHtml(`${label} · ${series.label}: ${euroChart(value)}`)}</title></rect>`;
+    const valueY = Math.max(12, y - 5);
+    return `<rect x="${x + 1}" y="${y}" width="${Math.max(2, barWidth - 2)}" height="${barHeight}" rx="3" fill="${escapeHtml(color)}"><title>${escapeHtml(`${label} · ${series.label}: ${euroChart(value)}`)}</title></rect><text x="${x + barWidth / 2}" y="${valueY}" text-anchor="middle" class="chart-value">${escapeHtml(euroChart(value))}</text>`;
   })).join("");
   const labels = chart.labels.map((label, index) => `<text x="${left + index * groupWidth + groupWidth / 2}" y="${height - 29}" text-anchor="middle" class="chart-label">${escapeHtml(label)}</text>`).join("");
   const legend = chart.series.map((series, index) => `<span><i style="background:${escapeHtml(series.color ?? defaultColors[index % defaultColors.length])}"></i>${escapeHtml(series.label)}</span>`).join("");
@@ -426,6 +427,7 @@ export function buildProfessionalPdfReportHtml(options: PdfReportOptions) {
     .report-chart { display: block; width: 100%; height: 255px; margin-top: 8px; }
     .chart-axis { fill: #64748b; font-size: 9px; font-weight: 700; }
     .chart-label { fill: #334155; font-size: 10px; font-weight: 850; }
+    .chart-value { fill: #0f172a; font-size: 8px; font-weight: 900; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
     .chart-legend { display: flex; justify-content: center; gap: 18px; color: #475569; font-size: 10px; font-weight: 850; }
     .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
     .chart-legend i { width: 10px; height: 10px; border-radius: 3px; }
