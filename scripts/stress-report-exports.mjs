@@ -87,7 +87,7 @@ assert.match(reportCenter, /buildTaxReportPreflight[\s\S]*const entries = prefli
 assert.match(reportCenter, /contract\?\.deposit_amount==null\?'Nicht gepflegt':euro\(contract\.deposit_amount\)/, "Der Steuerberater-Report muss die vereinbarte Kaution direkt aus dem zeitlich passenden Mietvertrag übernehmen");
 assert.match(reportCenter, /Kaution \(vereinbart\)/, "Die vereinbarte Kaution muss im Vertragsdaten-Report sichtbar sein");
 assert.match(reportCenter, /Kaution wird ausschließlich aus dem für den Berichtszeitraum gültigen Mietvertrag übernommen/, "Die Kautionsquelle und ihre jahresbezogene Vertragslogik müssen im Report professionell dokumentiert sein");
-assert.match(reportCenter, /sameTenancyUnit[\s\S]*const tenancyPeriods = \[[\s\S]*billingPeriods[\s\S]*contractPeriods[\s\S]*rentPeriods/, "Historische Abrechnungszeiträume müssen aktuelle Verträge in Vertragsdaten und Zahlungsmatrix zeitlich übersteuern");
+assert.match(reportCenter, /sameTenancyUnit[\s\S]*const tenancyPeriods = \[[\s\S]*rentPeriods[\s\S]*contractPeriods[\s\S]*billingPeriods/, "Die zentrale Mietentwicklung muss Vertragsgrenzen definieren; Verträge und Abrechnungen dürfen nur fehlende Zeiträume ergänzen");
 assert.match(reportCenter, /Verwahrt · steuerneutral[\s\S]*Zurückgezahlt · steuerneutral/, "Kautionseingang und Kautionsauszahlung müssen eindeutig getrennt bezeichnet werden");
 assert.match(reportCenter, /Anlage \$\{utilityAttachmentIndex\} · Nebenkostenabrechnung[\s\S]*gehört ausschließlich zu/, "Jede Nebenkostenanlage muss Mieter und Zeitraum eindeutig nennen");
 assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'validation'[\s\S]*'cover'/, "Datenprüfung und Management Summary müssen den Steuerberater-Report eröffnen");

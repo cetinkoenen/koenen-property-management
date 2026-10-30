@@ -245,9 +245,18 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     const unit = rentalUnitLabel(rental);
     const rentalFrom = text(rental.start_date || '0000-01-01').slice(0,10);
     const rentalTo = text(rental.end_date || '9999-12-31').slice(0,10);
-    const unitContracts = contracts.filter(contract => objectFor(contract)?.id === object?.id && sameUnit(contract.unit_label,unit));
+    const unitContracts = contracts.filter(contract => objectFor(contract)?.id === object?.id && sameTenancyUnit(object,contract.unit_label,unit));
     const overlapping = unitContracts.find(contract => overlaps(contract,rentalFrom,rentalTo));
     if (overlapping) return name(overlapping);
+    // Historische Nebenkostenabrechnungen sind eine belastbare Namensquelle,
+    // duerfen aber nicht ihre (teils abweichenden) Abrechnungsgrenzen auf die
+    // Vertrags- und Mietzeitleiste uebertragen.
+    const billedTenant = billingPeriods.find(period => period.object?.id === object?.id
+      && sameTenancyUnit(object,period.unit,unit)
+      && period.from <= rentalTo
+      && period.to >= rentalFrom
+      && meaningfulTenant(period.tenant));
+    if (billedTenant) return billedTenant.tenant;
     // Historische Vermietungszeiträume besitzen keine eigene Mieter-ID. Wenn der
     // zentrale Mietvertrag am direkt folgenden Tag beginnt, ist dies derselbe
     // belegte Mieterwechsel und keine unsichere Namensschätzung.
@@ -256,12 +265,14 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     return meaningfulTenant(fallback) ? text(fallback) : 'Nicht gepflegt';
   };
   const rentPeriods: TenantPeriod[] = rentRows.flatMap(row => rentalHistory
-    .filter(r => objectFor(r)?.id === row.objectId && sameUnit(rentalUnitLabel(r),row.unitLabel))
+    .filter(r => objectFor(r)?.id === row.objectId && sameTenancyUnit(objectFor(r),rentalUnitLabel(r),row.unitLabel))
     .map(r => ({ object: objectFor(r), tenant: tenantForRental(r,row.tenantName), unit: row.unitLabel, from: text(r.start_date || '0000-01-01').slice(0,10), to: text(r.end_date || '9999-12-31').slice(0,10), area: areaForUnit(objectFor(r),row.unitLabel), source: 'Mietkonto/Vermietungszeitraum' as const })));
   const tenancyPeriods = [
-    ...billingPeriods,
-    ...contractPeriods.filter(c => !billingPeriods.some(b => b.object?.id === c.object?.id && sameTenancyUnit(c.object,b.unit,c.unit) && b.from <= c.to && b.to >= c.from)),
-    ...rentPeriods.filter(r => ![...billingPeriods,...contractPeriods].some(existing => existing.object?.id === r.object?.id && sameTenancyUnit(r.object,existing.unit,r.unit) && existing.from <= r.to && existing.to >= r.from)),
+    // Die zentrale Mietentwicklung definiert die Vertragsgrenzen. Mietvertraege
+    // und Abrechnungen ergaenzen nur Zeitraeume, die dort nicht vorhanden sind.
+    ...rentPeriods,
+    ...contractPeriods.filter(c => !rentPeriods.some(r => r.object?.id === c.object?.id && sameTenancyUnit(c.object,r.unit,c.unit) && r.from <= c.to && r.to >= c.from)),
+    ...billingPeriods.filter(b => ![...rentPeriods,...contractPeriods].some(existing => existing.object?.id === b.object?.id && sameTenancyUnit(b.object,existing.unit,b.unit) && existing.from <= b.to && existing.to >= b.from)),
   ].filter((period,index,periods) => periods.findIndex(candidate => candidate.object?.id === period.object?.id
     && sameTenancyUnit(period.object,candidate.unit,period.unit)
     && normalizePerson(candidate.tenant) === normalizePerson(period.tenant)
@@ -423,16 +434,18 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     ]);
   const contractRows = tenancyPeriods.filter(period => period.from <= to && period.to >= from).map(period => {
     const object = period.object;
+    const effectiveFrom = period.from < from ? from : period.from;
+    const effectiveTo = period.to > to ? to : period.to;
     const contract = contracts.find(candidate => objectFor(candidate)?.id === object?.id
       && sameTenancyUnit(object,candidate.unit_label,period.unit)
       && normalizePerson(name(candidate)) === normalizePerson(period.tenant)
-      && overlaps(candidate,period.from,period.to));
+      && overlaps(candidate,effectiveFrom,effectiveTo));
     const rental = rentalHistory.find(candidate => objectFor(candidate)?.id === object?.id
       && sameTenancyUnit(object,rentalUnitLabel(candidate),period.unit)
-      && overlaps(candidate,period.from,period.to));
+      && overlaps(candidate,effectiveFrom,effectiveTo));
     const adjustment = adjustments.find(candidate => objectFor(candidate)?.id === object?.id
-      && text(candidate.effective_date).slice(0,10) <= period.to
-      && (!candidate.effective_end_date || text(candidate.effective_end_date).slice(0,10) >= period.from));
+      && text(candidate.effective_date).slice(0,10) <= effectiveTo
+      && (!candidate.effective_end_date || text(candidate.effective_end_date).slice(0,10) >= effectiveFrom));
     const billingNk = n(period.occupancyMonths)>0 && period.advancePayments != null ? roundMoney(n(period.advancePayments)/n(period.occupancyMonths)) : null;
     const totalRent = rental?.gesamt_mietkosten ?? rental?.rent_monthly ?? contract?.total_rent ?? adjustment?.new_total_rent;
     const coldRent = rental?.kaltmiete_laut_mietvertrag ?? contract?.cold_rent ?? adjustment?.new_cold_rent ?? (totalRent != null&&billingNk!=null?roundMoney(n(totalRent)-billingNk):null);
@@ -440,7 +453,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     const other = totalRent != null&&coldRent!=null&&operatingCosts!=null ? roundMoney(n(totalRent)-n(coldRent)-n(operatingCosts)) : null;
     const area = period.area ?? areaForUnit(object,period.unit);
     const canonicalPeriodUnit = canonicalUnitLabel({objectLabel:object?.label,objectCode:object?.code,unitLabel:period.unit}) ?? period.unit;
-    return [object?.label ?? 'Nicht zugeordnet',canonicalPeriodUnit,period.tenant,period.from,period.to,euro(coldRent),euro(operatingCosts),euro(other),euro(totalRent),str(area),n(area)>0&&coldRent!=null?euro(n(coldRent)/n(area)):'—',contract?.deposit_amount==null?'Nicht gepflegt':euro(contract.deposit_amount)];
+    return [object?.label ?? 'Nicht zugeordnet',canonicalPeriodUnit,period.tenant,effectiveFrom,effectiveTo,euro(coldRent),euro(operatingCosts),euro(other),euro(totalRent),str(area),n(area)>0&&coldRent!=null?euro(n(coldRent)/n(area)):'—',contract?.deposit_amount==null?'Nicht gepflegt':euro(contract.deposit_amount)];
   });
   contractRows.sort((left,right)=>String(left[0]).localeCompare(String(right[0]),'de')||String(left[1]).localeCompare(String(right[1]),'de')||String(left[3]).localeCompare(String(right[3])));
   const matrixRows = rentRows.flatMap(row => {
