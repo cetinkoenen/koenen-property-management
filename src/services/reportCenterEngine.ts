@@ -300,6 +300,17 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
       return candidate.length > 4 && (normalizedNote.includes(candidate) || (surname.length > 4 && normalizedNote.includes(surname)));
     });
     if (named) return named.tenant;
+    if (/kaution/i.test(text(e.category))) {
+      // Bei Kautionsbuchungen nennt der Banktext oft den Mieter, waehrend
+      // Umlaute oder abweichende Nachnamenschreibweisen einen Volltreffer
+      // verhindern. Ein im Objekt eindeutig vorkommender Vorname ist dann ein
+      // nachvollziehbarer Bezug; bei mehreren Treffern bleibt die Zuordnung offen.
+      const firstNameMatches = periods.filter(period => {
+        const firstName = normalizePerson(period.tenant).split(' ')[0] ?? '';
+        return firstName.length > 4 && normalizedNote.includes(firstName);
+      }).filter((period,index,all) => all.findIndex(candidate => normalizePerson(candidate.tenant) === normalizePerson(period.tenant)) === index);
+      if (firstNameMatches.length === 1) return firstNameMatches[0].tenant;
+    }
     if (e.entry_type === 'expense' && /kaution/i.test(text(e.category)) && /rueck|rück|guthaben/i.test(text(e.note))) {
       const previous = periods.filter(p => p.to < bookingDate).sort((a,b) => b.to.localeCompare(a.to))[0];
       if (previous) return previous.tenant;

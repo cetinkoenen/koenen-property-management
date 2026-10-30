@@ -205,6 +205,7 @@ assert.equal(colEur('Kaltmiete'),'6.145,00 €');
 assert.equal(colEur('Nebenkostenzahlungen'),'1.370,00 €');
 assert.equal(colEur('Mietnachzahlung – Aufteilung Kalt/NK nicht belegt'),'192,09 €');
 assert.equal(colModule('eur').tables[1].rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='940,00 €')?.[2],'Cansu Kurt');
+assert.equal(colModule('eur').tables[1].rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='1.650,00 €')?.[2],'Nicholas Kraeft-Wendte');
 assert.match(colModule('eur').tables[1].rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='1.650,00 €')?.[3],/Eingang \(\+\)/);
 assert.match(colModule('eur').tables[1].rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='940,00 €')?.[6],/Zurückgezahlt/);
 assert.match(colModule('eur').paragraphs.join(' '),/1\.650,00 € eingegangen, 940,00 € ausbezahlt; Netto-Bewegung 710,00 €/);
