@@ -54,6 +54,9 @@ const percent = (v: number, digits = 1) => `${new Intl.NumberFormat('de-DE', { m
 const n = (v: unknown) => parseLocaleNumber(v, 0);
 const record = (v: unknown): ReportRecord => v && typeof v === 'object' && !Array.isArray(v) ? v as ReportRecord : {};
 const records = (v: unknown): ReportRecord[] => Array.isArray(v) ? v.map(record) : [];
+const compactRecord = (value: ReportRecord): ReportRecord => Object.fromEntries(
+  Object.entries(value).filter(([,entry]) => entry !== null && entry !== undefined && entry !== ''),
+);
 const str = (v: unknown) => v == null || v === '' ? 'Nicht gepflegt' : String(v);
 const text = (v: unknown) => String(v ?? '');
 const total = (rows: FinanceEntry[]) => rows.reduce((s, r) => s + Math.abs(r.amount), 0);
@@ -115,10 +118,10 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     {},
     ...(s.portfolio_properties ?? [])
       .filter(r => [r.id,r.core_property_id,r.name,r.property_name,r.address].filter(Boolean).some(value => aliases(o).has(text(value)) || masterNamesMatch(value,o.label)))
-      .map(r => ({...r,...record(r.wealth_profile)})),
+      .map(r => compactRecord({...r,...record(r.wealth_profile)})),
     ...(s.property_extra ?? [])
       .filter(r => aliases(o).has(text(r.property_id)))
-      .map(r => ({...record(r.wealth_profile), livingArea: r.living_area ?? record(r.wealth_profile).livingArea ?? record(r.wealth_profile).totalArea})),
+      .map(r => compactRecord({...record(r.wealth_profile), livingArea: r.living_area ?? record(r.wealth_profile).livingArea ?? record(r.wealth_profile).totalArea})),
   );
   const areaForObject = (o: AppObject | undefined): unknown => o ? o.livingAreaM2 ?? profiles(o).livingArea ?? profiles(o).totalArea : undefined;
   const allUnits = (s.portfolio_units ?? []).filter(r => r.is_active !== false && scoped(r));
@@ -130,7 +133,13 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
       || normalizePerson(candidate.name) === normalizePerson(unitLabel)
       || (code && detectRosensteinTaxUnit(candidate.name, candidate.id) === code)
     ));
-    return unit?.area_sqm ?? unit?.living_area_m2 ?? unit?.living_area ?? areaForObject(o);
+    const unitArea = unit?.area_sqm ?? unit?.living_area_m2 ?? unit?.living_area;
+    if (unitArea != null && unitArea !== '') return unitArea;
+    // Eine Objekt-Wohnfläche darf niemals als Fläche einer Garage oder eines
+    // Stellplatzes ausgegeben werden. Wohnobjekte dürfen dagegen auf die
+    // zentrale Fläche aus Immobilienvermögen zurückfallen.
+    if (isParkingText(unitLabel) && !isRosensteinLabel(o.label)) return undefined;
+    return areaForObject(o);
   };
   const rawRentals = (s.portfolio_property_rentals ?? []).filter(r => scoped(r) && overlaps(r,from,to));
   const directRentalUnitCode = (r: ReportRecord) => detectRosensteinTaxUnit(allUnits.find(unit => unit.id === r.unit_id)?.name,r.unit_label,r.unit_name);
@@ -315,7 +324,13 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
       const previous = periods.filter(p => p.to < bookingDate).sort((a,b) => b.to.localeCompare(a.to))[0];
       if (previous) return previous.tenant;
     }
-    return tenantForDate(e, bookingDate, directUnit) ?? 'Nicht eindeutig zugeordnet';
+    // Allgemeine Objektkosten haben fachlich keinen Mieterbezug. Der frühere
+    // Platzhalter „Nicht eindeutig zugeordnet“ sah im Steuerbericht wie ein
+    // Stammdatenfehler aus, obwohl die Buchung korrekt objektbezogen ist.
+    if (e.entry_type === 'expense' && !/kaution/i.test(text(e.category))) return 'Objektbezogen · kein Mieterbezug';
+    const datedTenant = tenantForDate(e, bookingDate, directUnit);
+    if (datedTenant) return datedTenant;
+    return 'Mieterzuordnung prüfen';
   };
   const months = rentRows.flatMap(r => r.months.filter(m => m.month >= firstMonth && m.month <= lastMonth));
   const expected = months.reduce((sum,m) => sum + m.expected,0);
@@ -464,7 +479,17 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     const other = totalRent != null&&coldRent!=null&&operatingCosts!=null ? roundMoney(n(totalRent)-n(coldRent)-n(operatingCosts)) : null;
     const area = period.area ?? areaForUnit(object,period.unit);
     const canonicalPeriodUnit = canonicalUnitLabel({objectLabel:object?.label,objectCode:object?.code,unitLabel:period.unit}) ?? period.unit;
-    return [object?.label ?? 'Nicht zugeordnet',canonicalPeriodUnit,period.tenant,effectiveFrom,effectiveTo,euro(coldRent),euro(operatingCosts),euro(other),euro(totalRent),str(area),n(area)>0&&coldRent!=null?euro(n(coldRent)/n(area)):'—',contract?.deposit_amount==null?'Nicht gepflegt':euro(contract.deposit_amount)];
+    const areaLabel = area == null || area === ''
+      ? (isParkingText(canonicalPeriodUnit) ? 'Nicht hinterlegt' : 'Prüfung erforderlich')
+      : str(area);
+    const depositLabel = isOwnerOccupied(object)
+      ? 'Nicht anwendbar · Eigennutzung'
+      : !contract
+        ? 'Keine Vertragsangabe'
+        : contract.deposit_amount == null || contract.deposit_amount === ''
+          ? 'Nicht im Mietvertrag hinterlegt'
+          : euro(contract.deposit_amount);
+    return [object?.label ?? 'Nicht zugeordnet',canonicalPeriodUnit,period.tenant,effectiveFrom,effectiveTo,euro(coldRent),euro(operatingCosts),euro(other),euro(totalRent),areaLabel,n(area)>0&&coldRent!=null?euro(n(coldRent)/n(area)):'—',depositLabel];
   });
   contractRows.sort((left,right)=>String(left[0]).localeCompare(String(right[0]),'de')||String(left[1]).localeCompare(String(right[1]),'de')||String(left[3]).localeCompare(String(right[3])));
   const matrixRows = rentRows.flatMap(row => {

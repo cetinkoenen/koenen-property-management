@@ -84,7 +84,9 @@ assert.match(taxPreflight, /Kaltmiete aus historischer Mietanpassung übernommen
 assert.match(taxPreflight, /Mieteingang nicht zugeordnet[\s\S]*Verwendungszweck, Mietername und Betrag/, "Unzugeordnete Mieteingänge müssen mit einem nachvollziehbaren Matching geprüft werden");
 assert.match(taxPreflight, /Steuerkennzeichen widerspricht einer Sperrregel[\s\S]*Umlagekennzeichen widerspricht der BetrKV-Regel/, "Steuer- und Umlagekennzeichen müssen vor dem Export gegen die zentralen Regeln geprüft werden");
 assert.match(reportCenter, /buildTaxReportPreflight[\s\S]*const entries = preflight\.entries/, "Alle Steuerberater-Module müssen dieselbe bereinigte Buchungsmenge verwenden");
-assert.match(reportCenter, /contract\?\.deposit_amount==null\?'Nicht gepflegt':euro\(contract\.deposit_amount\)/, "Der Steuerberater-Report muss die vereinbarte Kaution direkt aus dem zeitlich passenden Mietvertrag übernehmen");
+assert.match(reportCenter, /contract\.deposit_amount == null[\s\S]*euro\(contract\.deposit_amount\)/, "Der Steuerberater-Report muss die vereinbarte Kaution direkt aus dem zeitlich passenden Mietvertrag übernehmen");
+assert.match(reportCenter, /Objektbezogen · kein Mieterbezug/, "Objektkosten dürfen im Steuerbericht nicht wie fehlende Mieterstammdaten erscheinen");
+assert.match(reportCenter, /compactRecord[\s\S]*livingArea/, "Leere migrierte Parallelzeilen dürfen gepflegte Immobilien- und Flächendaten nicht überschreiben");
 assert.match(reportCenter, /Kaution \(vereinbart\)/, "Die vereinbarte Kaution muss im Vertragsdaten-Report sichtbar sein");
 assert.match(reportCenter, /Kaution wird ausschließlich aus dem für den Berichtszeitraum gültigen Mietvertrag übernommen/, "Die Kautionsquelle und ihre jahresbezogene Vertragslogik müssen im Report professionell dokumentiert sein");
 assert.match(reportCenter, /sameTenancyUnit[\s\S]*const tenancyPeriods = \[[\s\S]*rentPeriods[\s\S]*contractPeriods[\s\S]*billingPeriods/, "Die zentrale Mietentwicklung muss Vertragsgrenzen definieren; Verträge und Abrechnungen dürfen nur fehlende Zeiträume ergänzen");

@@ -47,6 +47,9 @@ assert.match(module('tenants').tables[1].rows[0][4],/teilweise$/);
 assert.match(module('tenants').tables[1].rows[0][14],/künftig$/);
 assert.equal(module('tenants').tables[0].rows[0][11],'2.400,00 €','Vereinbarte Kaution muss aus dem zeitlich passenden Mietvertrag übernommen werden');
 assert.match(module('tenants').paragraphs.join(' '),/gültigen Mietvertrag/,'Der Steuerberater-Report muss die eindeutige Kautionsquelle professionell ausweisen');
+assert.equal(module('journal').tables[0].rows.find(reportRow=>reportRow[4]==='Wasser')?.[2],'Objektbezogen · kein Mieterbezug','Allgemeine Objektkosten dürfen nicht wie fehlende Mieterstammdaten wirken');
+const duplicateExtraReport=buildReportCenter({...input,sources:{...sources,property_extra:[...sources.property_extra,{property_id:'core-1',living_area:null,wealth_profile:{livingArea:null,totalArea:null}}]}});
+assert.equal(duplicateExtraReport.find(m=>m.id==='tenants').tables[0].rows[0][9],'50','Eine leere migrierte Parallelzeile darf die gepflegte Wohnfläche nicht überschreiben');
 assert.equal(module('arrears').tables[0].rows[0][3],'100,00 €');
 assert.deepEqual(module('loan-interest').charts[0].labels,['2026']);
 assert.deepEqual(module('loan-interest').charts[0].series[0].values,[200]);
@@ -81,6 +84,29 @@ const other=buildReportCenter({...input,objectId:'core-2'});assert.equal(other.f
 const ownerOccupiedEntry={...entry('9','Miete',1960,'income'),object_id:'owner-core'};
 const ownerOccupied=buildReportCenter({...input,objects:[...objects,{id:'owner-core',label:'Hohenloher Str. 78',code:'H'}],entries:[...entries,ownerOccupiedEntry]});
 assert.equal(ownerOccupied.find(m=>m.id==='eur').tables[0].rows.find(r=>r[0]==='Summe Einnahmen')[3],'1.000,00 €','Eigennutzung darf nicht in die EÜR fließen');
+
+const fuertherObject={id:'fuerther-core',code:'Objekt_4',label:'Fürther Str. 74',livingAreaM2:45};
+const fuertherRent={year:2026,objectFilter:'fuerther-core',rows:[
+  {key:'f-wohnung',objectId:'fuerther-core',objectLabel:'Fürther Str. 74',unitLabel:'Wohnung 03',tenantName:'Wolfgang Stange',months:Array.from({length:12},(_,i)=>({month:i+1,expected:672.33,paid:672.33,open:0,status:'paid'}))},
+  {key:'f-garage',objectId:'fuerther-core',objectLabel:'Fürther Str. 74',unitLabel:'Garage 01',tenantName:'Wolfgang Stange',months:Array.from({length:12},(_,i)=>({month:i+1,expected:75,paid:75,open:0,status:'paid'}))},
+],totals:{},propertyTotals:[],kpis:{}};
+const fuertherReport=buildReportCenter({objects:[fuertherObject],entries:[],loans:[],sources:{
+  tenant_profiles:[{id:'wolfgang',first_name:'Wolfgang',last_name:'Stange'}],
+  tenant_contracts:[
+    {id:'f-wohnung-contract',tenant_id:'wolfgang',property_id:'fuerther-core',unit_label:'Wohnung 03',start_date:'2023-09-01',status:'active',cold_rent:550,operating_costs:122.33,total_rent:672.33,deposit_amount:1650},
+    {id:'f-garage-contract',tenant_id:'wolfgang',property_id:'fuerther-core',unit_label:'Garage 01',start_date:'2024-01-03',status:'active',cold_rent:75,operating_costs:0,total_rent:75,deposit_amount:150},
+  ],
+  portfolio_units:[
+    {id:'f-wohnung-unit',property_id:'fuerther-core',name:'Wohnung 03',area_sqm:45,is_active:true},
+    {id:'f-garage-unit',property_id:'fuerther-core',name:'Garage 01',area_sqm:null,is_active:true},
+  ],
+  property_extra:[{property_id:'fuerther-core',living_area:45}],
+},rent:fuertherRent,from:'2026-01-01',to:'2026-12-31',objectId:'fuerther-core',today:'2026-10-30'});
+const fuertherTenants=fuertherReport.find(m=>m.id==='tenants');
+assert.deepEqual(fuertherTenants.tables[0].rows.map(reportRow=>[reportRow[1],reportRow[2]]),[['Garage 01','Wolfgang Stange'],['Wohnung 03','Wolfgang Stange']],'Fürther Wohnung und Garage müssen getrennt und mit dem zentralen Mieter erscheinen');
+assert.equal(fuertherTenants.tables[0].rows.find(reportRow=>reportRow[1]==='Wohnung 03')?.[9],'45','Fürther Wohnfläche muss aus Immobilienvermögen kommen');
+assert.equal(fuertherTenants.tables[0].rows.find(reportRow=>reportRow[1]==='Garage 01')?.[9],'Nicht hinterlegt','Die Wohnfläche der Wohnung darf nicht fälschlich als Garagenfläche ausgegeben werden');
+assert.equal(fuertherTenants.tables[1].rows.every(reportRow=>reportRow[2]==='Wolfgang Stange'),true,'Auch die Fürther Zahlungsmatrix muss für beide Einheiten den richtigen Mieter zeigen');
 
 const rosensteinObject={id:'rosen-core',code:'Objekt_6',label:'Rosenstein Str. 25'};
 const rosensteinUnits=[
