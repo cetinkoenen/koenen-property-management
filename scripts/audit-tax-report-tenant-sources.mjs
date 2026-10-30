@@ -171,21 +171,22 @@ try {
   };
   reportFindings = [2024, 2025, 2026].flatMap((year) => objects.flatMap((object) => {
     const modules = buildReportCenter({ objects, entries, loans: [], sources, rent: null, from: `${year}-01-01`, to: `${year}-12-31`, objectId: object.id, today: "2026-10-30" });
-    const tenantModule = modules.find((module) => module.id === "tenants");
-    return (tenantModule?.tables ?? []).flatMap((table) => table.rows.flatMap((row, rowIndex) => row.flatMap((cell, columnIndex) => {
-      if (!/nicht gepflegt|nicht zugeordnet/i.test(String(cell ?? ""))) return [];
+    const tenantModules = modules.filter((module) => ["tenants", "utilities"].includes(module.id));
+    return tenantModules.flatMap((module) => (module.tables ?? []).flatMap((table) => table.rows.flatMap((row, rowIndex) => row.flatMap((cell, columnIndex) => {
+      if (!/nicht gepflegt|nicht zugeordnet|mieterzuordnung prüfen/i.test(String(cell ?? ""))) return [];
       const column = table.headers[columnIndex];
       return [{
         severity: column === "Mieter" ? "error" : "review",
         code: column === "Mieter" ? "report_tenant_placeholder" : "report_related_placeholder",
         year,
         object: object.label,
+        module: module.id,
         table: table.title,
         row: rowIndex + 1,
         column,
         value: cell,
       }];
-    })));
+    }))));
   }));
 } finally {
   await rm(bundleDirectory, { recursive: true, force: true });

@@ -101,12 +101,17 @@ const fuertherReport=buildReportCenter({objects:[fuertherObject],entries:[],loan
     {id:'f-garage-unit',property_id:'fuerther-core',name:'Garage 01',area_sqm:null,is_active:true},
   ],
   property_extra:[{property_id:'fuerther-core',living_area:45}],
+  billing_workspaces:[{object_id:'fuerther-core',year:'2026',data:{billings:[{id:'f-nk',workspace:{meta:{propertyCode:'fuerther-core',propertyLabel:'Fürther Str. 74',billingYear:2026,periodFrom:'2026-01-01',periodTo:'2026-12-31'},apartments:[{id:'f-nk-wohnung',label:'Wohnung 1',tenantName:'',area:45,occupancyMonths:12,advancePayments:1467.96,active:true}],costs:[],selectedApartmentId:'f-nk-wohnung'}}]}}],
 },rent:fuertherRent,from:'2026-01-01',to:'2026-12-31',objectId:'fuerther-core',today:'2026-10-30'});
 const fuertherTenants=fuertherReport.find(m=>m.id==='tenants');
 assert.deepEqual(fuertherTenants.tables[0].rows.map(reportRow=>[reportRow[1],reportRow[2]]),[['Garage 01','Wolfgang Stange'],['Wohnung 03','Wolfgang Stange']],'Fürther Wohnung und Garage müssen getrennt und mit dem zentralen Mieter erscheinen');
 assert.equal(fuertherTenants.tables[0].rows.find(reportRow=>reportRow[1]==='Wohnung 03')?.[9],'45','Fürther Wohnfläche muss aus Immobilienvermögen kommen');
 assert.equal(fuertherTenants.tables[0].rows.find(reportRow=>reportRow[1]==='Garage 01')?.[9],'Nicht hinterlegt','Die Wohnfläche der Wohnung darf nicht fälschlich als Garagenfläche ausgegeben werden');
 assert.equal(fuertherTenants.tables[1].rows.every(reportRow=>reportRow[2]==='Wolfgang Stange'),true,'Auch die Fürther Zahlungsmatrix muss für beide Einheiten den richtigen Mieter zeigen');
+const fuertherUtility=fuertherReport.find(m=>m.id==='utilities').tables.find(reportTable=>reportTable.title.startsWith('Anlage 1 · Nebenkostenabrechnung'));
+assert.match(fuertherUtility?.title??'',/Wolfgang Stange/,'Eine Nebenkostenanlage ohne gespeicherten Namen muss den eindeutigen Mieter aus dem zeitlich passenden Vertrag erhalten');
+assert.equal(fuertherUtility?.rows[0][2],'Wolfgang Stange','Die Mieterzelle der Nebenkostenanlage darf nicht leer bleiben');
+assert.match(fuertherUtility?.subtitle??'',/Mieterquelle: Mietvertrag, Vermietungszeitraum oder gespeicherte Abrechnung/,'Die Mieterquelle der Nebenkostenanlage muss transparent dokumentiert sein');
 
 const rosensteinObject={id:'rosen-core',code:'Objekt_6',label:'Rosenstein Str. 25'};
 const rosensteinUnits=[
