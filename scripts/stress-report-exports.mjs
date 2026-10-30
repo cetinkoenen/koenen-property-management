@@ -101,6 +101,8 @@ assert.match(reportCenterPdf, /wantedMetrics[\s\S]*Steuerlich vorbereitetes Erge
 assert.match(professionalPdfReport, /\.hero::after \{ display: none !important; \}/, "Das dekorative Deckblattraster darf in der Druckansicht nicht über Kennzahlen laufen");
 assert.match(professionalPdfReport, /\.metric-card,[\s\S]*box-shadow: none !important; filter: none !important;/, "Kennzahlenkarten dürfen im Druck keine überlappenden Schattenflächen erzeugen");
 assert.match(professionalPdfReport, /class="chart-value"[\s\S]*euroChart\(value\)/, "Diagramme müssen sichtbare Euro-Datenbeschriftungen enthalten");
+assert.match(reportCenterPage, /landscape:false/, "Der Steuerberater-Report muss im A4-Hochformat gedruckt werden");
+assert.match(reportCenterPdf, /const columnsPerPart = 3;/, "Breite Steuerberichtstabellen müssen für Hochformat in lesbare Spaltenblöcke geteilt werden");
 assert.match(reportCenterPage, /Vorschau anzeigen[\s\S]*showPreview[\s\S]*chosen\.map/, "Große Berichtstabellen dürfen erst auf ausdrücklichen Wunsch als Bildschirmvorschau aufgebaut werden");
 assert.match(reportCenterPage, /headlessAnnualReport/, "Das Reportcenter muss die Mietkonto-Quelle ohne eine zweite sichtbare Jahresmatrix laden");
 assert.match(rentOverviewPage, /if \(headlessAnnualReport\) return null;/, "Die eingebettete Mietkonto-Quelle muss im kopflosen Reportmodus nur Daten liefern");

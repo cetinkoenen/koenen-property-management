@@ -10,7 +10,11 @@ const normalizeText = (value: string) => value.replace(/\s+/g, ' ').trim().toLoc
 
 export function prepareTaxAdvisorPdf(modules: ReportModule[]): PreparedReportPdf {
   const repeatedColumns = 3;
-  const columnsPerPart = 6;
+  // A4-Hochformat: Neben den drei Identifikationsspalten bleiben drei
+  // Detailspalten pro Tabellenblock gut lesbar. Breitere Tabellen werden
+  // automatisch in fortlaufende Teile zerlegt, statt Text zu verkleinern
+  // oder Spalten ineinander laufen zu lassen.
+  const columnsPerPart = 3;
   const maxColumnsPerTable = repeatedColumns + columnsPerPart;
   const seenTables = new Set<string>();
   const seenParagraphs = new Set<string>();

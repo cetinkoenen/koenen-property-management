@@ -236,7 +236,7 @@ export function buildProfessionalPdfReportHtml(options: PdfReportOptions) {
   <title>${escapeHtml(options.documentName)}</title>
   <style>
     @page {
-      size: ${options.landscape ? "A4 landscape" : "A4"};
+      size: ${options.landscape ? "A4 landscape" : "A4 portrait"};
       margin: 16mm 16mm 18mm;
       @bottom-left { content: "${escapeHtml(FOOTER_TEXT)}"; }
       @bottom-right { content: "Seite " counter(page); }
@@ -540,6 +540,11 @@ export function buildProfessionalPdfReportHtml(options: PdfReportOptions) {
     }
     @media print {
       * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      table { font-size: 9.8px; }
+      th { padding: 8px 8px; font-size: 8.4px; }
+      td { padding: 7px 8px; }
+      .report-chart { height: 230px; }
       .hero {
         break-after: page;
         background: #f8fbff;

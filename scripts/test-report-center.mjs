@@ -258,7 +258,9 @@ const mileageSource = await readFile('src/services/mileageTripService.ts', 'utf8
 const taxAdvisorMigration = await readFile('supabase/migrations/20260915114500_tax_advisor_report_requirements.sql', 'utf8');
 assert.match(reportPdfSource, /const maxColumnsPerTable = repeatedColumns \+ columnsPerPart;/, 'PDF tables need a bounded column count');
 assert.match(pageSource, /prepareTaxAdvisorPdf\(chosen\)[\s\S]*sections:prepared\.sections/, 'Every selected report module must use the professional PDF preparation');
-assert.match(pdfSource, /size: \$\{options\.landscape \? "A4 landscape" : "A4"\}/, 'Landscape must be declared in the top-level @page rule');
+assert.match(pdfSource, /size: \$\{options\.landscape \? "A4 landscape" : "A4 portrait"\}/, 'Portrait and landscape must be declared explicitly in the top-level @page rule');
+assert.match(pageSource, /landscape:false/, 'The tax-advisor PDF export must always request A4 portrait');
+assert.match(reportPdfSource, /const columnsPerPart = 3;/, 'Portrait tables must be split into readable three-column detail blocks');
 assert.match(pdfSource, /td, th \{ overflow-wrap: break-word; word-break: normal;/, 'Normal PDF cells must wrap at safe boundaries');
 assert.doesNotMatch(pdfSource, /text\.includes\("€"\)/, 'Descriptions containing Euro values must not become non-wrapping money cells');
 assert.match(pdfSource, /td\.money-cell \{ text-align: right; white-space: nowrap;/, 'Financial amounts must be right-aligned and stay on one line');

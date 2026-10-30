@@ -52,7 +52,7 @@ const html = buildProfessionalPdfReportHtml({
   meta: [{ label: "Zeitraum", value: "01.01.2025 bis 31.12.2025" }],
   metrics: prepared.metrics,
   sections: prepared.sections,
-  landscape: true,
+  landscape: false,
 });
 
 const outputDir = resolve("tmp/pdfs/report-center-qa");
