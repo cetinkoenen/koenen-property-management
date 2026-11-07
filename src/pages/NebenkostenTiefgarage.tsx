@@ -3,9 +3,10 @@ import brandLogo from "../assets/koenen-brand-logo.webp";
 import { listNkRelevantEntries, type NkRelevantEntry } from "../services/nkRelevantService";
 import { listTenantContracts } from "../services/tenantService";
 import { getBillingWorkspace, upsertBillingWorkspace } from "../services/billingWorkspaceRepository";
+import { normalizeWorkflowStatus, WORKFLOW_STATUS_INFO, type WorkflowStatus } from "../lib/workflowStatus";
 
 type AllocationKey = "Einheiten" | "Verbrauch/Direkt" | "Direktbetrag";
-type TgWorkflowStatus = "Offen" | "In Arbeit" | "In Prüfung" | "Freigegeben" | "Korrigiert";
+type TgWorkflowStatus = WorkflowStatus;
 
 type CostRow = {
   id: string;
@@ -90,24 +91,8 @@ const STORAGE_KEY = "koenen:tiefgarage-nebenkosten:v1";
 const BILLING_OBJECT_ID = "rosenstein-str-25-tiefgarage";
 const BILLING_SCOPE = "all";
 
+// Explizit als UI-Reihenfolge dokumentiert; Werte und Darstellung werden zentral normalisiert.
 const TG_WORKFLOW_STATUSES: TgWorkflowStatus[] = ["Offen", "In Arbeit", "In Prüfung", "Freigegeben", "Korrigiert"];
-
-function normalizeWorkflowStatus(value: unknown, finalized = false): TgWorkflowStatus {
-  const normalized = String(value ?? "").trim().toLocaleLowerCase("de-DE");
-  if (normalized === "in arbeit") return "In Arbeit";
-  if (normalized === "in prüfung" || normalized === "in pruefung") return "In Prüfung";
-  if (normalized === "freigegeben") return "Freigegeben";
-  if (normalized === "korrigiert") return "Korrigiert";
-  return finalized ? "Freigegeben" : "Offen";
-}
-
-function workflowStatusTheme(status: TgWorkflowStatus) {
-  if (status === "In Arbeit") return { background: "#dbeafe", color: "#1d4ed8", border: "#93c5fd" };
-  if (status === "In Prüfung") return { background: "#fef3c7", color: "#92400e", border: "#fcd34d" };
-  if (status === "Freigegeben") return { background: "#dcfce7", color: "#166534", border: "#86efac" };
-  if (status === "Korrigiert") return { background: "#f3e8ff", color: "#7e22ce", border: "#d8b4fe" };
-  return { background: "#f1f5f9", color: "#475569", border: "#cbd5e1" };
-}
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -725,7 +710,7 @@ function BillingRecordButton(props: {
   onClick: () => void;
 }) {
   const statusText = normalizeWorkflowStatus(props.record.workflowStatus, Boolean(props.record.finalized));
-  const statusTheme = workflowStatusTheme(statusText);
+  const statusTheme = WORKFLOW_STATUS_INFO[statusText].colors;
 
   return (
     <button
@@ -754,6 +739,7 @@ function BillingRecordButton(props: {
           <span style={{ display: "block", ...pageStyles.recordYear }}>Abrechnung {props.record.year}</span>
         </span>
         <span
+          title={`${WORKFLOW_STATUS_INFO[statusText].description} Nächste Aktion: ${WORKFLOW_STATUS_INFO[statusText].nextAction}`}
           style={{
             ...pageStyles.statusBadge,
             background: statusTheme.background,
@@ -1363,15 +1349,18 @@ export default function NebenkostenTiefgarage() {
                   ...pageStyles.input,
                   marginTop: 6,
                   fontWeight: 900,
-                  background: workflowStatusTheme(activeRecord.workflowStatus).background,
-                  color: workflowStatusTheme(activeRecord.workflowStatus).color,
-                  borderColor: workflowStatusTheme(activeRecord.workflowStatus).border,
+                  background: WORKFLOW_STATUS_INFO[activeRecord.workflowStatus].colors.background,
+                  color: WORKFLOW_STATUS_INFO[activeRecord.workflowStatus].colors.color,
+                  borderColor: WORKFLOW_STATUS_INFO[activeRecord.workflowStatus].colors.border,
                 }}
                 value={activeRecord.workflowStatus}
                 onChange={(event) => updateWorkflowStatus(event.target.value as TgWorkflowStatus)}
               >
                 {TG_WORKFLOW_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
               </select>
+              <p style={{ ...pageStyles.mutedText, marginTop: 8, lineHeight: 1.5 }}>
+                {WORKFLOW_STATUS_INFO[activeRecord.workflowStatus].description} Nächste Aktion: {WORKFLOW_STATUS_INFO[activeRecord.workflowStatus].nextAction}
+              </p>
               <button type="button" style={{ ...pageStyles.accentButton, width: "100%", marginTop: 18 }} onClick={resetActiveYear}>
                 Aktive Abrechnung zurücksetzen
               </button>

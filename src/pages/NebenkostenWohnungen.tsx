@@ -5,6 +5,7 @@ import { listNkRelevantEntries, type NkRelevantEntry } from "../services/nkRelev
 import { summarizeBillingWorkspace } from "../services/billingWorkspaceService";
 import { getBillingWorkspace, upsertBillingWorkspace } from "../services/billingWorkspaceRepository";
 import { listObjectDirectory } from "../services/objectDirectoryService";
+import { normalizeWorkflowStatus, WORKFLOW_STATUS_INFO, WORKFLOW_STATUSES, type WorkflowStatus } from "../lib/workflowStatus";
 
 type AllocationType = "allocationKey" | "persons" | "directAmount" | "heatingDirect";
 
@@ -12,7 +13,7 @@ type ObjectOption = { objekt_code: string; label: string };
 type ApartmentRow = { id: string; label: string; tenantName: string; area: number; allocationKey: number; persons: number; occupancyMonths: number; advancePayments: number; co2LandlordDeductionKalo: number; active: boolean };
 type CostRow = { id: string; label: string; amount: number; allocation: AllocationType; totalKey: number; apartmentKey: number; directAmount: number; prorateByOccupancy: boolean; note: string };
 type HeatingSettings = { totalHeatingCost: number; totalWarmWaterCost: number; totalCo2Cost: number; totalConsumptionKwh: number; emissionFactor: number; heatedArea: number };
-type NkWorkflowStatus = "offen" | "In Arbeit" | "in Prüfung" | "Freigegeben" | "Korrigiert";
+type NkWorkflowStatus = WorkflowStatus | "offen" | "in Prüfung";
 type BuildingMeta = { propertyCode: string; propertyLabel: string; billingYear: number; periodFrom: string; periodTo: string; landlordName: string; landlordAddress: string; attachmentReferences: string; workflowStatus: NkWorkflowStatus; locked: boolean; settlementStatus?: "Offen" | "Ausgeglichen"; settlementDate?: string; settlementAmount?: number; settlementEntryId?: number; settlementReference?: string };
 type BillingWorkspace = { meta: BuildingMeta; apartments: ApartmentRow[]; costs: CostRow[]; heating: HeatingSettings; selectedApartmentId: string | null };
 type BillingRecord = { id: string; name: string; workspace: BillingWorkspace };
@@ -130,7 +131,7 @@ function createDefaultWorkspace(year: number, object?: ObjectOption): BillingWor
     : { totalHeatingCost: 0, totalWarmWaterCost: 0, totalCo2Cost: 0, totalConsumptionKwh: 0, emissionFactor: 0, heatedArea: 0 };
 
   return {
-    meta: { propertyCode: object?.objekt_code ?? "", propertyLabel: object?.label ?? "Bitte Objekt wählen", billingYear: year, periodFrom: `${year}-01-01`, periodTo: `${year}-12-31`, landlordName: "", landlordAddress: "", attachmentReferences, workflowStatus: "offen", locked: false },
+    meta: { propertyCode: object?.objekt_code ?? "", propertyLabel: object?.label ?? "Bitte Objekt wählen", billingYear: year, periodFrom: `${year}-01-01`, periodTo: `${year}-12-31`, landlordName: "", landlordAddress: "", attachmentReferences, workflowStatus: "Offen", locked: false },
     apartments: [{ id, label: "Wohnung 1", tenantName: "", area: config.defaultArea, allocationKey: config.defaultApartmentKey, persons: 1, occupancyMonths: 12, advancePayments: 0, co2LandlordDeductionKalo: 0, active: true }],
     costs: costsForObject(object).map((c) => ({ ...c, id: createId() })),
     heating,
@@ -881,13 +882,14 @@ export default function NebenkostenWohnungen() {
               <button onClick={createNewPartialBilling} className="inline-flex items-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700"><Plus className="h-4 w-4"/> Teilabrechnung</button>
               <SelectInput value={selectedObjectCode} onChange={e => setSelectedObjectCode(e.target.value)}><option value="">Objekt wählen</option>{objects.map(o => <option key={o.objekt_code} value={o.objekt_code}>{o.label}</option>)}</SelectInput>
               <YearInput value={selectedYear} onChange={setSelectedYear} disabled={locked} />
-              <SelectInput value={workspace.meta.workflowStatus ?? (locked ? "Freigegeben" : "offen")} onChange={e => updateMeta("workflowStatus", e.target.value as NkWorkflowStatus)} disabled={locked}>
-                <option value="offen">offen</option>
-                <option value="In Arbeit">In Arbeit</option>
-                <option value="in Prüfung">in Prüfung</option>
-                <option value="Freigegeben">Freigegeben</option>
-                <option value="Korrigiert">Korrigiert</option>
-              </SelectInput>
+              <div className="min-w-[260px]">
+                <SelectInput value={normalizeWorkflowStatus(workspace.meta.workflowStatus, locked)} onChange={e => updateMeta("workflowStatus", e.target.value as NkWorkflowStatus)} disabled={locked}>
+                  {WORKFLOW_STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
+                </SelectInput>
+                <p className="mt-2 text-xs font-bold leading-5 text-slate-500">
+                  {WORKFLOW_STATUS_INFO[normalizeWorkflowStatus(workspace.meta.workflowStatus, locked)].description} Nächste Aktion: {WORKFLOW_STATUS_INFO[normalizeWorkflowStatus(workspace.meta.workflowStatus, locked)].nextAction}
+                </p>
+              </div>
               <button onClick={() => updateMeta("locked", !locked)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium hover:bg-slate-50">{locked ? <Pencil className="h-4 w-4"/> : <Lock className="h-4 w-4"/>}{locked ? "Bearbeiten" : "Sperren"}</button>
             </div>
           </div>

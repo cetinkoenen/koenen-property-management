@@ -83,6 +83,7 @@ import { WorkspaceContextProvider, useWorkspaceContext } from "./state/Workspace
 import { EmptyState, InfoList, KpiCard, ModuleCard, PageHeader, SectionPanel } from "./components/ui/professional";
 import { isPortfolioGeneralEntry, PORTFOLIO_GENERAL_LABEL } from "./lib/portfolioExpense";
 import { canonicalCategoryForTax } from "./lib/taxClassification";
+import { normalizeWorkflowStatus } from "./lib/workflowStatus";
 import type { RentAnnualReportSnapshot } from "./pages/Mietuebersicht";
 import {
   listPropertyLoanLedgerRows,
@@ -1077,6 +1078,8 @@ function ProtectedAppShell() {
   );
 }
 
+// Bewusst explizit: Der Qualitätscheck schützt damit die fünf fachlich zulässigen Statuswerte.
+// Die Normalisierung selbst kommt weiterhin aus der zentralen Workflow-Statusquelle.
 type NebenkostenOverviewStatus = "Offen" | "In Arbeit" | "In Prüfung" | "Freigegeben" | "Korrigiert";
 
 type NebenkostenOverviewRecord = {
@@ -1109,12 +1112,7 @@ const NEBENKOSTEN_STATUS_CONFIG: Array<{
 ];
 
 function normalizeNebenkostenStatus(value: unknown, locked: boolean | undefined): NebenkostenOverviewStatus {
-  const normalized = String(value ?? "").trim().toLocaleLowerCase("de-DE");
-  if (normalized.includes("korrigiert")) return "Korrigiert";
-  if (locked || normalized.includes("freigegeben")) return "Freigegeben";
-  if (normalized.includes("prüfung") || normalized.includes("prufung")) return "In Prüfung";
-  if (normalized.includes("arbeit")) return "In Arbeit";
-  return "Offen";
+  return normalizeWorkflowStatus(value, Boolean(locked));
 }
 
 function normalizeNebenkostenPropertyIdentity(value: unknown): string {

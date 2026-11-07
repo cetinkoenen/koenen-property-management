@@ -13,6 +13,7 @@ import {
 } from "@/services/documentArchiveService";
 import { listObjectDirectory } from "@/services/objectDirectoryService";
 import { listBillingWorkspaces, type BillingWorkspaceRow } from "@/services/billingWorkspaceRepository";
+import { normalizeWorkflowStatus, WORKFLOW_STATUS_INFO } from "@/lib/workflowStatus";
 
 type ObjectOption = { objekt_code: string; label: string };
 
@@ -38,11 +39,8 @@ function formatDate(value: string) {
 }
 
 function statusPresentation(value: string | undefined, locked: boolean | undefined) {
-  const normalized = String(value || (locked ? "Freigegeben" : "Offen")).toLocaleLowerCase("de-DE");
-  if (normalized.includes("korrigiert")) return { label: "Korrigiert", classes: "border-sky-200 bg-sky-50 text-sky-700", pdfEnabled: true };
-  if (locked || normalized.includes("freigegeben")) return { label: "Freigegeben", classes: "border-emerald-200 bg-emerald-50 text-emerald-700", pdfEnabled: true };
-  if (normalized.includes("arbeit") || normalized.includes("prüfung") || normalized.includes("prufung")) return { label: value || "In Arbeit", classes: "border-amber-200 bg-amber-50 text-amber-700", pdfEnabled: false };
-  return { label: "Offen", classes: "border-slate-200 bg-slate-100 text-slate-600", pdfEnabled: false };
+  const status = normalizeWorkflowStatus(value, locked);
+  return { label: status, classes: WORKFLOW_STATUS_INFO[status].className, pdfEnabled: status === "Freigegeben" || status === "Korrigiert", hint: `${WORKFLOW_STATUS_INFO[status].description} Nächste Aktion: ${WORKFLOW_STATUS_INFO[status].nextAction}` };
 }
 
 function recordMatchesProperty(record: KpiRecord, propertyId: string, canonicalObjectCode: string, propertyLabel: string) {
@@ -204,11 +202,12 @@ export default function PropertyUtilitiesKpiDashboard({ propertyId, propertyLabe
                 <article key={`${record.sourceObjectId}-${record.year}-${record.id}`} className="overflow-hidden rounded-[22px] border border-slate-200 bg-gradient-to-br from-white to-slate-50 shadow-sm">
                   <div className="p-5">
                     <div className="flex items-start justify-between gap-3">
-                      <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-black ${status.classes}`}>{status.label}</span>
+                      <span title={status.hint} className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-black ${status.classes}`}>{status.label}</span>
                       <span className="inline-flex items-center gap-2 text-xl font-black text-slate-950"><CalendarDays size={17} className="text-slate-400" />{record.year}</span>
                     </div>
                     <h3 className="mt-4 text-base font-black text-slate-950">{record.workspace.meta.propertyLabel || propertyLabel}</h3>
                     <p className="mt-1 text-sm font-bold text-slate-500">{summary.apartment?.label || "Einheit nicht benannt"}</p>
+                    <p className="mt-2 text-xs font-bold leading-5 text-slate-500">{status.hint}</p>
                     <p className="mt-3 text-sm font-bold text-slate-600">{formatDate(record.workspace.meta.periodFrom)} bis {formatDate(record.workspace.meta.periodTo)}</p>
                     <p className="mt-1 text-sm font-bold text-slate-600">{summary.apartment?.tenantName || "Mieter noch nicht hinterlegt"}</p>
                     <div className="mt-5 grid grid-cols-2 gap-3">
