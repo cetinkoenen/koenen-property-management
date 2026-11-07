@@ -12,7 +12,12 @@ export const DARLEHENSAUSZAHLUNG_CATEGORY = "Darlehensauszahlung";
 // weder Mieter-Nebenkosten noch Anlage-V-Werbungskosten. Die eigene Kategorie
 // verhindert, dass sie versehentlich als umlagefähige Kosten klassifiziert
 // oder in einen Vermietungs-Steuerreport übernommen werden.
-export const WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY = "WEG-/NK-Nachzahlung (Eigennutzung)";
+export const WEG_NK_NACHZAHLUNG_OBJEKT_195_EIGENNUTZUNG_CATEGORY = "WEG-/NK-Nachzahlung · Objekt 195 (Eigennutzung)";
+export const WEG_NK_NACHZAHLUNG_TG_13_EIGENNUTZUNG_CATEGORY = "WEG-/NK-Nachzahlung · TG-Stellplatz 13 (Eigennutzung)";
+// Nur für bereits gespeicherte Altbuchungen. Diese Bezeichnung wird nicht
+// mehr als auswählbare Kategorie angeboten und muss vor einer Freigabe auf
+// Objekt 195 oder TG-Stellplatz 13 präzisiert werden.
+export const LEGACY_WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY = "WEG-/NK-Nachzahlung (Eigennutzung)";
 
 export const FINANCE_CATEGORY_OPTIONS: FinanceCategoryOption[] = [
   { value: "Miete", type: "income" },
@@ -45,7 +50,8 @@ export const FINANCE_CATEGORY_OPTIONS: FinanceCategoryOption[] = [
   { value: "Reparatur", type: "expense" },
   { value: "Versicherung", type: "expense" },
   { value: "Wartung", type: "expense" },
-  { value: WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY, type: "expense" },
+  { value: WEG_NK_NACHZAHLUNG_OBJEKT_195_EIGENNUTZUNG_CATEGORY, type: "expense" },
+  { value: WEG_NK_NACHZAHLUNG_TG_13_EIGENNUTZUNG_CATEGORY, type: "expense" },
 ];
 
 const CATEGORY_ALIAS_PAIRS: Array<[string, string]> = [
@@ -59,10 +65,12 @@ const CATEGORY_ALIAS_PAIRS: Array<[string, string]> = [
   ["hausgeld", "Verwaltungskosten"],
   ["weg", "Verwaltungskosten"],
   ["weg hausgeld", "Verwaltungskosten"],
-  ["weg nachzahlung", WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY],
-  ["weg nk nachzahlung", WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY],
-  ["nebenkosten nachzahlung eigennutzung", WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY],
-  ["nk nachzahlung eigennutzung", WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY],
+  ["weg nachzahlung objekt 195", WEG_NK_NACHZAHLUNG_OBJEKT_195_EIGENNUTZUNG_CATEGORY],
+  ["weg nk nachzahlung objekt 195", WEG_NK_NACHZAHLUNG_OBJEKT_195_EIGENNUTZUNG_CATEGORY],
+  ["nebenkosten nachzahlung objekt 195", WEG_NK_NACHZAHLUNG_OBJEKT_195_EIGENNUTZUNG_CATEGORY],
+  ["weg nachzahlung tg stellplatz 13", WEG_NK_NACHZAHLUNG_TG_13_EIGENNUTZUNG_CATEGORY],
+  ["weg nk nachzahlung tg stellplatz 13", WEG_NK_NACHZAHLUNG_TG_13_EIGENNUTZUNG_CATEGORY],
+  ["nebenkosten nachzahlung tg stellplatz 13", WEG_NK_NACHZAHLUNG_TG_13_EIGENNUTZUNG_CATEGORY],
   ["verwaltung", "Verwaltungskosten"],
   ["verwaltungskosten", "Verwaltungskosten"],
   ["bewirtung", "Bewirtungskosten"],
@@ -228,7 +236,7 @@ export function getFinanceCategoryOptions(entryType: FinanceEntryType, additiona
 
   const additional = additionalCategories
     .map((category) => canonicalizeFinanceCategory(category, entryType))
-    .filter(Boolean);
+    .filter((category) => Boolean(category) && category !== LEGACY_WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY);
 
   return Array.from(new Set([...base, ...additional])).sort((a, b) => a.localeCompare(b, "de"));
 }

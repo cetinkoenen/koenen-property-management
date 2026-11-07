@@ -1,4 +1,4 @@
-import { DARLEHENSAUSZAHLUNG_CATEGORY, MIETE_NACHZAHLUNG_CATEGORY, NK_NACHZAHLUNG_CATEGORY, WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY, canonicalizeFinanceCategory, normalizeFinanceCategoryText, type FinanceEntryType } from "./financeCategories";
+import { DARLEHENSAUSZAHLUNG_CATEGORY, LEGACY_WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY, MIETE_NACHZAHLUNG_CATEGORY, NK_NACHZAHLUNG_CATEGORY, WEG_NK_NACHZAHLUNG_OBJEKT_195_EIGENNUTZUNG_CATEGORY, WEG_NK_NACHZAHLUNG_TG_13_EIGENNUTZUNG_CATEGORY, canonicalizeFinanceCategory, normalizeFinanceCategoryText, type FinanceEntryType } from "./financeCategories";
 import { isHohenloherMietbestandteilNk, MIETBESTANDTEIL_NK_CATEGORY } from "./financeEntryLabels";
 import { isBusinessMealCategory } from "./businessMealTax";
 import { isAllocatablePortfolioExpenseEntry, isPersonalMovingExpense } from "./portfolioExpense";
@@ -69,7 +69,11 @@ export function classifyTaxRelevance(entry: TaxRuleEntry, objectLabel?: string |
   const text = normalize(`${canonicalCategory} ${entry.category ?? ""} ${entry.note ?? ""} ${entry.objekt_code ?? ""} ${objectLabel ?? ""}`);
   const isHohenloher = isHohenloherSelfUsedObject(text);
 
-  if (canonicalCategory === WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY) {
+  if ([
+    WEG_NK_NACHZAHLUNG_OBJEKT_195_EIGENNUTZUNG_CATEGORY,
+    WEG_NK_NACHZAHLUNG_TG_13_EIGENNUTZUNG_CATEGORY,
+    LEGACY_WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY,
+  ].includes(canonicalCategory)) {
     return {
       taxRelevant: false,
       relevance: "private",
