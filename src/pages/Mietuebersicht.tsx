@@ -2300,7 +2300,19 @@ export default function Mietuebersicht({
                 </div>
               </div>
               {annualRows.length > 0 ? (
-                <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-white">
+                <>
+                <div className="grid gap-3 lg:hidden" aria-label="Jahresübersicht als Kartenansicht">
+                  {annualRows.map((row) => {
+                    const tenant = tenantHasAnyValue(row.tenantInfo) ? row.tenantInfo : tenantInfo[row.tenantLookupKey] ?? tenantInfo[row.objectId] ?? emptyTenant;
+                    const tenantName = [tenant.firstName, tenant.lastName].filter(Boolean).join(" ") || "Mieter nicht gepflegt";
+                    return <article key={`mobile-${row.objectId}-${row.referenceLabel ?? row.unitLabel ?? row.label}`} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">{row.unitLabel ?? row.referenceLabel ?? "Einheit"}</p><h3 className="mt-1 text-base font-black text-slate-950">{row.label}</h3><p className="mt-1 text-sm font-bold text-slate-600">{tenantName}</p></div><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600">{selectedPeriod.year}</span></div>
+                      <div className="mt-4 grid grid-cols-2 gap-2 text-sm"><div className="rounded-xl bg-emerald-50 p-3"><span className="block text-[10px] font-black uppercase tracking-wide text-emerald-700">Ist</span><strong className="mt-1 block text-emerald-800">{formatCurrency(row.yearPaid)}</strong></div><div className="rounded-xl bg-slate-100 p-3"><span className="block text-[10px] font-black uppercase tracking-wide text-slate-500">Soll</span><strong className="mt-1 block text-slate-900">{formatCurrency(row.yearExpected)}</strong></div><div className="rounded-xl bg-rose-50 p-3"><span className="block text-[10px] font-black uppercase tracking-wide text-rose-700">Offen</span><strong className="mt-1 block text-rose-800">{formatCurrency(row.yearOpen)}</strong></div><div className="rounded-xl bg-indigo-50 p-3"><span className="block text-[10px] font-black uppercase tracking-wide text-indigo-700">Überzahlung</span><strong className="mt-1 block text-indigo-800">{formatCurrency(row.yearOverpaid)}</strong></div></div>
+                      <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"><summary className="cursor-pointer text-sm font-black text-slate-700">Monatsdetails anzeigen</summary><div className="mt-3 grid grid-cols-2 gap-2">{row.months.map((monthRow, index) => <div key={index} className="rounded-lg bg-white px-2 py-2 text-xs"><div className="font-black text-slate-700">{monthShortLabel(index + 1)}</div><div className="mt-1 font-bold text-slate-900">Ist {formatCurrency(monthRow?.paidAmount ?? 0)}</div><div className="text-slate-500">Soll {formatCurrency(monthRow?.expectedAmount ?? 0)}</div></div>)}</div></details>
+                    </article>;
+                  })}
+                </div>
+                <div className="hidden overflow-x-auto rounded-3xl border border-slate-200 bg-white lg:block">
                   <table className="min-w-[1180px] w-full border-collapse text-left">
                     <thead>
                       <tr className="bg-slate-50 text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
@@ -2416,6 +2428,7 @@ export default function Mietuebersicht({
                     </tbody>
                   </table>
                 </div>
+                </>
               ) : (
                 <div className="tenant-message">Keine Jahresdaten für diese Filter gefunden.</div>
               )}
@@ -2425,7 +2438,10 @@ export default function Mietuebersicht({
                     <h3 className="text-base font-black text-slate-950">Jahressummen nach Immobilie</h3>
                     <p className="mt-1 text-xs font-bold text-slate-500">Direkt aus dem Zahlungskalender aggregiert – ohne eigene Report-Datenquelle.</p>
                   </div>
-                  <div className="overflow-x-auto">
+                  <div className="grid gap-3 p-4 lg:hidden" aria-label="Immobilien-Jahressummen als Kartenansicht">
+                    {annualPropertyTotals.map(property => <article key={`mobile-total-${property.objectId}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3"><h4 className="font-black text-slate-950">{property.objectLabel}</h4><div className="mt-3 grid grid-cols-2 gap-2 text-xs"><span>Ist <b className="block text-emerald-800">{formatCurrency(property.paid)}</b></span><span>Soll <b className="block">{formatCurrency(property.expected)}</b></span><span>Offen <b className="block text-rose-700">{formatCurrency(property.open)}</b></span><span>Überzahlung <b className="block text-indigo-700">{formatCurrency(property.overpaid)}</b></span></div></article>)}
+                  </div>
+                  <div className="hidden overflow-x-auto lg:block">
                     <table className="min-w-[760px] w-full border-collapse text-left">
                       <thead>
                         <tr className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">
