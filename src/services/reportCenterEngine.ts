@@ -48,6 +48,8 @@ export const taxAdvisorReportIds = [
   'proofs',
   'journal',
 ] as const;
+/** Schlanke Standardakte: Steuerberater sieht zuerst nur entscheidungsrelevante Kapitel. */
+export const taxAdvisorCompactReportIds = ['validation','cover','objects','tenants','eur','acquisition','loan-interest','utilities'] as const;
 export const portfolioReportIds = ['wealth-statement', 'register', 'acquisition', 'loans', 'arrears', 'cashflow', 'loan-interest'] as const;
 export const euro = (v: unknown) => v == null || v === '' ? 'Nicht gepflegt' : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(parseLocaleNumber(v, 0));
 const percent = (v: number, digits = 1) => `${new Intl.NumberFormat('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v)} %`;
@@ -75,7 +77,7 @@ const paymentMatrixStatus = (month: RentReportMonth, monthStart: string, today: 
   if (rentBalancePart(month.expected, month.paid, 'open') === 0) return 'bezahlt';
   return month.paid > 0 ? 'teilweise' : 'fehlt';
 };
-export function buildReportCenter(input: { objects: AppObject[]; entries: FinanceEntry[]; loans: LoanDashboardRow[]; sources: ReportSources; rent: RentAnnualReportSnapshot | null; from: string; to: string; objectId: string; rosensteinUnit?: RosensteinTaxUnitCode; today?: string }): ReportModule[] {
+export function buildReportCenter(input: { objects: AppObject[]; entries: FinanceEntry[]; loans: LoanDashboardRow[]; sources: ReportSources; rent: RentAnnualReportSnapshot | null; from: string; to: string; objectId: string; rosensteinUnit?: RosensteinTaxUnitCode; today?: string; compact?: boolean }): ReportModule[] {
   const { sources: s, from, to, rent } = input;
   const today = input.today ?? new Date().toLocaleDateString('sv-SE');
   const objects = input.objects.filter(o => !input.objectId || o.id === input.objectId);
@@ -578,7 +580,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   });
   const matrix = table('Zahlungsmatrix · Ist / Soll',['Objekt','Einheit','Mieter',...Array.from({length:12},(_,i) => new Date(2025,i,1).toLocaleDateString('de-DE',{month:'short'}))],matrixRows);
   const tenants = module('tenants',[table('Vertragsdaten',['Objekt','Einheit','Mieter','Von','Bis','Kaltmiete','NK','Sonstiges','Gesamtmiete','Fläche m²','€/m²','Kaution (vereinbart)'],contractRows),matrix],[rentNote,'Die vereinbarte Kaution wird ausschließlich aus dem für den Berichtszeitraum gültigen Mietvertrag übernommen. Ein Zahlungseingang wird daraus nicht abgeleitet.']);
-  if (billingPeriods.length) tenants.tables?.splice(1,0,table('Vermietungszeiträume aus gespeicherten Abrechnungen',['Objekt','Einheit','Mieter','Von','Bis','Fläche m²','NK-Vorauszahlungen','Monate','Quelle'],billingPeriods.map(p=>[p.object?.label ?? 'Nicht zugeordnet',p.unit,p.tenant,p.from,p.to,str(p.area),euro(p.advancePayments),p.occupancyMonths ?? '—',p.source])));
+  if (billingPeriods.length && !input.compact) tenants.tables?.splice(1,0,table('Vermietungszeiträume aus gespeicherten Abrechnungen',['Objekt','Einheit','Mieter','Von','Bis','Fläche m²','NK-Vorauszahlungen','Monate','Quelle'],billingPeriods.map(p=>[p.object?.label ?? 'Nicht zugeordnet',p.unit,p.tenant,p.from,p.to,str(p.area),euro(p.advancePayments),p.occupancyMonths ?? '—',p.source])));
   let balance = 0;
   const journal = module('journal',[table('Alle Geldbewegungen',['Datum','Einheit / Objekt','Mieter','Typ','Kategorie','Beschreibung','Eingang (+)','Ausgaben (-)','Saldo'],[...entries].sort((a,b) => text(a.booking_date).localeCompare(text(b.booking_date)) || text(a.id).localeCompare(text(b.id))).map(e => {
     balance += e.entry_type === 'income' ? Math.abs(e.amount) : e.entry_type === 'expense' ? -Math.abs(e.amount) : 0;
