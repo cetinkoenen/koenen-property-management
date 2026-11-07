@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- Hook und Provider gehören bewusst zu demselben Kontextmodul. */
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 type WorkspaceContextValue = {

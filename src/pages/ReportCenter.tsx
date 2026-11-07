@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect -- synchronisiert die explizite globale Bedienvorauswahl mit lokalen Reportfiltern. */
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { FileText, Download, RefreshCw, ArrowRight } from 'lucide-react';
