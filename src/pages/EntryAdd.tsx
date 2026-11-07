@@ -15,6 +15,7 @@ import { listObjectDirectory } from "../services/objectDirectoryService";
 import { getRecurringBookingReference } from "../lib/recurringBookingReferences";
 import { bookingCategoryKey, deleteBookingTemplate, loadBookingAssistant, recordRecentCategory, saveBookingTemplate, toggleFavoriteCategory, type BookingTemplate } from "../lib/bookingAssistant";
 import { uploadPropertyDocument } from "../services/documentArchiveService";
+import BookingAssistantPanel from "../components/BookingAssistantPanel";
 
 type DropdownRow = {
   /** Muss für finance_entry.object_id die UUID aus public.objects.id sein. */
@@ -928,11 +929,7 @@ export default function EntryAdd() {
           gap: 16,
         }}
       >
-        <div style={{ ...panelStyle(), padding: 14, display: "grid", gap: 10, background: "#f8fafc" }}>
-          <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: "0.12em", textTransform: "uppercase", color: "#315f72" }}>Buchungsassistent</div>
-          {assistantState.templates.length ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{assistantState.templates.map(template => <span key={template.id} style={{ display: "inline-flex", overflow: "hidden", border: "1px solid #bfdbfe", borderRadius: 10, background: "#eff6ff" }}><button type="button" onClick={() => applyTemplate(template)} style={{ border: 0, background: "transparent", padding: "7px 9px", color: "#1e3a8a", fontWeight: 900, cursor: "pointer" }}>{template.name}</button><button type="button" onClick={() => setAssistantState(deleteBookingTemplate(template.id))} aria-label={`Vorlage ${template.name} löschen`} title="Vorlage löschen" style={{ border: 0, borderLeft: "1px solid #bfdbfe", background: "transparent", padding: "7px 9px", color: "#9f1239", fontWeight: 900, cursor: "pointer" }}>×</button></span>)}</div> : <div style={{ fontSize: 12, color: "#64748b", fontWeight: 750 }}>Noch keine Vorlage gespeichert. Füllen Sie die Buchung aus und speichern Sie sie unten als Vorlage.</div>}
-          {(favoriteCategories.length || recentCategories.length) ? <div style={{ display: "grid", gap: 7 }}>{favoriteCategories.length ? <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}><span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>Favoriten:</span>{favoriteCategories.map(item => <button key={item} type="button" onClick={() => onSelectCategory(item)} style={{ border: "1px solid #fcd34d", borderRadius: 999, background: "#fffbeb", padding: "5px 9px", color: "#92400e", fontSize: 12, fontWeight: 900, cursor: "pointer" }}>★ {item}</button>)}</div> : null}{recentCategories.length ? <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}><span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>Zuletzt:</span>{recentCategories.map(item => <button key={item} type="button" onClick={() => onSelectCategory(item)} style={{ border: "1px solid #cbd5e1", borderRadius: 999, background: "#ffffff", padding: "5px 9px", color: "#475569", fontSize: 12, fontWeight: 850, cursor: "pointer" }}>{item}</button>)}</div> : null}</div> : null}
-        </div>
+        <BookingAssistantPanel templates={assistantState.templates} favorites={favoriteCategories} recent={recentCategories} onApplyTemplate={applyTemplate} onDeleteTemplate={(id) => setAssistantState(deleteBookingTemplate(id))} onSelectCategory={onSelectCategory} />
         <div
           style={{
             display: "grid",
