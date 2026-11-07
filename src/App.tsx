@@ -326,6 +326,8 @@ type WorkspaceConfig = {
 };
 
 const groupAccent: Record<string, string> = {
+  Heute: "text-[#9ed7e2]",
+  Berichte: "text-[#aeb8ff]",
   Dashboard: "text-[#9ed7e2]",
   Immobilien: "text-[#9bd8c4]",
   Immobilienvermögen: "text-[#aeb8ff]",
@@ -5383,7 +5385,7 @@ function AppShell() {
   const workspaceYears = useMemo(() => Array.from({ length: 5 }, (_, index) => new Date().getFullYear() - index), []);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openMobileGroups, setOpenMobileGroups] = useState<Set<string>>(
-    () => new Set(["Dashboard", "Immobilien", "Immobilienvermögen", "Mieter", "Buchhaltung"]),
+    () => new Set(["Heute", "Buchhaltung", "Mieter", "Immobilien", "Berichte"]),
   );
   const { user } = useAuth();
   const location = useLocation();
@@ -5395,42 +5397,42 @@ function AppShell() {
 
   const navItems = useMemo<ShellNavItem[]>(
     () => [
-      { to: "/dashboard/finanz-kennzahlen", label: "Cockpit", group: "Dashboard", icon: LayoutDashboard },
-      { to: "/dashboard/vermoegen-cashflow", label: "Vermögen & Cashflow", group: "Dashboard", icon: TrendingUp },
-      { to: "/dashboard/warnmeldungen", label: "Warnungen", group: "Dashboard", icon: Bell },
-      { to: "/immobilienvermoegen/lilienthaler-str-54", label: "Lilienthaler Str. 54", group: "Immobilienvermögen", icon: Building2 },
-      { to: "/immobilienvermoegen/elsasser-str-52", label: "Elsasser Str. 52", group: "Immobilienvermögen", icon: Building2 },
-      { to: "/immobilienvermoegen/colmarer-str-45", label: "Colmarer Str. 45", group: "Immobilienvermögen", icon: Building2 },
-      { to: "/immobilienvermoegen/fuerther-str-74", label: "Fürther Str. 74", group: "Immobilienvermögen", icon: Building2 },
-      { to: "/immobilienvermoegen/hohenloher-str-78", label: "Hohenloher Str. 78 (Eigennutzung)", group: "Immobilienvermögen", icon: Building2 },
-      { to: "/immobilienvermoegen/rosensteinstr-25", label: "Rosensteinstr. 25", group: "Immobilienvermögen", icon: Building2 },
+      { to: "/dashboard/finanz-kennzahlen", label: "Cockpit", group: "Heute", icon: LayoutDashboard },
+      { to: "/dashboard/vermoegen-cashflow", label: "Vermögen & Cashflow", group: "Heute", icon: TrendingUp },
+      { to: "/dashboard/warnmeldungen", label: "Warnungen", group: "Heute", icon: Bell },
+      { to: "/mahnwesen", label: "Mahnwesen", group: "Heute", icon: Bell },
+      { to: "/ticketsystem/schadenmeldungen", label: "Tickets", group: "Heute", icon: FolderKanban },
       { to: "/buchhaltung/einnahmen-ausgaben", label: "Einnahmen & Ausgaben", group: "Buchhaltung", icon: PlusCircle },
       { to: "/buchhaltung/buchungen", label: "Buchungen", group: "Buchhaltung", icon: WalletCards },
       { to: "/mieter/mieteingang", label: "Mieteingang", group: "Buchhaltung", icon: CalendarCheck },
       { to: "/mieter/mietentwicklung", label: "Mietentwicklung", group: "Buchhaltung", icon: TrendingUp },
-      { to: "/nebenkosten", label: "Übersicht", group: "Nebenkosten", icon: ClipboardList },
-      { to: "/nebenkosten/wohnungen", label: "Wohnungen", group: "Nebenkosten", icon: Building2 },
-      { to: "/nebenkosten/tiefgarage", label: "Tiefgarage", group: "Nebenkosten", icon: DoorOpen },
-      { to: "/ein-auszug", label: "Ein-/Auszug", group: "Mieterregister", icon: KeyRound },
-      { to: "/leerstand", label: "Leerstand", group: "Mieterregister", icon: DoorOpen },
-      { to: "/buchhaltung/fahrtenbuch", label: "Fahrtenbuch", group: "Steuer", icon: Car },
-      { to: "/berichte", label: "Berichte & Reports", group: "Steuer", icon: BarChart3 },
-      { to: "/darlehen", label: "Übersicht", group: "Darlehen", icon: Landmark },
-      { to: "/investment-bericht", label: "Investment-Bericht", group: "Investment", icon: BookOpenCheck },
+      { to: "/nebenkosten", label: "Nebenkosten-Übersicht", group: "Buchhaltung", icon: ClipboardList },
+      { to: "/nebenkosten/wohnungen", label: "Nebenkosten Wohnungen", group: "Buchhaltung", icon: Building2 },
+      { to: "/nebenkosten/tiefgarage", label: "Nebenkosten Tiefgarage", group: "Buchhaltung", icon: DoorOpen },
+      { to: "/darlehen", label: "Darlehen", group: "Buchhaltung", icon: Landmark },
+      { to: "/buchhaltung/fahrtenbuch", label: "Fahrtenbuch", group: "Buchhaltung", icon: Car },
+      { to: "/ein-auszug", label: "Ein-/Auszug", group: "Mieter", icon: KeyRound },
+      { to: "/leerstand", label: "Leerstand", group: "Mieter", icon: DoorOpen },
+      { to: "/mieter/stammdaten", label: "Stammdaten", group: "Mieter", icon: Users },
+      { to: "/immobilienvermoegen/lilienthaler-str-54", label: "Lilienthaler Str. 54", group: "Immobilien", icon: Building2 },
+      { to: "/immobilienvermoegen/elsasser-str-52", label: "Elsasser Str. 52", group: "Immobilien", icon: Building2 },
+      { to: "/immobilienvermoegen/colmarer-str-45", label: "Colmarer Str. 45", group: "Immobilien", icon: Building2 },
+      { to: "/immobilienvermoegen/fuerther-str-74", label: "Fürther Str. 74", group: "Immobilien", icon: Building2 },
+      { to: "/immobilienvermoegen/hohenloher-str-78", label: "Hohenloher Str. 78 (Eigennutzung)", group: "Immobilien", icon: Building2 },
+      { to: "/immobilienvermoegen/rosensteinstr-25", label: "Rosensteinstr. 25", group: "Immobilien", icon: Building2 },
       { to: "/immobilien/immobilie-anlegen", label: "Immobilie anlegen", group: "Immobilien", icon: PlusCircle },
-      { to: "/mieter/stammdaten", label: "Stammdaten", group: "Immobilien", icon: Users },
-      { to: "/mahnwesen", label: "Mahnwesen", group: "Aufgaben", icon: Bell },
-      { to: "/ticketsystem/schadenmeldungen", label: "Tickets", group: "Aufgaben", icon: FolderKanban },
-      { to: "/dokumente", label: "Archiv", group: "Dokumente", icon: FolderOpen },
-      { to: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", group: "Einstellungen", icon: UserCog },
-      ...(isAdmin ? [{ to: "/einstellungen/datenschutz-compliance", label: "Datenschutz", group: "Einstellungen", icon: ShieldCheck }] : []),
+      { to: "/dokumente", label: "Dokumentenarchiv", group: "Immobilien", icon: FolderOpen },
+      { to: "/berichte", label: "Berichte & Reports", group: "Berichte", icon: BarChart3 },
+      { to: "/investment-bericht", label: "Investment-Bericht", group: "Berichte", icon: BookOpenCheck },
+      { to: "/einstellungen/benutzer-rechteverwaltung", label: "Benutzer & Rechte", group: "Berichte", icon: UserCog },
+      ...(isAdmin ? [{ to: "/einstellungen/datenschutz-compliance", label: "Datenschutz", group: "Berichte", icon: ShieldCheck }] : []),
     ],
     [isAdmin],
   );
 
   const navGroups = useMemo(
     () =>
-      ["Dashboard", "Immobilienvermögen", "Buchhaltung", "Nebenkosten", "Mieterregister", "Steuer", "Darlehen", "Investment", "Immobilien", "Aufgaben", "Dokumente", "Einstellungen"].map((group) => ({
+      ["Heute", "Buchhaltung", "Mieter", "Immobilien", "Berichte"].map((group) => ({
         group,
         items: navItems.filter((item) => item.group === group),
       })).filter((group) => group.items.length > 0),
