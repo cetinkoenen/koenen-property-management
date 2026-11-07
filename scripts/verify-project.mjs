@@ -15,6 +15,7 @@ const checks = [
   ["Marke und Projektname", "npm", ["run", "stress:branding"]],
   ["Seiten und Weiterleitungen", "npm", ["run", "test:navigation"]],
   ["Berichtscenter und Dokumentenschema", "npm", ["run", "test:report-center"]],
+  ["Wiederkehrende Buchungsreferenzen", "npm", ["run", "test:booking-references"]],
   ["Buchungsdubletten bei großen Datenmengen", "npm", ["run", "stress:finance-volume"]],
   ["Parallele Buchungsabfragen und vollständige Jahressichten", "npm", ["run", "stress:booking-loading"]],
 ];

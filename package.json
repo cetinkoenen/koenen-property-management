@@ -28,6 +28,7 @@
     "verify": "node scripts/verify-project.mjs",
     "preview": "vite preview",
     "test:report-center": "node scripts/test-report-center.mjs",
+    "test:booking-references": "node scripts/test-recurring-booking-references.mjs",
     "test:navigation": "node scripts/test-navigation.mjs",
     "stress:finance-volume": "node scripts/stress-finance-volume.mjs",
     "stress:booking-loading": "node scripts/stress-booking-loading.mjs"

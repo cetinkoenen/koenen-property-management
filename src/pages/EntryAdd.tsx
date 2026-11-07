@@ -12,6 +12,7 @@ import { findLoanRatePlanForBooking, type LoanRatePlanRow } from "../services/lo
 import { calculateChfLoanSplit, resolveChfLoanSplitRule } from "../lib/chfLoanSplit";
 import { insertFinanceEntry } from "../services/financeEntryRepository";
 import { listObjectDirectory } from "../services/objectDirectoryService";
+import { getRecurringBookingReference } from "../lib/recurringBookingReferences";
 
 type DropdownRow = {
   /** Muss für finance_entry.object_id die UUID aus public.objects.id sein. */
@@ -36,20 +37,6 @@ const ROSENSTEIN_PARKING_REFERENCES = [
   { id: "p250", label: "P250 - E008440000121" },
   { id: "p253", label: "P253 - E008440000122" },
 ] as const;
-
-const CREDIT_RATE_REFERENCES = [
-  { propertyMatch: "colmarer", label: "Darlehensvertrag 650 2083277 88" },
-  { propertyMatch: "lilienthaler", label: "Darlehensvertrag Lux Credit Ref. Nr. 287-3229732" },
-  { propertyMatch: "fürther", label: "Darlehensvertrag 2441991360" },
-  { propertyMatch: "elsasser", label: "Darlehensvertrag Lux Credit Ref. Nr. 287-3286114" },
-  { propertyMatch: "rosenstein", label: "Darlehensvertrag 80730-2" },
-  { propertyMatch: "hohenloher", label: "Darlehensvertrag 80767-1" },
-] as const;
-
-function creditRateReferenceForObjectLabel(objectLabel: string): string | null {
-  const normalizedObjectLabel = objectLabel.toLocaleLowerCase("de-DE");
-  return CREDIT_RATE_REFERENCES.find((reference) => normalizedObjectLabel.includes(reference.propertyMatch))?.label ?? null;
-}
 
 function toISODate(date: Date): string {
   const y = date.getFullYear();
@@ -105,7 +92,7 @@ export default function EntryAdd() {
   const [category, setCategory] = useState<string>("");
   const [customCategory, setCustomCategory] = useState<string>("");
   const [note, setNote] = useState<string>("");
-  const [creditRateReferenceSelected, setCreditRateReferenceSelected] = useState(false);
+  const [recurringReferenceSelected, setRecurringReferenceSelected] = useState(false);
   const [businessMealPersons, setBusinessMealPersons] = useState<string>("");
   const [businessMealOccasion, setBusinessMealOccasion] = useState<string>("");
   const [telecomSpouseA, setTelecomSpouseA] = useState<string>("");
@@ -157,7 +144,10 @@ export default function EntryAdd() {
     [selectedObjectLabel],
   );
   const isCreditRate = kind === "expense" && resolvedCategory === "Kreditrate";
-  const creditRateReference = useMemo(() => creditRateReferenceForObjectLabel(selectedObjectLabel), [selectedObjectLabel]);
+  const recurringReference = useMemo(
+    () => getRecurringBookingReference({ kind, category: resolvedCategory, objectLabel: selectedObjectLabel, objectCode: objektCodePreview }),
+    [kind, objektCodePreview, resolvedCategory, selectedObjectLabel],
+  );
   const chfLoanRule = useMemo(() => resolveChfLoanSplitRule(`${selectedObjectLabel} ${objektCodePreview}`), [objektCodePreview, selectedObjectLabel]);
   const loanInterestNumber = useMemo(() => parseNumberInput(loanInterest), [loanInterest]);
   const loanPrincipalNumber = useMemo(() => parseNumberInput(loanPrincipal), [loanPrincipal]);
@@ -324,35 +314,58 @@ export default function EntryAdd() {
     if (selectedLabel.toLocaleLowerCase("de-DE").includes("hohenloher")) {
       setNkRelevant(false);
     }
-    if (creditRateReferenceSelected) {
-      const nextReference = creditRateReferenceForObjectLabel(selected?.label ?? "");
+    if (recurringReferenceSelected) {
+      const nextReference = getRecurringBookingReference({
+        kind,
+        category: resolvedCategory,
+        objectLabel: selected?.label,
+        objectCode: selected?.objekt_code,
+      });
       setNote(nextReference ?? "");
-      setCreditRateReferenceSelected(Boolean(nextReference));
+      setRecurringReferenceSelected(Boolean(nextReference));
     }
   }
 
   function onSelectKind(nextKind: "income" | "expense") {
     setKind(nextKind);
-    if (nextKind !== "expense" && creditRateReferenceSelected) {
-      setNote("");
-      setCreditRateReferenceSelected(false);
+    if (recurringReferenceSelected) {
+      const nextReference = getRecurringBookingReference({
+        kind: nextKind,
+        category: resolvedCategory,
+        objectLabel: selectedObjectLabel,
+        objectCode: objektCodePreview,
+      });
+      setNote(nextReference ?? "");
+      setRecurringReferenceSelected(Boolean(nextReference));
     }
   }
 
   function onSelectCategory(nextCategory: string) {
     setCategory(nextCategory);
     const nextResolvedCategory = canonicalizeFinanceCategory(nextCategory === "__NEW__" ? customCategory : nextCategory, kind);
-    if (nextResolvedCategory !== "Kreditrate" && creditRateReferenceSelected) {
-      setNote("");
-      setCreditRateReferenceSelected(false);
+    if (recurringReferenceSelected) {
+      const nextReference = getRecurringBookingReference({
+        kind,
+        category: nextResolvedCategory,
+        objectLabel: selectedObjectLabel,
+        objectCode: objektCodePreview,
+      });
+      setNote(nextReference ?? "");
+      setRecurringReferenceSelected(Boolean(nextReference));
     }
   }
 
   function onChangeCustomCategory(nextCategory: string) {
     setCustomCategory(nextCategory);
-    if (canonicalizeFinanceCategory(nextCategory, kind) !== "Kreditrate" && creditRateReferenceSelected) {
-      setNote("");
-      setCreditRateReferenceSelected(false);
+    if (recurringReferenceSelected) {
+      const nextReference = getRecurringBookingReference({
+        kind,
+        category: canonicalizeFinanceCategory(nextCategory, kind),
+        objectLabel: selectedObjectLabel,
+        objectCode: objektCodePreview,
+      });
+      setNote(nextReference ?? "");
+      setRecurringReferenceSelected(Boolean(nextReference));
     }
   }
 
@@ -361,7 +374,7 @@ export default function EntryAdd() {
     setCategory("");
     setCustomCategory("");
     setNote("");
-    setCreditRateReferenceSelected(false);
+    setRecurringReferenceSelected(false);
     setBusinessMealPersons("");
     setBusinessMealOccasion("");
     setTelecomSpouseA("");
@@ -517,7 +530,7 @@ export default function EntryAdd() {
       setCategory("");
       setCustomCategory("");
       setNote("");
-      setCreditRateReferenceSelected(false);
+      setRecurringReferenceSelected(false);
       setBusinessMealPersons("");
       setBusinessMealOccasion("");
       setTelecomSpouseA("");
@@ -1172,14 +1185,14 @@ export default function EntryAdd() {
                 value={note}
                 onChange={(e) => {
                   setNote(e.target.value);
-                  setCreditRateReferenceSelected(false);
+                  setRecurringReferenceSelected(false);
                 }}
                 placeholder="optional"
                 style={inputStyle()}
               />
             </label>
 
-            {isCreditRate && creditRateReference ? (
+            {recurringReference ? (
               <label
                 style={{
                   marginTop: 10,
@@ -1199,14 +1212,14 @@ export default function EntryAdd() {
               >
                 <input
                   type="checkbox"
-                  checked={creditRateReferenceSelected && note === creditRateReference}
+                  checked={recurringReferenceSelected && note === recurringReference}
                   onChange={(event) => {
-                    setCreditRateReferenceSelected(event.target.checked);
-                    setNote(event.target.checked ? creditRateReference : "");
+                    setRecurringReferenceSelected(event.target.checked);
+                    setNote(event.target.checked ? recurringReference : "");
                   }}
                   style={{ width: 18, height: 18, flex: "0 0 auto" }}
                 />
-                Kreditrate: {creditRateReference}
+                Standardtext übernehmen: {recurringReference}
               </label>
             ) : null}
 
