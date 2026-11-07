@@ -79,6 +79,7 @@ import {
 import logo from "./assets/koenen-brand-logo.webp";
 import { createPdfLogoObject, drawPdfLogo } from "./lib/pdfLogo";
 import { AppDataProvider, useAppData, type FinanceEntry } from "./state/AppDataContext";
+import { WorkspaceContextProvider, useWorkspaceContext } from "./state/WorkspaceContext";
 import { EmptyState, InfoList, KpiCard, ModuleCard, PageHeader, SectionPanel } from "./components/ui/professional";
 import { isPortfolioGeneralEntry, PORTFOLIO_GENERAL_LABEL } from "./lib/portfolioExpense";
 import { canonicalCategoryForTax } from "./lib/taxClassification";
@@ -1065,7 +1066,9 @@ function ProtectedAppShell() {
     <RequireAuthMFA>
       <AppErrorBoundary resetKey={resetKey}>
         <AppDataProvider>
-          <AppShell />
+          <WorkspaceContextProvider>
+            <AppShell />
+          </WorkspaceContextProvider>
         </AppDataProvider>
       </AppErrorBoundary>
     </RequireAuthMFA>
@@ -5375,6 +5378,9 @@ function TasksMaintenancePage({ mode = "aufgabe" }: { mode?: TaskPageMode }) {
 }
 
 function AppShell() {
+  const app = useAppData();
+  const workspace = useWorkspaceContext();
+  const workspaceYears = useMemo(() => Array.from({ length: 5 }, (_, index) => new Date().getFullYear() - index), []);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openMobileGroups, setOpenMobileGroups] = useState<Set<string>>(
     () => new Set(["Dashboard", "Immobilien", "Immobilienvermögen", "Mieter", "Buchhaltung"]),
@@ -5692,6 +5698,14 @@ function AppShell() {
             Nur-Lesen-Zugang: Daten und Felder sind geschützt. Änderungen sind dem Admin vorbehalten.
           </div>
         ) : null}
+        <section className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-end sm:justify-between" aria-label="Globaler Arbeitskontext">
+          <div><p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Arbeitskontext</p><p className="mt-1 text-sm text-slate-600">Objekt und Jahr werden als Vorauswahl für Berichte übernommen.</p></div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <label className="text-xs font-bold text-slate-600">Objekt<select className="mt-1 block min-w-52 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900" value={workspace.objectId} onChange={event => { const object = app.objects.find(item => item.id === event.target.value); workspace.setObject(event.target.value, object?.label); }}><option value="">Alle Immobilien</option>{app.objects.map(object => <option key={object.id} value={object.id}>{object.label}</option>)}</select></label>
+            <label className="text-xs font-bold text-slate-600">Jahr<select className="mt-1 block rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900" value={workspace.year} onChange={event => workspace.setYear(Number(event.target.value))}>{workspaceYears.map(year => <option key={year} value={year}>{year}</option>)}</select></label>
+            <button type="button" className="rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100" onClick={workspace.reset}>Zurücksetzen</button>
+          </div>
+        </section>
         <Outlet />
       </main>
     </div>
