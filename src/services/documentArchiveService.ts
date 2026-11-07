@@ -51,6 +51,7 @@ export type UploadPropertyDocumentInput = {
   validFrom?: string | null;
   validUntil?: string | null;
   notes?: string | null;
+  meta?: Record<string, unknown>;
 };
 
 function safePathPart(value: unknown, fallback = "unbekannt") {
@@ -123,7 +124,7 @@ export async function uploadPropertyDocument(input: UploadPropertyDocumentInput)
       mime_type: input.file.type || null,
       size_bytes: input.file.size,
       notes: input.notes ?? null,
-      meta: {},
+      meta: input.meta ?? {},
     })
     .select("*")
     .single();

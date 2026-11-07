@@ -13,6 +13,8 @@ import { calculateChfLoanSplit, resolveChfLoanSplitRule } from "../lib/chfLoanSp
 import { insertFinanceEntry } from "../services/financeEntryRepository";
 import { listObjectDirectory } from "../services/objectDirectoryService";
 import { getRecurringBookingReference } from "../lib/recurringBookingReferences";
+import { bookingCategoryKey, deleteBookingTemplate, loadBookingAssistant, recordRecentCategory, saveBookingTemplate, toggleFavoriteCategory, type BookingTemplate } from "../lib/bookingAssistant";
+import { uploadPropertyDocument } from "../services/documentArchiveService";
 
 type DropdownRow = {
   /** Muss für finance_entry.object_id die UUID aus public.objects.id sein. */
@@ -104,6 +106,9 @@ export default function EntryAdd() {
   const [loanPrincipal, setLoanPrincipal] = useState<string>("");
   const [loanRatePlan, setLoanRatePlan] = useState<LoanRatePlanRow | null>(null);
   const [loanPlanLoading, setLoanPlanLoading] = useState(false);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [templateName, setTemplateName] = useState("");
+  const [assistantState, setAssistantState] = useState(() => loadBookingAssistant());
 
   const [saving, setSaving] = useState<boolean>(false);
   const [loadingObjects, setLoadingObjects] = useState<boolean>(true);
@@ -167,6 +172,9 @@ export default function EntryAdd() {
     [telecomLandlineInternetNumber, telecomSpouseANumber, telecomSpouseBNumber],
   );
   const effectiveAmountNumber = isTelecommunication ? telecomDetails.totalAmount : amountNumber;
+  const favoriteCategories = useMemo(() => assistantState.favorites.filter(key => key.startsWith(`${kind}:`)).map(key => key.slice(kind.length + 1)), [assistantState.favorites, kind]);
+  const recentCategories = useMemo(() => assistantState.recent.filter(key => key.startsWith(`${kind}:`)).map(key => key.slice(kind.length + 1)), [assistantState.recent, kind]);
+  const categoryFavorite = Boolean(resolvedCategory && assistantState.favorites.includes(bookingCategoryKey(kind, resolvedCategory)));
 
   function toggleRosensteinParkingReference(referenceId: string, selected: boolean) {
     const selectedReferenceIds = new Set(
@@ -385,7 +393,19 @@ export default function EntryAdd() {
     setLoanInterest("");
     setLoanPrincipal("");
     setLoanRatePlan(null);
+    setReceiptFile(null);
     setMsg(null);
+  }
+
+  function applyTemplate(template: BookingTemplate) {
+    onSelectObject(template.objectId);
+    setKind(template.kind);
+    setCategory(template.category);
+    setCustomCategory("");
+    setNote(template.note);
+    setTaxRelevant(template.taxRelevant);
+    setNkRelevant(template.nkRelevant);
+    setMsg(`✅ Vorlage „${template.name}“ übernommen.`);
   }
 
   async function save(options?: { bypassTaxPrompt?: boolean; forceTaxRelevant?: boolean; bypassNkPrompt?: boolean; forceNkRelevant?: boolean; confirmed?: boolean }) {
@@ -521,11 +541,31 @@ export default function EntryAdd() {
         loan_split_source: isCreditRate ? (chfLoanRule?.source ?? (loanRatePlan ? `csv:${loanRatePlan.source_file}` : "manual")) : null,
       };
 
-      await insertFinanceEntry(payload);
+      const created = await insertFinanceEntry(payload);
+      let receiptUploadError = "";
+      if (receiptFile) {
+        try {
+          await uploadPropertyDocument({
+            file: receiptFile,
+            title: `Beleg · ${resolvedCategory} · ${bookingDate}`,
+            category: "rechnung",
+            propertyId: isPortfolioGeneralSelected ? null : objectId,
+            objektCode: objektCodePreview || null,
+            propertyName: selectedObjectLabel || null,
+            documentYear: Number(bookingDate.slice(0, 4)),
+            notes: `Direkt an Buchung ${created.id} angehängt · ${resolvedCategory} · ${effectiveAmountNumber.toFixed(2)} EUR.`,
+            meta: { finance_entry_id: created.id, booking_date: bookingDate, category: resolvedCategory },
+          });
+        } catch (receiptError) {
+          const detail = receiptError instanceof Error ? receiptError.message : String(receiptError);
+          receiptUploadError = detail;
+        }
+      }
+      setAssistantState(recordRecentCategory(kind, resolvedCategory));
 
       clearAppDataCache();
       emitFinanceEntryChanged();
-      setMsg("✅ Buchung erfolgreich gespeichert. Mieteingang und Auswertungen werden aktualisiert.");
+      setMsg(receiptUploadError ? `⚠️ Buchung gespeichert, aber Beleg konnte nicht hochgeladen werden: ${receiptUploadError}` : "✅ Buchung erfolgreich gespeichert. Mieteingang und Auswertungen werden aktualisiert.");
       setAmount("");
       setCategory("");
       setCustomCategory("");
@@ -541,6 +581,7 @@ export default function EntryAdd() {
       setLoanInterest("");
       setLoanPrincipal("");
       setLoanRatePlan(null);
+      setReceiptFile(null);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       setMsg(`❌ Speichern fehlgeschlagen: ${message}`);
@@ -887,6 +928,11 @@ export default function EntryAdd() {
           gap: 16,
         }}
       >
+        <div style={{ ...panelStyle(), padding: 14, display: "grid", gap: 10, background: "#f8fafc" }}>
+          <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: "0.12em", textTransform: "uppercase", color: "#315f72" }}>Buchungsassistent</div>
+          {assistantState.templates.length ? <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{assistantState.templates.map(template => <span key={template.id} style={{ display: "inline-flex", overflow: "hidden", border: "1px solid #bfdbfe", borderRadius: 10, background: "#eff6ff" }}><button type="button" onClick={() => applyTemplate(template)} style={{ border: 0, background: "transparent", padding: "7px 9px", color: "#1e3a8a", fontWeight: 900, cursor: "pointer" }}>{template.name}</button><button type="button" onClick={() => setAssistantState(deleteBookingTemplate(template.id))} aria-label={`Vorlage ${template.name} löschen`} title="Vorlage löschen" style={{ border: 0, borderLeft: "1px solid #bfdbfe", background: "transparent", padding: "7px 9px", color: "#9f1239", fontWeight: 900, cursor: "pointer" }}>×</button></span>)}</div> : <div style={{ fontSize: 12, color: "#64748b", fontWeight: 750 }}>Noch keine Vorlage gespeichert. Füllen Sie die Buchung aus und speichern Sie sie unten als Vorlage.</div>}
+          {(favoriteCategories.length || recentCategories.length) ? <div style={{ display: "grid", gap: 7 }}>{favoriteCategories.length ? <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}><span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>Favoriten:</span>{favoriteCategories.map(item => <button key={item} type="button" onClick={() => onSelectCategory(item)} style={{ border: "1px solid #fcd34d", borderRadius: 999, background: "#fffbeb", padding: "5px 9px", color: "#92400e", fontSize: 12, fontWeight: 900, cursor: "pointer" }}>★ {item}</button>)}</div> : null}{recentCategories.length ? <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}><span style={{ fontSize: 12, fontWeight: 900, color: "#64748b" }}>Zuletzt:</span>{recentCategories.map(item => <button key={item} type="button" onClick={() => onSelectCategory(item)} style={{ border: "1px solid #cbd5e1", borderRadius: 999, background: "#ffffff", padding: "5px 9px", color: "#475569", fontSize: 12, fontWeight: 850, cursor: "pointer" }}>{item}</button>)}</div> : null}</div> : null}
+        </div>
         <div
           style={{
             display: "grid",
@@ -969,11 +1015,7 @@ export default function EntryAdd() {
 
           <label style={fieldLabelStyle()}>
             Kategorie
-            <select
-              value={category}
-              onChange={(e) => onSelectCategory(e.target.value)}
-              style={inputStyle()}
-            >
+            <div style={{ display: "flex", gap: 8, alignItems: "end" }}><select value={category} onChange={(e) => onSelectCategory(e.target.value)} style={inputStyle()}>
               <option value="">Kategorie auswählen</option>
               {categoryOptions.map((option) => (
                 <option key={option} value={option}>
@@ -981,7 +1023,7 @@ export default function EntryAdd() {
                 </option>
               ))}
               <option value="__NEW__">Neue Kategorie…</option>
-            </select>
+            </select><button type="button" disabled={!resolvedCategory} onClick={() => resolvedCategory && setAssistantState(toggleFavoriteCategory(kind, resolvedCategory))} title={categoryFavorite ? "Favorit entfernen" : "Kategorie als Favorit speichern"} style={{ marginTop: 6, height: 42, width: 42, border: "1px solid #fcd34d", borderRadius: 12, background: categoryFavorite ? "#fef3c7" : "#ffffff", color: "#a16207", fontSize: 19, fontWeight: 900, cursor: resolvedCategory ? "pointer" : "not-allowed" }}>{categoryFavorite ? "★" : "☆"}</button></div>
           </label>
 
           {category === "__NEW__" && (
@@ -995,6 +1037,12 @@ export default function EntryAdd() {
               />
             </label>
           )}
+
+          <label style={fieldLabelStyle()}>
+            Beleg direkt anhängen
+            <input type="file" accept="application/pdf,image/*" onChange={event => setReceiptFile(event.target.files?.[0] ?? null)} style={{ ...inputStyle(), padding: 8, fontSize: 12 }} />
+            <span style={{ display: "block", marginTop: 5, fontSize: 11, color: "#64748b", fontWeight: 750 }}>{receiptFile ? `Ausgewählt: ${receiptFile.name}` : "PDF oder Bild · wird im zentralen Dokumentenarchiv mit dieser Buchung verknüpft."}</span>
+          </label>
 
           {isCreditRate && (
             <div
@@ -1315,6 +1363,8 @@ export default function EntryAdd() {
         </div>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <input value={templateName} onChange={event => setTemplateName(event.target.value)} placeholder="Vorlagenname" aria-label="Vorlagenname" style={{ ...inputStyle(), marginTop: 0, width: 190 }} />
+          <button type="button" disabled={!templateName.trim() || !objectId || !resolvedCategory} onClick={() => { if (!templateName.trim() || !objectId || !resolvedCategory) return; setAssistantState(saveBookingTemplate({ name: templateName.trim(), objectId, kind, category: resolvedCategory, note, taxRelevant, nkRelevant })); setTemplateName(""); setMsg("✅ Buchungsvorlage gespeichert."); }} style={{ padding: "10px 14px", borderRadius: 12, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1e3a8a", fontWeight: 900, cursor: templateName.trim() && objectId && resolvedCategory ? "pointer" : "not-allowed", opacity: templateName.trim() && objectId && resolvedCategory ? 1 : .55 }}>Als Vorlage speichern</button>
           <button
             type="button"
             onClick={() => void save()}

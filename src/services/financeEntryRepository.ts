@@ -135,9 +135,10 @@ export async function listFinanceEntryCategories(): Promise<string[]> {
   return [...categories];
 }
 
-export async function insertFinanceEntry(payload: FinanceEntryMutation): Promise<void> {
-  const { error } = await supabase.from("finance_entry").insert(payload);
+export async function insertFinanceEntry(payload: FinanceEntryMutation): Promise<{ id: string | number }> {
+  const { data, error } = await supabase.from("finance_entry").insert(payload).select("id").single();
   if (error) throw error;
+  return data as { id: string | number };
 }
 
 export async function updateFinanceEntry(
