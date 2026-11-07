@@ -225,6 +225,38 @@ const styles: Record<string, CSSProperties> = {
     padding: 18,
     boxShadow: "0 1px 2px rgba(15, 23, 42, 0.05)",
   },
+  releasePanel: {
+    border: "1px solid",
+    borderRadius: 20,
+    padding: 18,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1.4fr) minmax(260px, 0.8fr)",
+    gap: 18,
+    alignItems: "center",
+  },
+  releaseAction: {
+    display: "grid",
+    gap: 10,
+    justifyItems: "start",
+  },
+  releaseList: {
+    margin: 0,
+    paddingLeft: 19,
+    color: "#92400e",
+    fontSize: 13,
+    fontWeight: 800,
+    lineHeight: 1.55,
+  },
+  releaseReady: {
+    border: "1px solid #bbf7d0",
+    borderRadius: 12,
+    background: "#ffffff",
+    color: "#166534",
+    padding: "10px 12px",
+    fontSize: 13,
+    fontWeight: 900,
+    lineHeight: 1.45,
+  },
   taxDashboardTopline: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
@@ -1500,6 +1532,14 @@ export default function SteuerCenter() {
   const loanRowsWithYearValue = loanTaxRows.filter((row) => row.has_year_value);
   const loanRowsMissingYearValue = loanTaxRows.filter((row) => !row.has_year_value);
   const advisorPrivateRows = Math.max(0, advisorTotals.count - advisorTotals.taxRows - advisorTotals.checkRows);
+  const taxReleaseBlockers = [
+    ...(loading ? ["Daten werden noch geladen."] : []),
+    ...(error ? ["Die Steuerdaten konnten nicht vollständig geladen werden."] : []),
+    ...(!loading && !error && advisorTotals.count === 0 ? ["Für diese Auswahl sind keine Jahresbuchungen vorhanden."] : []),
+    ...(advisorTotals.checkRows > 0 ? [`${advisorTotals.checkRows} Buchung(en) sind noch steuerlich zu prüfen.`] : []),
+    ...(loanRowsMissingYearValue.length > 0 ? [`${loanRowsMissingYearValue.length} Darlehenszeile(n) haben noch keinen Jahreswert.`] : []),
+  ];
+  const taxReleaseReady = taxReleaseBlockers.length === 0;
   const advisorChecks = [
     {
       label: "Jahresbuchungen aus Hauptquelle finance_entry",
@@ -1672,6 +1712,45 @@ export default function SteuerCenter() {
         </section>
       ) : null}
 
+      <section
+        className="tax-no-print"
+        style={{
+          ...styles.releasePanel,
+          borderColor: taxReleaseReady ? "#86efac" : "#fcd34d",
+          background: taxReleaseReady ? "#f0fdf4" : "#fffbeb",
+        }}
+      >
+        <div>
+          <div style={styles.metaLabel}>Freigabe vor Steuerberater-Export</div>
+          <h2 style={{ ...styles.advisorTitle, marginTop: 4, color: taxReleaseReady ? "#166534" : "#92400e" }}>
+            {taxReleaseReady ? "Exportbereit" : "Noch nicht freigabefähig"}
+          </h2>
+          <p style={{ ...styles.text, marginTop: 6 }}>
+            {taxReleaseReady
+              ? `Die Jahresakte ${year} für ${selectedObjectLabel} enthält keine offenen steuerlichen Prüffälle und alle vorhandenen Darlehensjahreswerte.`
+              : "Bitte die folgenden Punkte abschließen, bevor der Steuerberater-Export erstellt wird."}
+          </p>
+        </div>
+        <div style={styles.releaseAction}>
+          {taxReleaseBlockers.length ? (
+            <ul style={styles.releaseList}>
+              {taxReleaseBlockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
+            </ul>
+          ) : (
+            <div style={styles.releaseReady}>✓ Quellen, Prüffälle und Darlehenswerte sind für diese Auswahl geprüft.</div>
+          )}
+          {advisorTotals.checkRows > 0 ? (
+            <button
+              type="button"
+              onClick={() => { setRelevance("check"); setSearch(""); }}
+              style={styles.button}
+            >
+              Prüffälle anzeigen
+            </button>
+          ) : null}
+        </div>
+      </section>
+
       <section style={styles.panel}>
         <div style={styles.advisorGrid}>
           <div>
@@ -1703,7 +1782,9 @@ export default function SteuerCenter() {
               <button
                 type="button"
                 onClick={() => downloadAdvisorCsv(`steuerberater_jahresakte_${filenameObject}_${year}.csv`, advisorExportPayload)}
-                style={styles.primaryButton}
+                disabled={!taxReleaseReady}
+                title={taxReleaseReady ? "Steuerberater-CSV erstellen" : "Export erst nach Abschluss der Freigabe möglich"}
+                style={{ ...styles.primaryButton, opacity: taxReleaseReady ? 1 : 0.55, cursor: taxReleaseReady ? "pointer" : "not-allowed" }}
               >
                 <Download size={16} />
                 Steuerberater-CSV
@@ -1711,12 +1792,14 @@ export default function SteuerCenter() {
               <button
                 type="button"
                 onClick={() => downloadTextReport(`steuerberater_jahresakte_${filenameObject}_${year}.txt`, advisorExportText(advisorExportPayload))}
-                style={styles.button}
+                disabled={!taxReleaseReady}
+                title={taxReleaseReady ? "Steuerberater-TXT erstellen" : "Export erst nach Abschluss der Freigabe möglich"}
+                style={{ ...styles.button, opacity: taxReleaseReady ? 1 : 0.55, cursor: taxReleaseReady ? "pointer" : "not-allowed" }}
               >
                 <FileText size={16} />
                 Steuerberater-TXT
               </button>
-              <button type="button" onClick={() => openAdvisorPdf(advisorExportPayload)} style={styles.button}>
+              <button type="button" onClick={() => openAdvisorPdf(advisorExportPayload)} disabled={!taxReleaseReady} title={taxReleaseReady ? "Steuerberater-PDF erstellen" : "Export erst nach Abschluss der Freigabe möglich"} style={{ ...styles.button, opacity: taxReleaseReady ? 1 : 0.55, cursor: taxReleaseReady ? "pointer" : "not-allowed" }}>
                 <Printer size={16} />
                 Steuerberater-PDF
               </button>
