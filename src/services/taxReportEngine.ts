@@ -1105,6 +1105,15 @@ export function buildSection35aReportLines(report: Section35aReport): string[] {
     ...(report.excludedCashPayments.length
       ? ["", "Ausgeschlossene Barzahlungen:", ...report.excludedCashPayments.map((entry) => `- ${entry.booking_date ?? "-"} | ${entry.category ?? "-"} | ${formatTaxCurrency(amount(entry.amount))}`)]
       : []),
+    ...(report.entries.filter((entry) => entry.entry_type === "expense").length
+      ? [
+          "",
+          "Kontrollnachweis Hohenloher-Ausgaben (nicht automatisch steuerlich angesetzt):",
+          ...report.entries
+            .filter((entry) => entry.entry_type === "expense")
+            .map((entry) => `- ${entry.booking_date ?? "-"} | ${entry.category ?? "Ausgabe"} | ${formatTaxCurrency(amount(entry.amount))} | ${entry.tax_relevant === false ? "nicht steuerlich angesetzt" : "fachlich prüfen"}${entry.note ? ` | ${entry.note}` : ""}`),
+        ]
+      : []),
     ...(report.warnings.length ? ["", "Pruefhinweise:", ...report.warnings.map((warning) => `- ${warning}`)] : []),
   ];
 }

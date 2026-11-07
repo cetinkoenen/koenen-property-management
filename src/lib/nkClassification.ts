@@ -141,6 +141,13 @@ export function classifyNkRelevance(entry: NkClassificationInput): NkClassificat
     };
   }
 
+  if (category.includes("eigennutzung")) {
+    return {
+      nkRelevant: false,
+      reason: "Eine WEG-/Nebenkosten-Nachzahlung bei Eigennutzung gehört nicht in eine Mieter-Nebenkostenabrechnung.",
+    };
+  }
+
 
   if (text.includes("hohenloher") || text.includes("brettach") || text.includes("langenbrettach")) {
     return {

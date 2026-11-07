@@ -1,4 +1,4 @@
-import { DARLEHENSAUSZAHLUNG_CATEGORY, MIETE_NACHZAHLUNG_CATEGORY, NK_NACHZAHLUNG_CATEGORY, canonicalizeFinanceCategory, normalizeFinanceCategoryText, type FinanceEntryType } from "./financeCategories";
+import { DARLEHENSAUSZAHLUNG_CATEGORY, MIETE_NACHZAHLUNG_CATEGORY, NK_NACHZAHLUNG_CATEGORY, WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY, canonicalizeFinanceCategory, normalizeFinanceCategoryText, type FinanceEntryType } from "./financeCategories";
 import { isHohenloherMietbestandteilNk, MIETBESTANDTEIL_NK_CATEGORY } from "./financeEntryLabels";
 import { isBusinessMealCategory } from "./businessMealTax";
 import { isAllocatablePortfolioExpenseEntry, isPersonalMovingExpense } from "./portfolioExpense";
@@ -68,6 +68,16 @@ export function classifyTaxRelevance(entry: TaxRuleEntry, objectLabel?: string |
   const canonicalCategory = canonicalCategoryForTax({ ...entry, entry_type: entryType }, objectLabel);
   const text = normalize(`${canonicalCategory} ${entry.category ?? ""} ${entry.note ?? ""} ${entry.objekt_code ?? ""} ${objectLabel ?? ""}`);
   const isHohenloher = isHohenloherSelfUsedObject(text);
+
+  if (canonicalCategory === WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY) {
+    return {
+      taxRelevant: false,
+      relevance: "private",
+      group: "WEG-/Nebenkosten-Nachzahlung bei Eigennutzung",
+      hint: "Die WEG-Nachzahlung einer selbstgenutzten Immobilie gehört nicht in Anlage V und nicht in eine Mieter-Nebenkostenabrechnung. Für §35a darf nur ein in der Hausgeldabrechnung getrennt ausgewiesener Arbeits- oder Fahrtkostenanteil angesetzt werden.",
+      locked: true,
+    };
+  }
 
   // Eindeutige steuerliche Sonderfaelle muessen vor dem technischen
   // Buchungstyp ausgewertet werden. Historische Importe enthalten einzelne

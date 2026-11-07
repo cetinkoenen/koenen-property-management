@@ -8,6 +8,11 @@ export type FinanceCategoryOption = {
 export const MIETE_NACHZAHLUNG_CATEGORY = "Miete Nachzahlung";
 export const NK_NACHZAHLUNG_CATEGORY = "NK-Nachzahlung";
 export const DARLEHENSAUSZAHLUNG_CATEGORY = "Darlehensauszahlung";
+// Eigentümer-Nachzahlungen aus einer WEG-Abrechnung bei Eigennutzung sind
+// weder Mieter-Nebenkosten noch Anlage-V-Werbungskosten. Die eigene Kategorie
+// verhindert, dass sie versehentlich als umlagefähige Kosten klassifiziert
+// oder in einen Vermietungs-Steuerreport übernommen werden.
+export const WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY = "WEG-/NK-Nachzahlung (Eigennutzung)";
 
 export const FINANCE_CATEGORY_OPTIONS: FinanceCategoryOption[] = [
   { value: "Miete", type: "income" },
@@ -40,6 +45,7 @@ export const FINANCE_CATEGORY_OPTIONS: FinanceCategoryOption[] = [
   { value: "Reparatur", type: "expense" },
   { value: "Versicherung", type: "expense" },
   { value: "Wartung", type: "expense" },
+  { value: WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY, type: "expense" },
 ];
 
 const CATEGORY_ALIAS_PAIRS: Array<[string, string]> = [
@@ -53,6 +59,10 @@ const CATEGORY_ALIAS_PAIRS: Array<[string, string]> = [
   ["hausgeld", "Verwaltungskosten"],
   ["weg", "Verwaltungskosten"],
   ["weg hausgeld", "Verwaltungskosten"],
+  ["weg nachzahlung", WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY],
+  ["weg nk nachzahlung", WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY],
+  ["nebenkosten nachzahlung eigennutzung", WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY],
+  ["nk nachzahlung eigennutzung", WEG_NK_NACHZAHLUNG_EIGENNUTZUNG_CATEGORY],
   ["verwaltung", "Verwaltungskosten"],
   ["verwaltungskosten", "Verwaltungskosten"],
   ["bewirtung", "Bewirtungskosten"],
