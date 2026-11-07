@@ -33,6 +33,18 @@ export function getRecurringBookingReference(input: RecurringBookingReferenceInp
     return null;
   }
 
+  // Verwaltungskosten werden nicht mit einem generischen Text ergänzt.
+  // Die Hausverwaltungsreferenz ist je Objekt verbindlich und wird exakt
+  // so übernommen, wie sie für die Überweisung bzw. den Beleg benötigt wird.
+  if (input.kind === "expense" && category === "Verwaltungskosten") {
+    const normalizedObject = object.toLocaleLowerCase("de-DE");
+    if (normalizedObject.includes("colmarer")) return "MREF 64500-2300";
+    if (normalizedObject.includes("elsasser")) return "Eigent. 00085-1000302";
+    if (normalizedObject.includes("fürther")) return "MREF 11107-01 00700";
+    if (normalizedObject.includes("hohenloher")) return "Objekt 195";
+    return null;
+  }
+
   if (input.kind === "income" && category === "Miete Garage") {
     const unit = canonicalUnitLabel({ objectLabel: object, objectCode: input.objectCode, rentType: "Garage" }) ?? "Garage";
     return `Miete · ${object} · ${unit}`;
@@ -44,7 +56,6 @@ export function getRecurringBookingReference(input: RecurringBookingReferenceInp
     "Mietbestandteil-NK": "Nebenkostenvorauszahlung",
     "NK-Nachzahlung": "Nebenkostenabrechnung · Nachzahlung",
     Kaution: "Kaution",
-    Verwaltungskosten: "Verwaltungskosten",
     Grundsteuer: "Grundsteuer",
     Versicherung: "Versicherung",
     Allgemeinstrom: "Allgemeinstrom",

@@ -46,7 +46,23 @@ assert.equal(
 );
 assert.equal(
   getRecurringBookingReference({ kind: "expense", category: "Verwaltungskosten", objectLabel: "Colmarer Str. 45" }),
-  "Verwaltungskosten · Colmarer Str. 45",
+  "MREF 64500-2300",
+);
+assert.equal(
+  getRecurringBookingReference({ kind: "expense", category: "Verwaltungskosten", objectLabel: "Elsasser Str. 52" }),
+  "Eigent. 00085-1000302",
+);
+assert.equal(
+  getRecurringBookingReference({ kind: "expense", category: "Verwaltungskosten", objectLabel: "Fürther Str. 74" }),
+  "MREF 11107-01 00700",
+);
+assert.equal(
+  getRecurringBookingReference({ kind: "expense", category: "Verwaltungskosten", objectLabel: "Hohenloher Str. 78" }),
+  "Objekt 195",
+);
+assert.equal(
+  getRecurringBookingReference({ kind: "expense", category: "Verwaltungskosten", objectLabel: "Lilienthaler Str. 54" }),
+  null,
 );
 assert.equal(
   getRecurringBookingReference({ kind: "income", category: "Miete Garage", objectLabel: "Fürther Str. 74" }),
@@ -61,4 +77,4 @@ assert.equal(
   null,
 );
 
-console.log("Recurring booking references: 5 checks passed.");
+console.log("Recurring booking references: 9 checks passed.");

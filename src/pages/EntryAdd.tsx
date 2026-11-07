@@ -1219,7 +1219,7 @@ export default function EntryAdd() {
                   }}
                   style={{ width: 18, height: 18, flex: "0 0 auto" }}
                 />
-                Standardtext übernehmen: {recurringReference}
+                Referenz übernehmen: {recurringReference}
               </label>
             ) : null}
 
