@@ -8,6 +8,7 @@ import { rentBalancePart } from "../lib/rentPaymentBalance";
 import { canonicalUnitLabel } from "../lib/canonicalUnitLabel";
 import { uniqueFinanceEntries } from "../lib/uniqueFinanceEntries";
 import { useAppData, type FinanceEntry } from "../state/AppDataContext";
+import { useWorkspaceContext } from "../state/WorkspaceContext";
 import {
   isVacancyEffectivelyActiveInRange,
   isVacancyInRange,
@@ -1511,6 +1512,7 @@ export default function Mietuebersicht({
     return displayedRange;
   }, [displayedRange, effectivePeriodMode, selectedPeriod.year]);
   const appData = useAppData();
+  const workspace = useWorkspaceContext();
   const [vacancies, setVacancies] = useState<UnitVacancy[]>([]);
   const [tenantInfo, setTenantInfo] = useState<Record<string, TenantInfo>>({});
   const [tenantContractRows, setTenantContractRows] = useState<TenantContractProfileRow[]>([]);
@@ -1526,6 +1528,15 @@ export default function Mietuebersicht({
   const [statusFilter, setStatusFilter] = useState<RentStatus | "all">("all");
   const [rentCostFilter, setRentCostFilter] = useState<RentCostFilter>("total");
   const rentCostFilterLabel = rentCostFilter === "cold" ? "Kaltmiete" : rentCostFilter === "operating" ? "Nebenkosten" : "Gesamtmiete";
+
+  useEffect(() => {
+    if (embeddedAnnualReport) return;
+    const timer = window.setTimeout(() => {
+      setSelectedPeriod((current) => current.year === workspace.year ? current : { ...current, year: workspace.year });
+      setObjectFilter(workspace.objectId);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [embeddedAnnualReport, workspace.objectId, workspace.year]);
 
   const sourceObjects = useMemo(() => {
     if (appData.objects.length) return appData.objects.map((object) => ({ id: object.id, code: object.code, label: object.label }));

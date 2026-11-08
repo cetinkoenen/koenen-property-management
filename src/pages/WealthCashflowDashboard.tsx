@@ -5,6 +5,7 @@ import { canonicalizeFinanceCategory, isPureRentBackPayment, normalizeFinanceCat
 import { resolveMonthlyLoanCashflow } from "@/lib/monthlyLoanCashflow";
 import { listLoanRatePlanRowsForYear, resolveLoanProperty, type LoanRatePlanRow } from "@/services/loanRatePlanService";
 import { useAppData, type AppObject, type FinanceEntry } from "@/state/AppDataContext";
+import { useWorkspaceContext } from "@/state/WorkspaceContext";
 
 const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 const COLORS = ["#0f766e", "#2563eb", "#d97706", "#7c3aed", "#64748b"];
@@ -29,6 +30,7 @@ type WealthCashflowDashboardProps = {
 
 export default function WealthCashflowDashboard({ lockedPropertyId, lockedPropertyLabel }: WealthCashflowDashboardProps = {}) {
   const { objects, entries, getPropertyName, loading } = useAppData();
+  const workspace = useWorkspaceContext();
   const today = useMemo(() => new Date(), []); const currentYear = today.getFullYear();
   const [year, setYear] = useState(currentYear); const [propertyId, setPropertyId] = useState("all"); const [preset, setPreset] = useState<Preset>("year");
   const [from, setFrom] = useState(`${currentYear}-01-01`); const [to, setTo] = useState(`${currentYear}-12-31`);
@@ -48,6 +50,15 @@ export default function WealthCashflowDashboard({ lockedPropertyId, lockedProper
   const propertyLocked = Boolean(lockedPropertyId || lockedPropertyLabel);
   const effectivePropertyId = propertyLocked ? lockedObject?.id ?? lockedPropertyId ?? "" : propertyId;
   const object = objects.find((o) => o.id === effectivePropertyId) ?? null;
+  useEffect(() => {
+    if (propertyLocked) return;
+    const timer = window.setTimeout(() => {
+      setPropertyId(workspace.objectId || "all");
+      setYear(workspace.year);
+      setPreset("year");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [propertyLocked, workspace.objectId, workspace.year]);
   async function reload() { setLoanLoading(true); try { setLoans((await Promise.all(rangeYears.map(listLoanRatePlanRowsForYear))).flat()); setLoanError(null); } catch (e) { setLoans([]); setLoanError(e instanceof Error ? e.message : String(e)); } finally { setLoanLoading(false); } }
   useEffect(() => { let active = true; Promise.all(rangeYears.map(listLoanRatePlanRowsForYear)).then((r) => { if (active) { setLoans(r.flat()); setLoanError(null); } }).catch((e) => { if (active) { setLoans([]); setLoanError(e instanceof Error ? e.message : String(e)); } }).finally(() => { if (active) setLoanLoading(false); }); return () => { active = false; }; }, [rangeYears]);
   const scopedEntries = useMemo(() => entries.filter((e) => Boolean(

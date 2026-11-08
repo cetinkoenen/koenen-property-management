@@ -16,6 +16,7 @@ import { getRecurringBookingReference } from "../lib/recurringBookingReferences"
 import { bookingCategoryKey, deleteBookingTemplate, loadBookingAssistant, recordRecentCategory, saveBookingTemplate, toggleFavoriteCategory, type BookingTemplate } from "../lib/bookingAssistant";
 import { uploadPropertyDocument } from "../services/documentArchiveService";
 import BookingAssistantPanel from "../components/BookingAssistantPanel";
+import { useWorkspaceContext } from "../state/WorkspaceContext";
 
 type DropdownRow = {
   /** Muss für finance_entry.object_id die UUID aus public.objects.id sein. */
@@ -85,6 +86,7 @@ function inputStyle(): React.CSSProperties {
 }
 
 export default function EntryAdd() {
+  const workspace = useWorkspaceContext();
   const [objects, setObjects] = useState<DropdownRow[]>([]);
   const [objectId, setObjectId] = useState<string>("");
   const [objektCodePreview, setObjektCodePreview] = useState<string>("");
@@ -314,6 +316,17 @@ export default function EntryAdd() {
       alive = false;
     };
   }, [objectLoadRevision]);
+
+  useEffect(() => {
+    const selected = objects.find((object) => String(object.value) === workspace.objectId);
+    if (!selected) return;
+    const timer = window.setTimeout(() => {
+      setObjectId(selected.value);
+      setObjektCodePreview(selected.objekt_code);
+      if (selected.label.toLocaleLowerCase("de-DE").includes("hohenloher")) setNkRelevant(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [objects, workspace.objectId]);
 
   function onSelectObject(newId: string) {
     setObjectId(newId);

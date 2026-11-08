@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowRight, Bell, CheckCircle2, ChevronDown, FileWarning, RefreshCw, WalletCards } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
@@ -11,6 +11,7 @@ import {
   type OpenPostStatus,
 } from "../services/professionalCockpitService";
 import { PROPERTY_TASKS_CHANGED_EVENT } from "../services/workflowTaskService";
+import { useWorkspaceContext } from "../state/WorkspaceContext";
 
 function eur(value: number): string {
   return new Intl.NumberFormat("de-DE", {
@@ -45,15 +46,16 @@ function checklistItemKey(groupTitle: string, item: string): string {
 }
 
 export default function Cockpit() {
+  const workspace = useWorkspaceContext();
   const [snapshot, setSnapshot] = useState<CockpitSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await loadCockpitSnapshot();
+      const data = await loadCockpitSnapshot(new Date(), { objectId: workspace.objectId, objectLabel: workspace.objectLabel });
       setSnapshot(data);
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : String(loadError);
@@ -62,14 +64,14 @@ export default function Cockpit() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [workspace.objectId, workspace.objectLabel]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [load]);
 
   useEffect(() => {
     function handleTasksChanged() {
@@ -78,7 +80,7 @@ export default function Cockpit() {
 
     window.addEventListener(PROPERTY_TASKS_CHANGED_EVENT, handleTasksChanged);
     return () => window.removeEventListener(PROPERTY_TASKS_CHANGED_EVENT, handleTasksChanged);
-  }, []);
+  }, [load]);
 
   async function handleTaskChecklistChange(taskId: string, itemKey: string, done: boolean) {
     setSnapshot((current) => {

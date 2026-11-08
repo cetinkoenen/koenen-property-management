@@ -14,6 +14,7 @@ import {
   loadLoanRatePlanYearlySummary,
   type LoanRatePlanYearSummary,
 } from "@/services/loanRatePlanService";
+import { useWorkspaceContext } from "@/state/WorkspaceContext";
 
 type PropertyRow = {
   property_id: string;
@@ -579,6 +580,7 @@ type DarlehensuebersichtProps = {
 };
 
 export default function Darlehensuebersicht({ lockedPropertyId, lockedPropertyLabel }: DarlehensuebersichtProps = {}) {
+  const workspace = useWorkspaceContext();
   const routeParams = useParams<{ propertyId?: string }>();
   const fixedPropertyId = lockedPropertyId ?? routeParams.propertyId;
   const propertyLocked = Boolean(fixedPropertyId || lockedPropertyLabel);
@@ -673,10 +675,14 @@ export default function Darlehensuebersicht({ lockedPropertyId, lockedPropertyLa
         return Boolean(normalizedLabel) && normalizePropertyIdentity(row.propertyName) === normalizedLabel;
       });
     }
+    const normalizedWorkspaceLabel = normalizePropertyIdentity(workspace.objectLabel);
+    if (workspace.objectId || normalizedWorkspaceLabel) {
+      return rows.filter((row) => row.propertyId === workspace.objectId || (normalizedWorkspaceLabel && normalizePropertyIdentity(row.propertyName) === normalizedWorkspaceLabel));
+    }
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return rows;
     return rows.filter((row) => row.propertyName.toLowerCase().includes(normalizedQuery));
-  }, [fixedPropertyId, lockedPropertyLabel, propertyLocked, query, rows]);
+  }, [fixedPropertyId, lockedPropertyLabel, propertyLocked, query, rows, workspace.objectId, workspace.objectLabel]);
 
   const totals = useMemo(() => {
     return filteredRows.reduce(

@@ -89,6 +89,11 @@ export type CockpitSnapshot = {
   documentIssues: CockpitDocumentIssue[];
 };
 
+export type CockpitWorkspaceFilter = {
+  objectId?: string;
+  objectLabel?: string;
+};
+
 export type PaymentReminderRow = {
   id: string;
   reminder_level: "zahlungserinnerung" | "mahnung_1" | "mahnung_2" | "letzte_mahnung";
@@ -541,7 +546,7 @@ function uniqueTasks(tasks: CockpitTask[]): CockpitTask[] {
   });
 }
 
-export async function loadCockpitSnapshot(baseDate = new Date()): Promise<CockpitSnapshot> {
+export async function loadCockpitSnapshot(baseDate = new Date(), workspaceFilter: CockpitWorkspaceFilter = {}): Promise<CockpitSnapshot> {
   const period = monthRange(baseDate);
   const previousWindowStart = isoDate(new Date(baseDate.getFullYear(), baseDate.getMonth() - 1, 25));
 
@@ -561,10 +566,17 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
     listVacancies().catch(() => [] as UnitVacancy[]),
   ]);
 
+  const objectLabels = buildObjectLabelMap(objectRows as ObjectRow[]);
+  const normalizedFilterLabel = normalize(workspaceFilter.objectLabel);
+  const matchesWorkspaceObject = (propertyId: string | null | undefined, objectCode: string | null | undefined, label: string | null | undefined) => {
+    if (!workspaceFilter.objectId && !normalizedFilterLabel) return true;
+    if (workspaceFilter.objectId && (String(propertyId ?? "") === workspaceFilter.objectId || String(objectCode ?? "") === workspaceFilter.objectId)) return true;
+    const resolvedLabel = objectLabels[String(propertyId ?? "")] || objectLabels[String(objectCode ?? "")] || label || "";
+    return Boolean(normalizedFilterLabel) && normalize(resolvedLabel) === normalizedFilterLabel;
+  };
   const contracts = (contractRows as unknown as ContractRow[]).filter((contract) =>
     isContractRelevant(contract, period.start, period.end),
-  );
-  const objectLabels = buildObjectLabelMap(objectRows as ObjectRow[]);
+  ).filter((contract) => matchesWorkspaceObject(contract.property_id, contract.object_code, null));
   await ensureMoveOutChecklistTasks(vacancyRows, objectLabels, period.start, period.end);
 
   const taskRes = await supabase
@@ -633,12 +645,14 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
   const paidTotal = openPosts.reduce((sum, row) => sum + row.paidAmount, 0);
   const openTotal = openPosts.reduce((sum, row) => sum + row.openAmount, 0);
   const activeVacancies = vacancyRows.filter((vacancy) =>
-    isVacancyEffectivelyActiveInRange(vacancy, period.start, period.end),
+    isVacancyEffectivelyActiveInRange(vacancy, period.start, period.end) &&
+    matchesWorkspaceObject(vacancy.property_id, vacancy.object_code, vacancy.object_label),
   );
   const activeVacancyIds = new Set(activeVacancies.map((vacancy) => vacancy.id));
   const taskRows = taskRes.error
     ? []
     : ((taskRes.data ?? []) as TaskRow[]).filter((task) => {
+        if (!matchesWorkspaceObject(task.meta?.vacancy_property_id, null, task.property_name)) return false;
         if (task.meta?.source !== "unit_vacancies" || !task.meta.vacancy_id) return true;
         return activeVacancyIds.has(task.meta.vacancy_id);
       });
@@ -671,7 +685,7 @@ export async function loadCockpitSnapshot(baseDate = new Date()): Promise<Cockpi
         }))),
     documentIssues: docsRes.error
       ? []
-      : ((docsRes.data ?? []) as DocumentIssueRow[]).map((doc) => ({
+      : ((docsRes.data ?? []) as DocumentIssueRow[]).filter((doc) => matchesWorkspaceObject(null, null, doc.property_name)).map((doc) => ({
           id: String(doc.id),
           propertyName: doc.property_name ?? "Unbekanntes Objekt",
           category: String(doc.category ?? "sonstiges"),
