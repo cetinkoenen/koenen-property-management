@@ -89,19 +89,7 @@ const PROPERTY_BILLING_CONFIGS: NkPropertyConfig[] = [
     { label: "Hausstrom", amount: 178.64, allocation: "allocationKey", totalKey: 1000, apartmentKey: 100, directAmount: 0, prorateByOccupancy: false, note: "1000stel laut Bescheid." },
     { label: "Grundsteuer", amount: 0, allocation: "directAmount", totalKey: 0, apartmentKey: 0, directAmount: 0, prorateByOccupancy: false, note: "Direktbetrag laut Grundsteuerbescheid ergänzen." },
   ] },
-  { match: ["fürther", "fuerther"], displayName: "Fürther Str. 74", defaultTotalKey: 829, defaultApartmentKey: 45, defaultArea: 45, heatingMode: "separate_contract", co2Enabled: false, note: "Wohnung 45 m², Gesamtfläche 829 m². Keine Heizkosten/CO₂, weil der Mieter einen separaten Vertrag mit dem Energieversorger hat.", costs: [
-    { label: "Versicherungen", amount: 7173.60, allocation: "allocationKey", totalKey: 10000, apartmentKey: 524, directAmount: 0, prorateByOccupancy: false, note: "Miteigentumsanteil laut Bescheid." },
-    { label: "Gebäudereinigung", amount: 4010.64, allocation: "allocationKey", totalKey: 14, apartmentKey: 1, directAmount: 0, prorateByOccupancy: false, note: "Je Wohnung laut Bescheid." },
-    { label: "Gehwegreinigung", amount: 702.07, allocation: "allocationKey", totalKey: 14, apartmentKey: 1, directAmount: 0, prorateByOccupancy: false, note: "Je Wohnung laut Bescheid." },
-    { label: "Gartenpflege", amount: 1100.80, allocation: "allocationKey", totalKey: 14, apartmentKey: 1, directAmount: 0, prorateByOccupancy: false, note: "Je Wohnung laut Bescheid." },
-    { label: "Müllabfuhr", amount: 4638.28, allocation: "persons", totalKey: 8249.64, apartmentKey: 366, directAmount: 0, prorateByOccupancy: false, note: "Personentage laut Bescheid." },
-    { label: "Sonstige Kosten", amount: 193.85, allocation: "allocationKey", totalKey: 10000, apartmentKey: 524, directAmount: 0, prorateByOccupancy: false, note: "Miteigentumsanteil laut Bescheid." },
-    { label: "Verwalterhonorar", amount: 4788.00, allocation: "allocationKey", totalKey: 14, apartmentKey: 1, directAmount: 0, prorateByOccupancy: false, note: "Laut Bescheid; steuerlich/umlagefähig bitte bei Bedarf prüfen." },
-    { label: "Allgemeinstrom", amount: 288.37, allocation: "allocationKey", totalKey: 14, apartmentKey: 1, directAmount: 0, prorateByOccupancy: false, note: "Je Wohnung laut Bescheid." },
-    { label: "Wasser", amount: 4694.21, allocation: "persons", totalKey: 8249.64, apartmentKey: 366, directAmount: 0, prorateByOccupancy: false, note: "Personentage laut Bescheid." },
-    { label: "MwSt Verw.Honorar", amount: 909.72, allocation: "allocationKey", totalKey: 14, apartmentKey: 1, directAmount: 0, prorateByOccupancy: false, note: "Laut Bescheid; steuerlich/umlagefähig bitte bei Bedarf prüfen." },
-    { label: "Grundsteuer", amount: 0, allocation: "directAmount", totalKey: 0, apartmentKey: 0, directAmount: 0, prorateByOccupancy: false, note: "Direktbetrag laut Grundsteuerbescheid ergänzen." },
-  ] },
+  { match: ["fürther", "fuerther"], displayName: "Fürther Str. 74", defaultTotalKey: 829, defaultApartmentKey: 45, defaultArea: 45, heatingMode: "separate_contract", co2Enabled: false, note: "Wohnung 45 m², Gesamtfläche 829 m². Keine Heizkosten/CO₂, weil der Mieter einen separaten Vertrag mit dem Energieversorger hat. Jahreswerte werden ausschließlich aus der jeweiligen Abrechnung übernommen.", costs: genericCosts(829, 45) },
   { match: ["hohenloher"], displayName: "Hohenloher Str. 78", defaultTotalKey: 1000, defaultApartmentKey: 0, defaultArea: 0, heatingMode: "none", co2Enabled: false, note: "Objektmodul vorbereitet. Grunddaten/Kostenarten bitte nachreichen oder direkt eintragen.", costs: genericCosts(1000, 0) },
   { match: ["lilienthaler"], displayName: "Lilienthaler Str. 54", defaultTotalKey: 100, defaultApartmentKey: 120, defaultArea: 120, heatingMode: "bescheid", co2Enabled: false, note: "Wohnung 120 m², Gesamtfläche laut deiner Angabe 100 m². Verteilungswerte nach Bescheid eintragen.", costs: genericCosts(100, 120) },
 ];
@@ -193,7 +181,71 @@ function applyColmarer2025Fixes(costs: CostRow[], year: number, object?: ObjectO
     return row;
   });
 }
-function normalizeWorkspace(raw: Partial<BillingWorkspace> | null | undefined, year: number, object?: ObjectOption): BillingWorkspace { const fb = createDefaultWorkspace(year, object); const apartments = Array.isArray(raw?.apartments) && raw.apartments.length ? raw.apartments.map((a, i) => ({ ...fb.apartments[0], ...a, id: a?.id || createId(), label: a?.label || `Wohnung ${i + 1}`, co2LandlordDeductionKalo: Number.isFinite(a?.co2LandlordDeductionKalo) ? a.co2LandlordDeductionKalo : 0, active: typeof a?.active === "boolean" ? a.active : true })) : fb.apartments; const costs = applyColmarer2025Fixes(Array.isArray(raw?.costs) && raw.costs.length ? raw.costs.map((row, index) => normalizeCost(row, index, object)) : fb.costs, year, object); return { meta: { ...fb.meta, ...(raw?.meta ?? {}), propertyCode: object?.objekt_code ?? raw?.meta?.propertyCode ?? fb.meta.propertyCode, propertyLabel: object?.label ?? raw?.meta?.propertyLabel ?? fb.meta.propertyLabel, billingYear: year, locked: Boolean(raw?.meta?.locked) }, apartments, costs, heating: { ...fb.heating, ...(raw?.heating ?? {}) }, selectedApartmentId: raw?.selectedApartmentId && apartments.some(a => a.id === raw.selectedApartmentId) ? raw.selectedApartmentId : apartments[0]?.id ?? null }; }
+
+function isFuerther2025(year: number, object?: ObjectOption) {
+  const objectText = `${object?.objekt_code ?? ""} ${object?.label ?? ""}`.toLowerCase();
+  return year === 2025 && (objectText.includes("fürther") || objectText.includes("fuerther"));
+}
+
+/**
+ * Verbindliche, mieterumlagefähige Kosten aus der WEG-Abrechnung 2025 plus
+ * die separat vorliegenden Belege. Verwaltungsentgelt, Rücklage und deren
+ * Umsatzsteuer gehören ausdrücklich nicht in die Mieterabrechnung.
+ */
+function fuerther2025Costs(): CostRow[] {
+  const direct = (id: string, label: string, amount: number, note: string): CostRow => ({
+    id: `fuerther-2025-${id}`,
+    label,
+    amount,
+    allocation: "directAmount",
+    totalKey: 0,
+    apartmentKey: 0,
+    directAmount: amount,
+    prorateByOccupancy: false,
+    note,
+  });
+
+  return [
+    direct("versicherung", "Versicherungen", 384.21, "WEG-Abrechnung 2025 · umlagefähiger Anteil der Wohnung."),
+    direct("reinigung", "Gebäudereinigung", 302.46, "WEG-Abrechnung 2025 · umlagefähiger Anteil der Wohnung."),
+    direct("gehweg", "Gehwegreinigung", 52.15, "WEG-Abrechnung 2025 · umlagefähiger Anteil der Wohnung."),
+    direct("garten", "Gartenpflege", 81.76, "WEG-Abrechnung 2025 · umlagefähiger Anteil der Wohnung."),
+    direct("muell", "Müllabfuhr", 210.43, "WEG-Abrechnung 2025 · umlagefähiger Anteil der Wohnung."),
+    direct("weg-wartung", "Wartungskosten", 8.96, "WEG-Abrechnung 2025 · umlagefähiger Anteil der Wohnung."),
+    direct("strom", "Allgemeinstrom", 20.87, "WEG-Abrechnung 2025 · umlagefähiger Anteil der Wohnung."),
+    direct("wasser", "Wasser", 185.96, "WEG-Abrechnung 2025 · umlagefähiger Anteil der Wohnung."),
+    // Der gedruckte WEG-Gesamtwert beträgt 1.246,79 €. Die einzeln gerundeten
+    // Positionen ergeben 1.246,80 €, daher wird der Abrechnungswert centgenau
+    // und transparent abgestimmt.
+    direct("weg-abstimmung", "WEG-Abstimmungsdifferenz", -0.01, "Centgenauer Abgleich auf die umlagefähige WEG-Gesamtsumme 2025 von 1.246,79 €."),
+    direct("grundsteuer", "Grundsteuer", 185.96, "Separater Grundsteuerbescheid 2025: 4 × 46,49 €."),
+    direct("schornstein", "Schornsteinreinigung", 76.64, "Separater Beleg 2025."),
+    direct("heizungswartung", "Heizungswartung", 196.35, "Separater Beleg 2025."),
+  ];
+}
+
+function normalizeWorkspace(raw: Partial<BillingWorkspace> | null | undefined, year: number, object?: ObjectOption): BillingWorkspace {
+  const fb = createDefaultWorkspace(year, object);
+  const baseApartments = Array.isArray(raw?.apartments) && raw.apartments.length
+    ? raw.apartments.map((a, i) => ({ ...fb.apartments[0], ...a, id: a?.id || createId(), label: a?.label || `Wohnung ${i + 1}`, co2LandlordDeductionKalo: Number.isFinite(a?.co2LandlordDeductionKalo) ? a.co2LandlordDeductionKalo : 0, active: typeof a?.active === "boolean" ? a.active : true }))
+    : fb.apartments;
+  const baseCosts = Array.isArray(raw?.costs) && raw.costs.length ? raw.costs.map((row, index) => normalizeCost(row, index, object)) : fb.costs;
+  const fuerther2025 = isFuerther2025(year, object);
+  const apartments = fuerther2025
+    ? baseApartments.map((apartment, index) => index === 0 ? { ...apartment, occupancyMonths: 12, advancePayments: 1320, active: true } : apartment)
+    : baseApartments;
+  const costs = fuerther2025 ? fuerther2025Costs() : applyColmarer2025Fixes(baseCosts, year, object);
+  const meta = {
+    ...fb.meta,
+    ...(raw?.meta ?? {}),
+    propertyCode: object?.objekt_code ?? raw?.meta?.propertyCode ?? fb.meta.propertyCode,
+    propertyLabel: object?.label ?? raw?.meta?.propertyLabel ?? fb.meta.propertyLabel,
+    billingYear: year,
+    ...(fuerther2025 ? { periodFrom: "2025-01-01", periodTo: "2025-12-31" } : {}),
+    locked: Boolean(raw?.meta?.locked),
+  };
+  return { meta, apartments, costs, heating: { ...fb.heating, ...(raw?.heating ?? {}) }, selectedApartmentId: raw?.selectedApartmentId && apartments.some(a => a.id === raw.selectedApartmentId) ? raw.selectedApartmentId : apartments[0]?.id ?? null };
+}
 
 
 
