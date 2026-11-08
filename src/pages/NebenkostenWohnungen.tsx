@@ -520,7 +520,11 @@ export default function NebenkostenWohnungen() {
     if (!activeApartment) return [];
 
     const preliminary = workspace.costs.map(row => {
-      const isHeating = isHeatingCostRow(row);
+      // Nur Objekte mit aktivierter KALO-/CO₂-Abrechnung dürfen Heizkosten
+      // gesondert ausweisen. Bei einem separaten Energievertrag (z. B.
+      // Fürther Str. 74) bleibt die Heizungswartung eine normale
+      // umlagefähige Betriebskostenposition – ohne CO₂-Logik im Ausdruck.
+      const isHeating = co2EnabledForSelectedObject && isHeatingCostRow(row);
       let tenantShareBeforeCo2 = 0;
 
       if (row.allocation === "directAmount" || row.allocation === "heatingDirect") {
@@ -564,6 +568,8 @@ export default function NebenkostenWohnungen() {
   const totalCo2LandlordShare = roundMoney(costBreakdown.reduce((s, x) => s + x.co2LandlordShare, 0));
   const totalHeatingBeforeCo2 = roundMoney(costBreakdown.filter(x => x.isHeating).reduce((s, x) => s + x.tenantShareBeforeCo2, 0));
   const totalHeatingCosts = roundMoney(costBreakdown.filter(x => x.isHeating).reduce((s, x) => s + x.tenantShare, 0)); const totalColdCosts = roundMoney(costBreakdown.filter(x => !x.isHeating).reduce((s, x) => s + x.tenantShare, 0)); const totalTenantCosts = roundMoney(totalColdCosts + totalHeatingCosts); const tenantBalance = activeApartment ? roundMoney(activeApartment.advancePayments - totalTenantCosts) : 0;
+  const hasCo2HeatingStatement = co2EnabledForSelectedObject && totalHeatingBeforeCo2 > 0;
+  const operatingCostsLabel = hasCo2HeatingStatement ? "Kalte Betriebskosten" : "Umlagefähige Betriebskosten";
   function exportOnePager() {
     if (!activeApartment) return;
     const filename = safeFilename(`NK-Abrechnung_${workspace.meta.propertyLabel}_${workspace.meta.billingYear}_${activeApartment.tenantName || activeApartment.label}`);
@@ -582,12 +588,14 @@ export default function NebenkostenWohnungen() {
       "KOSTENAUFSTELLUNG",
       ...costBreakdown.map(x => `${x.row.label} | Gesamt ${formatCurrency(x.row.amount)} | ${x.row.totalKey ? `Gesamtanteile ${formatFlex(x.row.totalKey)} / Wohnungsanteil ${formatFlex(x.row.apartmentKey)}` : "Direktbetrag"} | Mieter ${formatCurrency(x.tenantShare)}`),
       "",
-      "HEIZKOSTEN / CO₂-DOKUMENTATION",
-      `Heizkosten laut KALO: ${formatCurrency(totalHeatingBeforeCo2)}`,
-      `CO₂-Abzug Vermieter laut KALO/automatisch: -${formatCurrency(totalCo2LandlordShare)}`,
-      `Heizkosten nach CO₂-Abzug: ${formatCurrency(totalHeatingCosts)}`,
-      "",
-      `Kalte Betriebskosten: ${formatCurrency(totalColdCosts)}`,
+      ...(hasCo2HeatingStatement ? [
+        "HEIZKOSTEN / CO₂-DOKUMENTATION",
+        `Heizkosten laut KALO: ${formatCurrency(totalHeatingBeforeCo2)}`,
+        `CO₂-Abzug Vermieter laut KALO/automatisch: -${formatCurrency(totalCo2LandlordShare)}`,
+        `Heizkosten nach CO₂-Abzug: ${formatCurrency(totalHeatingCosts)}`,
+        "",
+      ] : []),
+      `${operatingCostsLabel}: ${formatCurrency(totalColdCosts)}`,
       `Gesamtkosten Mieter: ${formatCurrency(totalTenantCosts)}`,
       `Vorauszahlungen: ${formatCurrency(activeApartment.advancePayments)}`,
       `Saldo: ${formatCurrency(tenantBalance)}`,
@@ -712,18 +720,18 @@ export default function NebenkostenWohnungen() {
     </table>
 
     <div class="kpis">
-      <div class="kpi"><div class="label">Kalte Betriebskosten</div><div class="value">${escapeHtml(formatCurrency(totalColdCosts))}</div></div>
-      <div class="kpi"><div class="label">Heizkosten nach CO₂</div><div class="value">${escapeHtml(formatCurrency(totalHeatingCosts))}</div></div>
+      <div class="kpi"><div class="label">${escapeHtml(operatingCostsLabel)}</div><div class="value">${escapeHtml(formatCurrency(totalColdCosts))}</div></div>
+      ${hasCo2HeatingStatement ? `<div class="kpi"><div class="label">Heizkosten nach CO₂</div><div class="value">${escapeHtml(formatCurrency(totalHeatingCosts))}</div></div>` : ""}
       <div class="kpi"><div class="label">Vorauszahlungen</div><div class="value">${escapeHtml(formatCurrency(activeApartment.advancePayments))}</div></div>
       <div class="kpi"><div class="label">${escapeHtml(balanceLabel)}</div><div class="value">${escapeHtml(formatCurrency(Math.abs(tenantBalance)))}</div></div>
     </div>
-    <div class="box small"><strong>Summe umlagefähige Kosten Mieter:</strong> ${escapeHtml(formatCurrency(totalTenantCosts))} · <strong>CO₂-Vermieteranteil:</strong> -${escapeHtml(formatCurrency(totalCo2LandlordShare))}</div>
+    <div class="box small"><strong>Summe umlagefähige Kosten Mieter:</strong> ${escapeHtml(formatCurrency(totalTenantCosts))}${hasCo2HeatingStatement ? ` · <strong>CO₂-Vermieteranteil:</strong> -${escapeHtml(formatCurrency(totalCo2LandlordShare))}` : ""}</div>
     ${workspace.meta.settlementStatus === "Ausgeglichen" ? `<div class="box small"><strong>Zahlungsstatus: Ausgeglichen</strong> · Zahlung ${escapeHtml(formatCurrency(workspace.meta.settlementAmount ?? Math.abs(tenantBalance)))} am ${escapeHtml(formatDate(workspace.meta.settlementDate || ""))} · ${escapeHtml(workspace.meta.settlementReference || `Buchung ${workspace.meta.settlementEntryId ?? "—"}`)}</div>` : ""}
-    <div class="box small"><strong>Dokumentation Heizkosten/CO₂:</strong> Heizkosten laut Einzelabrechnung ${escapeHtml(formatCurrency(totalHeatingBeforeCo2))}; abzüglich Vermieteranteil CO₂ ${escapeHtml(formatCurrency(totalCo2LandlordShare))}; umlagefähige Heizkosten nach CO₂-Abzug ${escapeHtml(formatCurrency(totalHeatingCosts))}.</div>
+    <div class="box small">${hasCo2HeatingStatement ? `<strong>Dokumentation Heizkosten/CO₂:</strong> Heizkosten laut Einzelabrechnung ${escapeHtml(formatCurrency(totalHeatingBeforeCo2))}; abzüglich Vermieteranteil CO₂ ${escapeHtml(formatCurrency(totalCo2LandlordShare))}; umlagefähige Heizkosten nach CO₂-Abzug ${escapeHtml(formatCurrency(totalHeatingCosts))}.` : "<strong>Hinweis zu Heizkosten:</strong> Der Mieter rechnet Energie direkt mit dem Energieversorger ab. Eine CO₂-Aufteilung ist nicht Bestandteil dieser Nebenkostenabrechnung."}</div>
   </section>
 
   <section class="page">
-    <div class="box">
+    ${hasCo2HeatingStatement ? `<div class="box">
       <h1>ANLAGE</h1>
       <div class="sub">Heizkosten / CO₂-Anlage für das Jahr ${escapeHtml(workspace.meta.billingYear)}</div>
       <div class="kpis">
@@ -738,7 +746,7 @@ export default function NebenkostenWohnungen() {
         <div>Beheizte Fläche: <strong>${escapeHtml(formatNumber(workspace.heating.heatedArea, 2))} m²</strong></div>
         <div>CO₂ je m²/Jahr: <strong>${escapeHtml(formatNumber(co2PerSqm, 1))}</strong></div>
       </div>
-    </div>
+    </div>` : ""}
 
     <div class="box">
       <h2>Aufwände gem. § 35a Abs. 2 Satz 1 EStG haushaltsnahe Dienstleistungen und § 35a Abs. 3 EStG Handwerkerleistungen</h2>
