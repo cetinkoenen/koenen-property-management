@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { Calculator, CheckCircle2, FileText, Home, Lock, Pencil, Plus, Printer, Trash2, UserSquare2, Warehouse } from "lucide-react";
-import brandLogo from "../assets/koenen-brand-logo.webp";
 import { listNkRelevantEntries, type NkRelevantEntry } from "../services/nkRelevantService";
 import { summarizeBillingWorkspace } from "../services/billingWorkspaceService";
 import { getBillingWorkspace, upsertBillingWorkspace } from "../services/billingWorkspaceRepository";
 import { listObjectDirectory } from "../services/objectDirectoryService";
 import { normalizeWorkflowStatus, WORKFLOW_STATUS_INFO, WORKFLOW_STATUSES, type WorkflowStatus } from "../lib/workflowStatus";
+import brandLogo from "../assets/koenen-brand-logo.webp";
 
 type AllocationType = "allocationKey" | "persons" | "directAmount" | "heatingDirect";
 
@@ -480,11 +480,9 @@ export default function NebenkostenWohnungen() {
   const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const requestedObjectCode = queryParams.get("object") ?? "";
   const requestedBillingId = queryParams.get("billing") ?? "";
-  const requestedView = queryParams.get("view") ?? "";
   const requestedYear = Number(queryParams.get("year"));
   const [objects, setObjects] = useState<ObjectOption[]>([]); const [selectedObjectCode, setSelectedObjectCode] = useState(""); const [selectedYear, setSelectedYear] = useState(Number.isInteger(requestedYear) && requestedYear >= 1900 && requestedYear <= 2100 ? requestedYear : currentYear);
   const [workspace, setWorkspace] = useState<BillingWorkspace>(() => createDefaultWorkspace(currentYear)); const [billingRecords, setBillingRecords] = useState<BillingRecord[]>([]); const [selectedBillingId, setSelectedBillingId] = useState<string | null>(null); const [status, setStatus] = useState(""); const [error, setError] = useState(""); const [loading, setLoading] = useState(false); const [saving, setSaving] = useState(false); const loaded = useRef(false);
-  const autoPrintTriggered = useRef(false);
   const [nkEntries, setNkEntries] = useState<NkRelevantEntry[]>([]);
   const [nkLoading, setNkLoading] = useState(false);
   useEffect(() => { let alive = true; (async () => { try { const data = await listObjectDirectory(); if (!alive) return; const list = (data as ObjectOption[]).filter(o => o.objekt_code && o.label && !isGarage(o)); setObjects(list); if (!selectedObjectCode && list[0]) { const requested = list.find((object) => object.objekt_code === requestedObjectCode); setSelectedObjectCode(requested?.objekt_code ?? list[0].objekt_code); } } catch (error: unknown) { if (!alive) return; setError(`Objekte konnten nicht geladen werden: ${error instanceof Error ? error.message : String(error)}`); } })(); return () => { alive = false; }; }, [requestedObjectCode, selectedObjectCode]);
@@ -493,14 +491,6 @@ export default function NebenkostenWohnungen() {
   const co2EnabledForSelectedObject = selectedConfig.co2Enabled;
   useEffect(() => { let alive = true; async function loadNk() { if (!selectedObjectCode) return; setNkLoading(true); try { const rows = await listNkRelevantEntries(selectedYear, selectedObjectCode); if (alive) setNkEntries(rows); } catch (err) { if (alive) setError(err instanceof Error ? err.message : String(err)); } finally { if (alive) setNkLoading(false); } } void loadNk(); return () => { alive = false; }; }, [selectedObjectCode, selectedYear]);
   useEffect(() => { let alive = true; async function load() { if (!selectedObjectCode) return; loaded.current = false; setLoading(true); setError(""); try { const data = await getBillingWorkspace(selectedObjectCode, selectedYear); if (!alive) return; const collection = asBillingCollection(data?.data ?? null, selectedYear, selectedObject ?? undefined); const selected = collection.billings.find(b => b.id === requestedBillingId) ?? collection.billings.find(b => b.id === collection.selectedBillingId) ?? collection.billings[0]; setBillingRecords(collection.billings); setSelectedBillingId(selected.id); setWorkspace(selected.workspace); setStatus(data?.data ? `Gespeicherte Abrechnungen für ${selectedYear} geladen.` : `Neue Abrechnung für ${selectedYear} erstellt.`); } catch (loadError) { if (!alive) return; const ws = createDefaultWorkspace(selectedYear, selectedObject ?? undefined); const rec = makeBillingRecord(ws); setBillingRecords([rec]); setSelectedBillingId(rec.id); setWorkspace(ws); setError(`Supabase-Fehler: ${loadError instanceof Error ? loadError.message : String(loadError)}`); } finally { if (alive) { setLoading(false); loaded.current = true; } } } void load(); return () => { alive = false; }; }, [requestedBillingId, selectedObjectCode, selectedYear, selectedObject]);
-  useEffect(() => {
-    if (requestedView !== "pdf" || loading || !selectedBillingId || autoPrintTriggered.current) return;
-    const printable = workspace.meta.locked || /freigegeben|korrigiert/i.test(workspace.meta.workflowStatus ?? "");
-    if (!printable) return;
-    autoPrintTriggered.current = true;
-    const timer = window.setTimeout(() => window.print(), 500);
-    return () => window.clearTimeout(timer);
-  }, [loading, requestedView, selectedBillingId, workspace.meta.locked, workspace.meta.workflowStatus]);
   useEffect(() => { if (!selectedObjectCode || !loaded.current) return; const normalizedWorkspace = { ...workspace, meta: { ...workspace.meta, propertyCode: selectedObjectCode, propertyLabel: selectedObject?.label ?? workspace.meta.propertyLabel, billingYear: selectedYear } }; const billingsRaw = replaceBillingRecord(billingRecords, selectedBillingId, normalizedWorkspace); const cleaned = cleanupBillingRecords(billingsRaw, selectedBillingId, selectedYear, selectedObject ?? undefined); const payload: BillingCollection = cleaned; const id = window.setTimeout(async () => { setSaving(true); try { await upsertBillingWorkspace(selectedObjectCode, selectedYear, payload); setStatus(`Gespeichert: ${selectedObject?.label ?? selectedObjectCode} / ${selectedYear} / ${makePeriodName(normalizedWorkspace)}`); } catch (saveError) { setError(`Supabase-Fehler: ${saveError instanceof Error ? saveError.message : String(saveError)}`); } finally { setSaving(false); } }, 650); return () => window.clearTimeout(id); }, [workspace, billingRecords, selectedObjectCode, selectedYear, selectedObject, selectedBillingId]);
   const locked = workspace.meta.locked; const activeApartment = useMemo(() => workspace.apartments.find(a => a.id === workspace.selectedApartmentId) ?? workspace.apartments[0] ?? null, [workspace]);
   function update(updater: (p: BillingWorkspace) => BillingWorkspace) { setWorkspace(prev => { const next = updater(prev); setBillingRecords(current => cleanupBillingRecords(replaceBillingRecord(current, selectedBillingId, next), selectedBillingId, selectedYear, selectedObject ?? undefined).billings); return next; }); } function selectBilling(id: string) { if (id === selectedBillingId) return; const cleaned = cleanupBillingRecords(replaceBillingRecord(billingRecords, selectedBillingId, workspace), selectedBillingId, selectedYear, selectedObject ?? undefined); const target = cleaned.billings.find(b => b.id === id); if (!target) return; setBillingRecords(cleaned.billings); setSelectedBillingId(id); setWorkspace(target.workspace); } function createNewPartialBilling() { const cleaned = cleanupBillingRecords(replaceBillingRecord(billingRecords, selectedBillingId, workspace), selectedBillingId, selectedYear, selectedObject ?? undefined); if (isColmarer2025(selectedYear, selectedObject ?? undefined) && cleaned.billings.length >= 2) { const second = cleaned.billings[1]; setBillingRecords(cleaned.billings); setSelectedBillingId(second.id); setWorkspace(second.workspace); setStatus("Für Colmarer Str. 2025 sind die zwei Teilabrechnungen bereits angelegt."); return; } const newWorkspace = nextPeriodWorkspace(workspace, selectedYear, selectedObject ?? undefined); const rec = makeBillingRecord(newWorkspace); const next = cleanupBillingRecords([...cleaned.billings, rec], rec.id, selectedYear, selectedObject ?? undefined); const selected = next.billings.find(b => b.id === next.selectedBillingId) ?? next.billings[0]; setBillingRecords(next.billings); setSelectedBillingId(selected.id); setWorkspace(selected.workspace); setStatus("Neue Teilabrechnung erstellt. Zeitraum, Mieter und Vorauszahlungen bitte anpassen."); } function updateMeta<K extends keyof BuildingMeta>(key: K, value: BuildingMeta[K]) { if (isColmarer2025(selectedYear, selectedObject ?? undefined) && key === "locked" && value === false) { setStatus("Colmarer Str. 45 / 2025 ist freigegeben und bleibt eingefroren. Bitte nicht bearbeiten."); return; } update(p => ({ ...p, meta: { ...p.meta, [key]: value } })); } function updateHeating<K extends keyof HeatingSettings>(key: K, value: HeatingSettings[K]) { update(p => ({ ...p, heating: { ...p.heating, [key]: value } })); } function updateApartment(id: string, patch: Partial<ApartmentRow>) { update(p => ({ ...p, apartments: p.apartments.map(a => a.id === id ? { ...a, ...patch } : a) })); } function updateCost(id: string, patch: Partial<CostRow>) { update(p => ({ ...p, costs: p.costs.map(c => c.id === id ? { ...c, ...patch } : c) })); }
@@ -665,6 +655,8 @@ export default function NebenkostenWohnungen() {
   .page { width: 100%; min-height: 0; page-break-after: always; break-after: page; overflow: hidden; }
   .page:last-child { page-break-after: auto; break-after: auto; }
   .box { border-top: 3px double #000; border-bottom: 3px double #000; padding: 7px 9px; margin-bottom: 7px; break-inside: avoid; }
+  .print-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+  .brand-logo { width: 48mm; max-height: 18mm; object-fit: contain; object-position: left top; }
   h1 { font-size: 16pt; margin: 0 0 4px; }
   h2 { font-size: 11.5pt; margin: 8px 0 5px; }
   .sub { font-size: 10.2pt; margin-bottom: 5px; }
@@ -691,6 +683,7 @@ export default function NebenkostenWohnungen() {
 <body>
   <section class="page">
     <div class="box">
+      <div class="print-header"><img class="brand-logo" src="${brandLogo}" alt="Koenen Property Management Logo" /></div>
       <h1>Nebenkostenabrechnung ${escapeHtml(workspace.meta.billingYear)}</h1>
       <div class="sub">${escapeHtml(workspace.meta.propertyLabel)} · ${escapeHtml(formatDate(workspace.meta.periodFrom))} bis ${escapeHtml(formatDate(workspace.meta.periodTo))}</div>
       <div class="grid">
@@ -803,7 +796,6 @@ export default function NebenkostenWohnungen() {
     }
   }
 
-
   const attachmentList = (workspace.meta.attachmentReferences || "").split(/\n|;/).map(x => x.trim()).filter(Boolean);
   const serviceKeywords = ["reinigung", "garten", "wartung", "pumpe", "hebeanlage", "dachrinne", "hausmeister", "schornstein", "handwerker"];
   const serviceRows = costBreakdown.filter(x => serviceKeywords.some(k => x.row.label.toLowerCase().includes(k)));
@@ -852,59 +844,18 @@ export default function NebenkostenWohnungen() {
     return summarizeBillingWorkspace(target);
   }
 
-  function archivedBillingHtml(target: BillingWorkspace) {
-    const archivedCo2Enabled = getPropertyBillingConfig({ objekt_code: target.meta.propertyCode, label: target.meta.propertyLabel }).co2Enabled;
-    const rawSummary = summarizeBilling(target);
-    const summary = archivedCo2Enabled ? rawSummary : { ...rawSummary, cold: rawSummary.tenantTotal, heatingBeforeCo2: 0, co2Deduction: 0 };
-    const archivedCo2Css = archivedCo2Enabled
-      ? ""
-      : ".kpis .kpi:nth-child(2){display:none}.kpis .kpi:first-child .label{font-size:0}.kpis .kpi:first-child .label::after{content:'UMLAGEFÄHIGE BETRIEBSKOSTEN';font-size:10px;letter-spacing:.12em;color:#64748b;font-weight:700}";
-    const apartment = summary.apartment;
-    const safeTenant = escapeHtml(apartment?.tenantName || "—");
-    const safeObject = escapeHtml(target.meta.propertyLabel || "—");
-    const rows = target.costs.map((row) => {
-      const isHeating = archivedCo2Enabled && (row.allocation === "heatingDirect" || /heiz|wärme|waerme|warmwasser|kalo/i.test(row.label));
-      let amount = 0;
-      if (apartment) {
-        if (row.allocation === "directAmount" || row.allocation === "heatingDirect") amount = row.directAmount;
-        else {
-          const base = row.totalKey > 0 ? row.amount * (row.apartmentKey / row.totalKey) : 0;
-          amount = row.prorateByOccupancy ? base * (clamp(apartment.occupancyMonths, 0, 12) / 12) : base;
-        }
-      }
-      const shown = isHeating && summary.co2Deduction > 0 && summary.heatingBeforeCo2 > 0
-        ? Math.max(amount - (amount / summary.heatingBeforeCo2) * summary.co2Deduction, 0)
-        : amount;
-      return `<tr><td>${escapeHtml(row.label)}</td><td>${escapeHtml(allocationLabel(row.allocation))}</td><td class="right">${escapeHtml(formatCurrency(shown))}</td></tr>`;
-    }).join("");
-    const attachments = (target.meta.attachmentReferences || "").split(/\n|;/).map(x => x.trim()).filter(Boolean).map((x, i) => `<li><strong>Anlage ${i + 1}:</strong> ${escapeHtml(x)}</li>`).join("") || "<li>Keine Anlagen hinterlegt.</li>";
-    return `<!doctype html><html><head><meta charset="utf-8"/><title>Archivierte NK-Abrechnung ${safeObject}</title><style>
-      body{font-family:Arial,Helvetica,sans-serif;background:#f8fafc;color:#0f172a;padding:28px} .page{max-width:860px;margin:0 auto;background:white;border:1px solid #dbe3f0;border-radius:24px;padding:32px}.brand-logo{display:block;width:240px;height:auto;max-height:96px;object-fit:contain;object-position:left center;margin:0 0 18px} h1{margin:0;font-size:24px}.sub{margin-top:8px;color:#475569}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:22px 0}.box{border:1px solid #e2e8f0;border-radius:16px;padding:14px;background:#f8fafc}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0}.kpi{border:1px solid #e2e8f0;border-radius:14px;padding:12px}.label{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#64748b;font-weight:700}.value{font-size:18px;font-weight:800;margin-top:6px}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{padding:10px;border-bottom:1px solid #e2e8f0;text-align:left}.right{text-align:right}.status{display:inline-block;border-radius:999px;background:#dcfce7;color:#166534;padding:6px 12px;font-weight:800;font-size:12px}${archivedCo2Css}@media print{body{background:white;padding:0}.page{border:0;border-radius:0;padding:0}.no-print{display:none}.kpis{grid-template-columns:repeat(2,1fr)}}
-    </style></head><body><main class="page"><img class="brand-logo" src="${brandLogo}" alt="Koenen Property Management Logo" /><div class="status">Freigegeben / abgeschlossen</div><h1>Nebenkostenabrechnung ${escapeHtml(String(target.meta.billingYear))}</h1><div class="sub">${safeObject} · ${escapeHtml(formatDate(target.meta.periodFrom))} bis ${escapeHtml(formatDate(target.meta.periodTo))}</div><div class="grid"><div class="box"><div class="label">Mieter</div><strong>${safeTenant}</strong><br/>${escapeHtml(apartment?.label || "—")}</div><div class="box"><div class="label">Vermieter</div><strong>${escapeHtml(target.meta.landlordName || "—")}</strong><br/>${escapeHtml(target.meta.landlordAddress || "")}</div></div><div class="kpis"><div class="kpi"><div class="label">Kalte Betriebskosten</div><div class="value">${escapeHtml(formatCurrency(summary.cold))}</div></div><div class="kpi"><div class="label">Heizkosten nach CO₂</div><div class="value">${escapeHtml(formatCurrency(Math.max(summary.heatingBeforeCo2-summary.co2Deduction,0)))}</div></div><div class="kpi"><div class="label">Vorauszahlungen</div><div class="value">${escapeHtml(formatCurrency(summary.advance))}</div></div><div class="kpi"><div class="label">${escapeHtml(summary.label)}</div><div class="value">${escapeHtml(formatCurrency(Math.abs(summary.balance)))}</div></div></div>${target.meta.settlementStatus === "Ausgeglichen" ? `<div class="box"><div class="label">Zahlungsstatus</div><strong>Ausgeglichen am ${escapeHtml(formatDate(target.meta.settlementDate || ""))}</strong><br/>${escapeHtml(formatCurrency(target.meta.settlementAmount ?? Math.abs(summary.balance)))} · ${escapeHtml(target.meta.settlementReference || `Buchung ${target.meta.settlementEntryId ?? "—"}`)}</div>` : ""}<h2>Kostenpositionen</h2><table><thead><tr><th>Kostenart</th><th>Schlüssel</th><th class="right">Betrag</th></tr></thead><tbody>${rows}</tbody></table><h2>Anlagen / Referenzen</h2><ul>${attachments}</ul><p class="sub">Archivnachweis: Diese Abrechnung wurde in der App abgeschlossen und ist gegen Bearbeitung gesperrt. Zum PDF-Speichern im Browser „Drucken" → „Als PDF speichern" wählen.</p></main></body></html>`;
-  }
-
-  function openArchivedBillingPdf(target: BillingWorkspace) {
-    const win = window.open("", "_blank", "width=960,height=1200");
-    if (!win) return;
-    win.document.open();
-    win.document.write(archivedBillingHtml(target));
-    win.document.write(`<script>window.onload=function(){setTimeout(function(){window.print();},250)};</script>`);
-    win.document.close();
+  function openArchivedBillingPdf(record: BillingRecord) {
+    const params = new URLSearchParams({
+      object: record.workspace.meta.propertyCode,
+      year: String(record.workspace.meta.billingYear),
+      billing: record.id,
+    });
+    window.open(`${window.location.pathname}?${params.toString()}`, "_blank", "noopener,noreferrer");
   }
 
   function downloadArchivedBillingHtml(record: BillingRecord) {
-    const summary = summarizeBilling(record.workspace);
-    const tenant = summary.apartment?.tenantName || "ohne-Mieter";
-    const filename = safeFilename(`NK-Archiv_${record.workspace.meta.billingYear}_${record.workspace.meta.propertyLabel}_${tenant}.html`);
-    const blob = new Blob([archivedBillingHtml(record.workspace)], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    // Archivexport führt bewusst ebenfalls zur gemeinsamen PDF-Vorlage.
+    openArchivedBillingPdf(record);
   }
 
   return (
@@ -1027,8 +978,8 @@ export default function NebenkostenWohnungen() {
                       <div className="rounded-2xl bg-white p-3"><div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{summary.label}</div><div className={`mt-1 font-semibold ${summary.balance >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{formatCurrency(Math.abs(summary.balance))}</div></div>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2">
-                      <button onClick={() => openArchivedBillingPdf(record.workspace)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"><Printer className="h-4 w-4"/> PDF öffnen</button>
-                      <button onClick={() => downloadArchivedBillingHtml(record)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"><FileText className="h-4 w-4"/> Archivdatei</button>
+                      <button onClick={() => openArchivedBillingPdf(record)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"><Printer className="h-4 w-4"/> PDF öffnen</button>
+                      <button onClick={() => downloadArchivedBillingHtml(record)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"><FileText className="h-4 w-4"/> Einheitliches PDF</button>
                     </div>
                   </div>
                 );
