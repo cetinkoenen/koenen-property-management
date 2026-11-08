@@ -220,7 +220,7 @@ function fuerther2025Costs(): CostRow[] {
     direct("weg-abstimmung", "WEG-Abstimmungsdifferenz", -0.01, "Centgenauer Abgleich auf die umlagefähige WEG-Gesamtsumme 2025 von 1.246,79 €."),
     direct("grundsteuer", "Grundsteuer", 185.96, "Separater Grundsteuerbescheid 2025: 4 × 46,49 €."),
     direct("schornstein", "Schornsteinreinigung", 76.64, "Separater Beleg 2025."),
-    direct("heizungswartung", "Heizungswartung", 196.35, "Separater Beleg 2025."),
+    direct("heizungswartung", "Wartung technische Anlage", 196.35, "Separater Beleg 2025: Wartung der Heizungsanlage. Bei separatem Energievertrag keine Heizkosten-/CO₂-Position."),
   ];
 }
 
@@ -853,12 +853,17 @@ export default function NebenkostenWohnungen() {
   }
 
   function archivedBillingHtml(target: BillingWorkspace) {
-    const summary = summarizeBilling(target);
+    const archivedCo2Enabled = getPropertyBillingConfig({ objekt_code: target.meta.propertyCode, label: target.meta.propertyLabel }).co2Enabled;
+    const rawSummary = summarizeBilling(target);
+    const summary = archivedCo2Enabled ? rawSummary : { ...rawSummary, cold: rawSummary.tenantTotal, heatingBeforeCo2: 0, co2Deduction: 0 };
+    const archivedCo2Css = archivedCo2Enabled
+      ? ""
+      : ".kpis .kpi:nth-child(2){display:none}.kpis .kpi:first-child .label{font-size:0}.kpis .kpi:first-child .label::after{content:'UMLAGEFÄHIGE BETRIEBSKOSTEN';font-size:10px;letter-spacing:.12em;color:#64748b;font-weight:700}";
     const apartment = summary.apartment;
     const safeTenant = escapeHtml(apartment?.tenantName || "—");
     const safeObject = escapeHtml(target.meta.propertyLabel || "—");
     const rows = target.costs.map((row) => {
-      const isHeating = row.allocation === "heatingDirect" || /heiz|wärme|waerme|warmwasser|kalo/i.test(row.label);
+      const isHeating = archivedCo2Enabled && (row.allocation === "heatingDirect" || /heiz|wärme|waerme|warmwasser|kalo/i.test(row.label));
       let amount = 0;
       if (apartment) {
         if (row.allocation === "directAmount" || row.allocation === "heatingDirect") amount = row.directAmount;
@@ -874,7 +879,7 @@ export default function NebenkostenWohnungen() {
     }).join("");
     const attachments = (target.meta.attachmentReferences || "").split(/\n|;/).map(x => x.trim()).filter(Boolean).map((x, i) => `<li><strong>Anlage ${i + 1}:</strong> ${escapeHtml(x)}</li>`).join("") || "<li>Keine Anlagen hinterlegt.</li>";
     return `<!doctype html><html><head><meta charset="utf-8"/><title>Archivierte NK-Abrechnung ${safeObject}</title><style>
-      body{font-family:Arial,Helvetica,sans-serif;background:#f8fafc;color:#0f172a;padding:28px} .page{max-width:860px;margin:0 auto;background:white;border:1px solid #dbe3f0;border-radius:24px;padding:32px}.brand-logo{display:block;width:240px;height:auto;max-height:96px;object-fit:contain;object-position:left center;margin:0 0 18px} h1{margin:0;font-size:24px}.sub{margin-top:8px;color:#475569}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:22px 0}.box{border:1px solid #e2e8f0;border-radius:16px;padding:14px;background:#f8fafc}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0}.kpi{border:1px solid #e2e8f0;border-radius:14px;padding:12px}.label{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#64748b;font-weight:700}.value{font-size:18px;font-weight:800;margin-top:6px}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{padding:10px;border-bottom:1px solid #e2e8f0;text-align:left}.right{text-align:right}.status{display:inline-block;border-radius:999px;background:#dcfce7;color:#166534;padding:6px 12px;font-weight:800;font-size:12px}@media print{body{background:white;padding:0}.page{border:0;border-radius:0;padding:0}.no-print{display:none}.kpis{grid-template-columns:repeat(2,1fr)}}
+      body{font-family:Arial,Helvetica,sans-serif;background:#f8fafc;color:#0f172a;padding:28px} .page{max-width:860px;margin:0 auto;background:white;border:1px solid #dbe3f0;border-radius:24px;padding:32px}.brand-logo{display:block;width:240px;height:auto;max-height:96px;object-fit:contain;object-position:left center;margin:0 0 18px} h1{margin:0;font-size:24px}.sub{margin-top:8px;color:#475569}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:22px 0}.box{border:1px solid #e2e8f0;border-radius:16px;padding:14px;background:#f8fafc}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0}.kpi{border:1px solid #e2e8f0;border-radius:14px;padding:12px}.label{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#64748b;font-weight:700}.value{font-size:18px;font-weight:800;margin-top:6px}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{padding:10px;border-bottom:1px solid #e2e8f0;text-align:left}.right{text-align:right}.status{display:inline-block;border-radius:999px;background:#dcfce7;color:#166534;padding:6px 12px;font-weight:800;font-size:12px}${archivedCo2Css}@media print{body{background:white;padding:0}.page{border:0;border-radius:0;padding:0}.no-print{display:none}.kpis{grid-template-columns:repeat(2,1fr)}}
     </style></head><body><main class="page"><img class="brand-logo" src="${brandLogo}" alt="Koenen Property Management Logo" /><div class="status">Freigegeben / abgeschlossen</div><h1>Nebenkostenabrechnung ${escapeHtml(String(target.meta.billingYear))}</h1><div class="sub">${safeObject} · ${escapeHtml(formatDate(target.meta.periodFrom))} bis ${escapeHtml(formatDate(target.meta.periodTo))}</div><div class="grid"><div class="box"><div class="label">Mieter</div><strong>${safeTenant}</strong><br/>${escapeHtml(apartment?.label || "—")}</div><div class="box"><div class="label">Vermieter</div><strong>${escapeHtml(target.meta.landlordName || "—")}</strong><br/>${escapeHtml(target.meta.landlordAddress || "")}</div></div><div class="kpis"><div class="kpi"><div class="label">Kalte Betriebskosten</div><div class="value">${escapeHtml(formatCurrency(summary.cold))}</div></div><div class="kpi"><div class="label">Heizkosten nach CO₂</div><div class="value">${escapeHtml(formatCurrency(Math.max(summary.heatingBeforeCo2-summary.co2Deduction,0)))}</div></div><div class="kpi"><div class="label">Vorauszahlungen</div><div class="value">${escapeHtml(formatCurrency(summary.advance))}</div></div><div class="kpi"><div class="label">${escapeHtml(summary.label)}</div><div class="value">${escapeHtml(formatCurrency(Math.abs(summary.balance)))}</div></div></div>${target.meta.settlementStatus === "Ausgeglichen" ? `<div class="box"><div class="label">Zahlungsstatus</div><strong>Ausgeglichen am ${escapeHtml(formatDate(target.meta.settlementDate || ""))}</strong><br/>${escapeHtml(formatCurrency(target.meta.settlementAmount ?? Math.abs(summary.balance)))} · ${escapeHtml(target.meta.settlementReference || `Buchung ${target.meta.settlementEntryId ?? "—"}`)}</div>` : ""}<h2>Kostenpositionen</h2><table><thead><tr><th>Kostenart</th><th>Schlüssel</th><th class="right">Betrag</th></tr></thead><tbody>${rows}</tbody></table><h2>Anlagen / Referenzen</h2><ul>${attachments}</ul><p class="sub">Archivnachweis: Diese Abrechnung wurde in der App abgeschlossen und ist gegen Bearbeitung gesperrt. Zum PDF-Speichern im Browser „Drucken" → „Als PDF speichern" wählen.</p></main></body></html>`;
   }
 
