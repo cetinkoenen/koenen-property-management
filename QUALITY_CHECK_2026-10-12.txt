@@ -1,0 +1,121 @@
+Qualitätsprüfung Koenen Property Management
+Prüfdatum: 12. Oktober 2026
+
+Ergebnis
+Alle 16 automatischen Qualitätsprüfungen bestehen. Mehrere Fehler wurden
+lokal behoben. Eine vollständige Freigabe aller Funktionen ist noch nicht
+möglich: Zwei Steuerdatenblocker bestehen im vorhandenen Datenbestand;
+Schreib-, Lösch- und Mehrbenutzertests brauchen eine getrennte Testdatenbank.
+Der Nutzer hat bestätigt, dass keine solche Testdatenbank vorhanden ist.
+
+Prüfumgebung
+Lokaler Vite-Entwicklungsserver auf http://127.0.0.1:5173 mit angemeldetem
+Admin-Zugang und vorhandenen Supabase-Daten. Änderungen am Anwendungscode
+sind lokal; eine Veröffentlichung oder Datenbankmigration wurde nicht ausgeführt.
+
+Behobene Fehler
+1. Schnelle Filterwechsel in der Buchhaltung konnten durch verspätete Antworten
+   ältere Monatsdaten unter dem neu ausgewählten Jahr anzeigen. Eine laufende
+   Anfrage darf nun nur noch schreiben, wenn sie zur aktuellen Auswahl gehört.
+   Auch ältere Fehler und das Ende älterer Anfragen verändern den aktuellen
+   Ladezustand nicht mehr. Effekt-Cleanup entwertet laufende Anfragen.
+2. Buchhaltungsabfragen hatten keine Pagination. Die Daten API kann Antworten
+   begrenzen; bei großen Beständen wurden dadurch Jahresansichten und Exporte
+   abgeschnitten. Abfragen lesen jetzt 500 Zeilen pro Seite mit stabiler
+   Sortierung nach Datum und ID und brechen bei einem Seitenfehler ab.
+3. Die Mietübersicht entfernte Dubletten mehrfach mit quadratischem Aufwand
+   innerhalb der Objektberechnung. Eine memoisiert berechnete Menge beseitigt
+   Dubletten einmal je Buchungsdatenstand. Reihenfolge, erste Originalbuchung
+   und bestehende Erkennung von historischen Buchungen bleiben erhalten.
+4. /buchhaltung/kautionen führte über eine weitere Weiterleitung zur
+   Mietentwicklung. Das Ziel ist jetzt /kautionen.
+5. Bestehende Komponenten verwiesen auf /impressum, /datenschutz und
+   /unauthorized, obwohl diese Routen fehlten. Die vorhandenen Rechtstextseiten
+   und eine allgemeine Zugriffsfehlermeldung sind jetzt erreichbar. Die
+   Komponenten mit Rechtstextlinks sind derzeit nicht überall eingebunden;
+   die statische Prüfung deckt auch diese vorbereiteten Links ab.
+6. Der Vorladepfad für Datenschutz stimmte nicht mit der tatsächlichen
+   Einstellungsroute überein. Er verwendet jetzt datenschutz-compliance.
+7. Gültige allgemeine Portfolio-Ausgaben erschienen in der Buchhaltungsübersicht
+   als unbekanntes Objekt und als fehlende Objektzuordnung. Die Überschrift
+   zeigt jetzt Allgemein / Portfolio-Ausgabe; solche Einträge erhöhen den
+   Warnzähler nur noch, wenn tatsächlich die Kategorie fehlt.
+
+Automatische Prüfungen
+Ausführung: npm run verify
+Abschlussergebnis: Alle 16 Qualitätsprüfungen erfolgreich.
+Produktionsbuild einschließlich TypeScript: bestanden.
+ESLint: 0 Fehler und 0 Warnungen.
+Vorhandene Prüfungen: Miete/Leerstand, Immobilienvermögen, Objekt-ID-Aliase,
+zentrale Datenquellen, Datenqualität, Berichtsexporte, Logos/PDF-Grundstruktur,
+Sicherheitsbasis, Darlehen/Tilgungspläne und Branding.
+Berichtscenter: Berechnungs- und XLSX-Regressionen sowie simulierte normale
+und Nur-Lesen-Dokumentabfragen einschließlich Pagination bestanden.
+Die Sicherheitsprüfung prüft Quellcode und Migrationen; sie ist kein Nachweis,
+dass alle Migrationen in der produktiven Datenbank angewendet wurden.
+
+Neue wiederholbare Prüfungen
+npm run test:navigation
+  135 deklarierte Routen, 212 statische Navigationsstellen und 47 statische
+  Weiterleitungen. Keine fehlenden Ziele und keine Weiterleitungsschleifen.
+  Das tatsächliche Ziel des Kautionslinks wird gesondert geprüft.
+  Dynamisch erzeugte Ziele benötigen zusätzlich Oberflächenprüfungen.
+npm run stress:finance-volume
+  8 Identitätsprüfungen und Mengen mit 2.000, 20.000 und 200.000 Zeilen.
+  Bei 200.000 Eingabezeilen bleiben exakt 100.000 eindeutige Buchungen mit
+  korrekter Gesamtsumme erhalten. Gemessene Deduplizierung im abschließenden
+  ersten erfolgreichen Gesamtlauf: etwa 44 ms. Das ist ein lokaler
+  Berechnungsbenchmark und keine Laufzeitmessung der vollständigen Seite.
+npm run stress:booking-loading
+  6 asynchrone Szenarien mit vertauschter Antwortreihenfolge, alten Fehlern,
+  ungültiger Auswahl und entwerteten Anfragen. Pagination mit 0, 500, 1.305
+  und 10.500 Buchungen gegen eine simulierte Daten API vollständig bestanden.
+  Die Tests führen die tatsächlichen Funktionen aus Monate.tsx aus.
+Alle neuen Prüfungen und die Berichtscenter-Regression sind in verify integriert.
+
+Oberflächenprüfung
+77 verschiedene Seitenpfade wurden im angemeldeten lokalen Browser aufgerufen
+und auf Darstellung, Navigation und sichtbare Lade-/Fehlerzustände untersucht.
+Ein erster Seitenaufruf ist kein vollständiger Nachweis sämtlicher Unterfunktionen.
+Ladesnapshots und einzelne Zeitüberschreitungen wurden gezielt nachgeprüft.
+Das Berichtsarchiv und beide Berichtscenter zeigen nach dem Laden ihre Vorschau.
+Für die sechs Immobilien wurden jeweils Objektübersicht, Mieteingang, Cashflow,
+Darlehen und Nebenkosten geprüft: 30 Bereiche, jeweils sichtbare Inhaltsansicht.
+Die sieben Portfolio-Berichtsmodule zeigen die jeweils passende Vorschau.
+Die Jahresansicht 2025 zeigt nach schnellem Filterwechsel 272 Buchungen;
+100 Zeilen pro Seite, Weiterblättern und eine Suche ohne Treffer funktionieren.
+CSV und Excel wurden über die echten Exportknöpfe erzeugt. Der Prüfexport
+für Colmarer und Oktober enthält die gewählte Immobilie und den gewählten
+Monat, keine Elsasser-Daten. XLSX-ZIP-Container mit vier Tabellenblättern lesbar.
+In den gezielten Konsolenabfragen wurden keine Anwendungsfehler angezeigt.
+Geometrie für 390 Pixel wurde versucht, der Browser blieb bei 1280 Pixeln;
+eine vollständige Smartphone-Prüfung kann damit nicht bestätigt werden.
+
+Offene Datenblocker
+Der Steuerberaterbericht für 2026 sperrt den Export wegen zweier widersprüchlicher
+Steuerkennzeichen für Hohenloher Str. 78 am 28.09.2026:
+- Verwaltungskosten
+- Mietbestandteil-NK
+Die vorhandene App-Regel zur Eigennutzung widerspricht den gesetzten Kennzeichen.
+Das ist ein Befund aus der App-Vorprüfung, keine steuerrechtliche Beurteilung.
+Die Buchungsdaten wurden nicht automatisch korrigiert. Die Kennzeichen brauchen
+eine fachliche Prüfung, danach ist der Bericht erneut zu prüfen.
+
+Noch erforderliche Freigabeprüfungen
+Eine getrennte, entbehrliche Testdatenbank für vollständige Anlegen/Bearbeiten/
+Löschen-Abläufe, Uploads, Wiederherstellung und parallele Schreibzugriffe.
+Echte Nur-Lesen- und nicht freigegebene Konten für Backend-Rollen-/RLS-Prüfungen.
+MFA-End-to-End, abgelaufene Sitzungen und Netzwerkabbrüche.
+Mehrbenutzerlast auf Backend und Hosting, vollständige PDF-Druckprüfung,
+Smartphone-Breakpoints und weitere Browser.
+Einzelne als Unterseiten bezeichnete Routen binden dieselbe Fachkomponente ein;
+die Route allein bestätigt deshalb keine eigenständige zusätzliche Funktion.
+
+Nachweise
+tmp/quality-audit/verify-final.log
+tmp/quality-audit/navigation.json
+tmp/quality-audit/browser-pages.json
+tmp/quality-audit/property-tabs.json
+tmp/quality-audit/export-check.json
+tmp/quality-audit/export-success.jpg
+Die Dateien unter tmp sind lokale, nicht versionierte Prüfnachweise.
