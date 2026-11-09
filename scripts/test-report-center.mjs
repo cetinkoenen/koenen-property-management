@@ -103,6 +103,30 @@ const other=buildReportCenter({...input,objectId:'core-2'});assert.equal(other.f
 const ownerOccupiedEntry={...entry('9','Miete',1960,'income'),object_id:'owner-core'};
 const ownerOccupied=buildReportCenter({...input,objects:[...objects,{id:'owner-core',label:'Hohenloher Str. 78',code:'H'}],entries:[...entries,ownerOccupiedEntry]});
 assert.equal(ownerOccupied.find(m=>m.id==='eur').tables[0].rows.find(r=>r[0]==='Summe Einnahmen')[3],'1.000,00 €','Eigennutzung darf nicht in die EÜR fließen');
+const ownerOccupiedSingle=buildReportCenter({
+  ...input,
+  objects:[{id:'owner-core',label:'Hohenloher Str. 78',code:'H',livingAreaM2:100}],
+  objectId:'owner-core',
+  entries:[
+    {...ownerOccupiedEntry,category:'Eigenmittelzuführung (Eigennutzung)',note:'Interne Zuführung',tax_relevant:false,nk_relevant:false},
+    {id:'owner-rate',object_id:'owner-core',booking_date:'2026-02-04',entry_type:'expense',category:'Kreditrate',amount:1690,note:'Private Rate',loan_interest_amount:500,loan_principal_amount:1190,tax_relevant:false,nk_relevant:false},
+  ],
+  sources:{
+    tenant_profiles:[{id:'owner-tenant',first_name:'Nihal',last_name:'Könen'}],
+    tenant_contracts:[{id:'owner-legacy-contract',tenant_id:'owner-tenant',property_id:'owner-core',unit_label:'Wohnung 04',start_date:'2025-01-01',status:'active',cold_rent:1690,operating_costs:0,total_rent:1690}],
+    portfolio_property_rentals:[{id:'owner-legacy-rental',property_id:'owner-core',unit_label:'Wohnung 04',tenant_name:'Nihal Könen',start_date:'2025-01-01',rent_monthly:1690,kaltmiete_laut_mietvertrag:1690,nebenkosten:0,gesamt_mietkosten:1690}],
+    property_loan_ledger:[{property_id:'owner-core',year:2026,interest:6000,principal:14280,balance:400000,source:'Tilgungsplan'}],
+    property_loan_rate_plan:[],
+  },
+  rent:{...rent,objectFilter:'owner-core',rows:[{...rent.rows[0],objectId:'owner-core',objectLabel:'Hohenloher Str. 78',tenantName:'Nihal Könen'}]},
+});
+assert.equal(ownerOccupiedSingle.find(m=>m.id==='tenants').tables[0].rows.length,0,'Eigennutzung darf keine Mietvertragszeile im Steuerberater-Report erzeugen');
+assert.equal(ownerOccupiedSingle.find(m=>m.id==='tenants').tables[1].rows.length,0,'Eigennutzung darf keine Zahlungs- oder Sollmietenmatrix erzeugen');
+assert.equal(ownerOccupiedSingle.find(m=>m.id==='adjustments').tables.every(table=>table.rows.length===0),true,'Eigennutzung darf keine Mietanpassungen oder Mietrückstände ausweisen');
+assert.equal(ownerOccupiedSingle.find(m=>m.id==='utilities').tables[1].rows.length,0,'Eigennutzung darf nie eine Mieter-Nebenkostenbuchung ausweisen');
+assert.match(ownerOccupiedSingle.find(m=>m.id==='journal').tables[0].rows[0][2],/Eigennutzung · kein Mieter/,'Interne Hohenloher-Bewegungen dürfen keinen fiktiven Mieter erhalten');
+assert.match(ownerOccupiedSingle.find(m=>m.id==='loan-interest').tables[0].headers[2],/informativ.*nicht Anlage V/,'Hohenloher-Zinsen müssen in allen Reports als nicht Anlage-V-relevant bezeichnet werden');
+assert.match(ownerOccupiedSingle.find(m=>m.id==='cashflow').paragraphs.join(' '),/kein Vermietungs-Cashflow/,'Eigennutzungs-Cashflow muss fachlich eindeutig beschriftet sein');
 
 const fuertherObject={id:'fuerther-core',code:'Objekt_4',label:'Fürther Str. 74',livingAreaM2:45};
 const fuertherRent={year:2026,objectFilter:'fuerther-core',rows:[
