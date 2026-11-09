@@ -55,8 +55,7 @@ begin
      set category = 'Eigenmittelzuführung (Eigennutzung)',
          tax_relevant = false,
          nk_relevant = false,
-         note = trim(both ' ' from concat_ws(' | ', nullif(note, ''), 'Eigennutzung Hohenloher: interne Eigenmittelzuführung, keine Miete.')),
-         updated_at = now()
+         note = trim(both ' ' from concat_ws(' | ', nullif(note, ''), 'Eigennutzung Hohenloher: interne Eigenmittelzuführung, keine Miete.'))
    where entry_type = 'income'
      and object_id::text = core_object_id::text
      and coalesce(is_deleted, false) = false;
@@ -66,8 +65,7 @@ begin
   update public.finance_entry
      set tax_relevant = false,
          nk_relevant = false,
-         note = trim(both ' ' from concat_ws(' | ', nullif(note, ''), 'Eigennutzung Hohenloher: Kreditrate privat, nicht Anlage V.')),
-         updated_at = now()
+         note = trim(both ' ' from concat_ws(' | ', nullif(note, ''), 'Eigennutzung Hohenloher: Kreditrate privat, nicht Anlage V.'))
    where entry_type = 'expense'
      and object_id::text = core_object_id::text
      and lower(coalesce(category, '')) in ('kreditrate', 'darlehensrate')
@@ -80,8 +78,7 @@ begin
      set category = 'WEG-Hausgeld (Eigennutzung)',
          tax_relevant = false,
          nk_relevant = false,
-         note = trim(both ' ' from concat_ws(' | ', nullif(note, ''), 'Eigennutzung Hohenloher: WEG-Hausgeld, keine Anlage V. §35a nur nach Jahresabrechnung.')),
-         updated_at = now()
+         note = trim(both ' ' from concat_ws(' | ', nullif(note, ''), 'Eigennutzung Hohenloher: WEG-Hausgeld, keine Anlage V. §35a nur nach Jahresabrechnung.'))
    where entry_type = 'expense'
      and object_id::text = core_object_id::text
      and abs(coalesce(amount, 0)::numeric - 270::numeric) <= 0.01
