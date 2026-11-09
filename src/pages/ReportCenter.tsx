@@ -88,10 +88,10 @@ export default function ReportCenter({portfolio=false}:{portfolio?:boolean}){
   const previewBlocked=loading||app.loading||Boolean(error||app.error)||!sources||!valid||!chosen.length||(needsRent&&(!readyRent||rentStatus.loading||Boolean(rentStatus.error)));
   const exportReport=()=>{
     if(blocked)return;
-    const title=portfolio?chosen[0].title:'Steuerberater-Report';
+    const title=portfolio?chosen[0].title:(taxReportMode==='compact'?'Steuerberater-Kurzakte':'Steuerberater-Vollakte');
     if(format==='pdf'){
       const prepared=prepareTaxAdvisorPdf(chosen);
-      openProfessionalPdfReport({documentName:`${title}-${selectedRosensteinUnit??(objectId||'alle')}-${from}-${to}`,title:portfolio?title:`Steuerberater-Report ${selectedYear}`,subtitle:portfolio?'Professionelle Immobilien- und Portfolioanalyse':'Strukturierte Jahresakte · Anlage V und Buchungsnachweise',meta:[{label:'Zeitraum',value:`${reportDate(from)} – ${reportDate(to)}`},{label:'Objekt',value:selectedObject?.label??'Alle Immobilien'},...(selectedRosensteinUnit?[{label:'Einheit',value:rosensteinTaxUnitLabel(selectedRosensteinUnit)}]:[])],metrics:portfolio?chosen[0]?.metrics:prepared.metrics,sections:prepared.sections,landscape:false});
+      openProfessionalPdfReport({documentName:`${title}-${selectedRosensteinUnit??(objectId||'alle')}-${from}-${to}`,title:portfolio?title:`${title} ${selectedYear}`,subtitle:portfolio?'Professionelle Immobilien- und Portfolioanalyse':taxReportMode==='compact'?'Kompakte Übergabe für die Steuerberatung · steuerlich entscheidungsrelevante Kernkapitel':'Vollständige Jahresakte · Kernkapitel mit eindeutigen Belegreferenzen und Anlagen',meta:[{label:'Zeitraum',value:`${reportDate(from)} – ${reportDate(to)}`},{label:'Objekt',value:selectedObject?.label??'Alle Immobilien'},...(!portfolio?[{label:'Ausgabe',value:taxReportMode==='compact'?'Kurzakte':'Vollakte mit Anlagen'}]:[]),...(selectedRosensteinUnit?[{label:'Einheit',value:rosensteinTaxUnitLabel(selectedRosensteinUnit)}]:[])],metrics:portfolio?chosen[0]?.metrics:prepared.metrics,sections:prepared.sections,landscape:false});
       setMessage('Druckansicht geöffnet. Im Druckdialog „Als PDF sichern“ wählen.');return;
     }
     const blob=format==='excel'?new Blob([reportWorkbook(chosen) as BlobPart],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}):new Blob([reportCsv(chosen)],{type:'text/csv;charset=utf-8'});

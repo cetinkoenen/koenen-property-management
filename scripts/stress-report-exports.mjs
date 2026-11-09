@@ -111,6 +111,9 @@ assert.match(steuerCenter, /Belegreferenz[\s\S]*Anlage B · Belegverzeichnis und
 assert.match(steuerCenter, /openAdvisorPdf\(advisorExportPayload, "compact"\)[\s\S]*openAdvisorPdf\(advisorExportPayload, "full"\)/, "Die Oberfläche muss beide Steuerberater-PDF-Ausgaben anbieten");
 assert.match(reportCenterPage, /landscape:false/, "Der Steuerberater-Report muss im A4-Hochformat gedruckt werden");
 assert.match(reportCenterPdf, /const columnsPerPart = 3;/, "Breite Steuerberichtstabellen müssen für Hochformat in lesbare Spaltenblöcke geteilt werden");
+assert.match(reportCenterPdf, /Übergabe- und Freigabeblatt[\s\S]*Datenquellen und Prüfumfang/, "Der tatsächlich verwendete Steuerberater-Export muss ein Übergabeblatt mit Quellenübersicht erhalten");
+assert.match(reportCenterPdf, /Belegverzeichnis · Buchungsnachweis[\s\S]*Belegreferenz/, "Das vollständige Buchungsjournal muss eindeutige Belegreferenzen ausweisen");
+assert.match(reportCenterPage, /Steuerberater-Kurzakte[\s\S]*Steuerberater-Vollakte/, "Der tatsächliche Export muss Kurzakte und Vollakte klar benennen");
 assert.match(reportCenterPage, /Vorschau anzeigen[\s\S]*showPreview[\s\S]*chosen\.map/, "Große Berichtstabellen dürfen erst auf ausdrücklichen Wunsch als Bildschirmvorschau aufgebaut werden");
 assert.match(reportCenterPage, /headlessAnnualReport/, "Das Reportcenter muss die Mietkonto-Quelle ohne eine zweite sichtbare Jahresmatrix laden");
 assert.match(rentOverviewPage, /if \(headlessAnnualReport\) return null;/, "Die eingebettete Mietkonto-Quelle muss im kopflosen Reportmodus nur Daten liefern");
