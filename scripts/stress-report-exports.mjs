@@ -103,6 +103,12 @@ assert.match(reportCenterPdf, /wantedMetrics[\s\S]*Steuerlich vorbereitetes Erge
 assert.match(professionalPdfReport, /\.hero::after \{ display: none !important; \}/, "Das dekorative Deckblattraster darf in der Druckansicht nicht über Kennzahlen laufen");
 assert.match(professionalPdfReport, /\.metric-card,[\s\S]*box-shadow: none !important; filter: none !important;/, "Kennzahlenkarten dürfen im Druck keine überlappenden Schattenflächen erzeugen");
 assert.match(professionalPdfReport, /class="chart-value"[\s\S]*euroChart\(value\)/, "Diagramme müssen sichtbare Euro-Datenbeschriftungen enthalten");
+assert.match(professionalPdfReport, /pageBreakBefore\?: boolean/, "Die professionelle PDF-Engine muss abschnittsweise Seitenwechsel steuern können");
+assert.match(professionalPdfReport, /section\.page-break-before/, "Erzwungene Seitenwechsel müssen auch in der Druckansicht wirksam sein");
+assert.match(steuerCenter, /type AdvisorPackageMode = "compact" \| "full"/, "Die Steuerberaterakte muss eine Kurz- und Vollakten-Ausgabe unterstützen");
+assert.match(steuerCenter, /Übergabe- und Freigabeblatt[\s\S]*Prüfliste vor Abgabe/, "Die Steuerberaterakte muss mit Deckblatt und klarer Prüfliste beginnen");
+assert.match(steuerCenter, /Belegreferenz[\s\S]*Anlage B · Belegverzeichnis und Buchungsnachweis/, "Buchungsnachweise müssen einmalig und eindeutig referenziert im Anlagenbereich stehen");
+assert.match(steuerCenter, /openAdvisorPdf\(advisorExportPayload, "compact"\)[\s\S]*openAdvisorPdf\(advisorExportPayload, "full"\)/, "Die Oberfläche muss beide Steuerberater-PDF-Ausgaben anbieten");
 assert.match(reportCenterPage, /landscape:false/, "Der Steuerberater-Report muss im A4-Hochformat gedruckt werden");
 assert.match(reportCenterPdf, /const columnsPerPart = 3;/, "Breite Steuerberichtstabellen müssen für Hochformat in lesbare Spaltenblöcke geteilt werden");
 assert.match(reportCenterPage, /Vorschau anzeigen[\s\S]*showPreview[\s\S]*chosen\.map/, "Große Berichtstabellen dürfen erst auf ausdrücklichen Wunsch als Bildschirmvorschau aufgebaut werden");

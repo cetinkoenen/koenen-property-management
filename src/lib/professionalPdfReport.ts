@@ -31,6 +31,8 @@ export type PdfReportSection = {
   title: string;
   subtitle?: string;
   variant?: "summary" | "core" | "appendix";
+  /** Beginnt im A4-Ausdruck auf einer neuen Seite; wichtig für Objekt- und Anlagenabschnitte. */
+  pageBreakBefore?: boolean;
   metrics?: PdfReportMetric[];
   tables?: PdfReportTable[];
   paragraphs?: string[];
@@ -203,7 +205,7 @@ function uniqueParagraphs(paragraphs: string[] = []): string[] {
 function sectionHtml(section: PdfReportSection, sectionLabel: string) {
   const variant = section.variant ?? "core";
   return `
-    <section class="section section-${variant}">
+    <section class="section section-${variant}${section.pageBreakBefore ? " page-break-before" : ""}">
       <div class="section-head">
         <div class="section-kicker">${sectionLabel}</div>
         <h2>${escapeHtml(section.title)}</h2>
@@ -566,6 +568,7 @@ export function buildProfessionalPdfReportHtml(options: PdfReportOptions) {
       }
       .table-block { break-inside: auto; }
       .table-block.page-break-before { break-before: page; }
+      .section.page-break-before { break-before: page; }
       .section-head, .table-title { break-after: avoid; }
       thead { display: table-header-group; }
       tr { break-inside: avoid; }

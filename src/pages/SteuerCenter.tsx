@@ -866,6 +866,19 @@ type AdvisorExportPayload = {
   dashboard: TaxAdvisorDashboard;
 };
 
+type AdvisorPackageMode = "compact" | "full";
+
+function advisorEvidenceRef(row: ClassifiedEntry, year: number, index: number) {
+  const id = Number(row.id);
+  return Number.isFinite(id) && id > 0
+    ? `B-${year}-${String(id).padStart(5, "0")}`
+    : `B-${year}-X${String(index + 1).padStart(4, "0")}`;
+}
+
+function advisorPackageLabel(mode: AdvisorPackageMode) {
+  return mode === "compact" ? "Steuerberater-Kurzakte" : "Steuerberater-Vollakte";
+}
+
 function advisorExportText(payload: AdvisorExportPayload): string {
   const lines = [
     "Koenen Property Management - Steuerberater-Jahresakte",
@@ -896,13 +909,24 @@ function advisorExportText(payload: AdvisorExportPayload): string {
   return lines.join("\n");
 }
 
-function openAdvisorPdf(payload: AdvisorExportPayload) {
-  const documentName = `steuerberater-jahresakte-${payload.year}.pdf`;
+function openAdvisorPdf(payload: AdvisorExportPayload, mode: AdvisorPackageMode = "full") {
+  const isCompact = mode === "compact";
+  const documentLabel = advisorPackageLabel(mode);
+  const documentName = `${isCompact ? "steuerberater-kurzakte" : "steuerberater-vollakte"}-${payload.year}.pdf`;
+  const bookingEvidenceRows = payload.rows.map((row, index) => ({ row, reference: advisorEvidenceRef(row, payload.year, index) }));
+  const blockingWarnings = [
+    ...payload.dashboard.warnings,
+    ...bookingEvidenceRows
+      .filter(({ row }) => row.relevance === "check")
+      .map(({ row, reference }) => `${reference} · ${row.tax_hint}`),
+  ];
   const AnlageVSections: PdfReportSection[] = payload.dashboard.AnlageVReports.map((report, index) => ({
     title: `A.${index + 1} ${report.profile.reportLabel}`,
     subtitle: report.profile.usage === "rented_parking"
       ? "Anlage V · andere Räume · isolierte TG-Stellplatz-Vermietung"
       : "Anlage V · Wohnraumvermietung",
+    variant: "core",
+    pageBreakBefore: index > 0,
     metrics: [
       { label: "Mieteinnahmen", value: formatTaxCurrency(report.income), hint: report.incomeLabel },
       { label: "AfA Gebäude", value: formatTaxCurrency(report.buildingAfa), hint: "2% linear, Baujahr vor 2022" },
@@ -938,7 +962,7 @@ function openAdvisorPdf(payload: AdvisorExportPayload) {
           ["Telefon/Internet anteilig", formatTaxCurrency(report.telecommunicationDeductible)],
         ],
       },
-      ...(report.portfolioAdministrationRows.some((entry) => !report.portfolioBankAccountFeeRows.some((fee) => fee.id === entry.id))
+      ...(!isCompact && report.portfolioAdministrationRows.some((entry) => !report.portfolioBankAccountFeeRows.some((fee) => fee.id === entry.id))
         ? [
             {
               title: "Übrige Portfolio-Ausgaben-Dokumentation",
@@ -953,7 +977,7 @@ function openAdvisorPdf(payload: AdvisorExportPayload) {
             },
           ]
         : []),
-      ...(report.directBankAccountFeeRows.length || report.portfolioBankAccountFeeRows.length
+      ...(!isCompact && (report.directBankAccountFeeRows.length || report.portfolioBankAccountFeeRows.length)
         ? [
             {
               title: "Kontoführungsgebühren-Dokumentation",
@@ -982,11 +1006,14 @@ function openAdvisorPdf(payload: AdvisorExportPayload) {
 
   openProfessionalPdfReport({
     documentName,
-    title: "Steuerberater-Jahresakte",
-    subtitle: "Moderner PDF-Bericht für Anlage V und §35a. Die Daten kommen aus Buchhaltung, Darlehen, Leerstand und Fahrtenbuch.",
+    title: `${documentLabel} ${payload.year}`,
+    subtitle: isCompact
+      ? "Kompakte Übergabe für die steuerliche Bearbeitung: Ergebnisübersicht, Anlage-V-Felder je Objekt und eine klare Prüfliste."
+      : "Vollständige Übergabe mit Objektübersichten, Anlage-V-Feldern und strukturierten Nachweisen. Zahlungsdaten stammen ausschließlich aus der Buchhaltung.",
     meta: [
       { label: "Jahr", value: String(payload.year) },
       { label: "Objektfilter", value: payload.objectLabel },
+      { label: "Ausgabe", value: isCompact ? "Kurzakte" : "Vollakte mit Anlagen" },
     ],
     metrics: [
       { label: "Steuer-Einnahmen", value: eur(payload.totals.taxIncome) },
@@ -998,9 +1025,26 @@ function openAdvisorPdf(payload: AdvisorExportPayload) {
     ],
     sections: [
       {
-        title: "Bereitstellungs-Check",
-        subtitle: "Kontrollblock für Vollständigkeit und steuerliche Plausibilität.",
+        title: "Übergabe- und Freigabeblatt",
+        subtitle: "Erste Arbeitsseite für den Steuerberater. Sie fasst Umfang, steuerliches Ergebnis und erforderliche Prüfungen zusammen.",
+        variant: "summary",
+        metrics: [
+          { label: "Anlage-V-Objekte", value: String(payload.dashboard.AnlageVReports.length), hint: "Vermietete Wohnungen und Stellplätze" },
+          { label: "Prüffälle", value: String(blockingWarnings.length), hint: blockingWarnings.length ? "Vor Abgabe beachten" : "Keine offenen Hinweise" },
+          { label: "Buchungsnachweise", value: String(payload.rows.length), hint: isCompact ? "In Vollakte enthalten" : "Lückenlos im Anhang" },
+          { label: "§35a", value: "separat", hint: "Hohenloher Str. 78" },
+        ],
         tables: [
+          {
+            title: "Inhalt und Bearbeitungsreihenfolge",
+            headers: ["Bereich", "Inhalt", "Status"],
+            rows: [
+              ["1", "Anlage-V-Übersicht je vermietetem Objekt", "bereit"],
+              ["2", "§35a-Auswertung Eigennutzung", "separat"],
+              ["3", "Prüfliste und Belegreferenzen", blockingWarnings.length ? `${blockingWarnings.length} prüfen` : "keine offenen Hinweise"],
+              ["4", isCompact ? "Vollakte mit Nachweisen separat verfügbar" : "Anlagen: Darlehen, Leerstand, Fahrten und Buchungen", isCompact ? "Kurzakte" : "enthalten"],
+            ],
+          },
           {
             title: "Summen nach Steuergruppe",
             headers: ["Steuergruppe", "Einnahmen", "Ausgaben", "Saldo", "Buchungen"],
@@ -1009,14 +1053,31 @@ function openAdvisorPdf(payload: AdvisorExportPayload) {
         ],
       },
       {
+        title: "Prüfliste vor Abgabe",
+        subtitle: "Nur offene oder fachlich zu bestätigende Punkte. Grün bestätigte Daten werden nicht wiederholt.",
+        variant: "summary",
+        tables: [
+          {
+            title: blockingWarnings.length ? "Offene Prüfhinweise" : "Prüfstatus",
+            headers: ["Priorität", "Hinweis", "Nächste Aktion"],
+            rows: blockingWarnings.length
+              ? blockingWarnings.map((warning) => ["Prüfen", warning, "Beleg bzw. Zuordnung im Buchungsjournal kontrollieren"])
+              : [["Freigegeben", "Keine offenen steuerlichen Prüffälle erkannt.", "Steuerliche Plausibilisierung durch Steuerberater vorbehalten"]],
+          },
+        ],
+      },
+      {
         title: "Exportbereich A · Anlage-V-Export",
         subtitle: "Sieben getrennte Steuerobjekte: vier Wohnungen plus die Rosenstein-Stellplätze P250, P253 und P254.",
+        variant: "core",
         paragraphs: ["Hohenloher Str. 78 bleibt für Anlage V gesperrt und wird im §35a-Bereich geführt."],
       },
       ...AnlageVSections,
       {
         title: "Exportbereich B · §35a-Export",
         subtitle: "Isolierter Bericht für Hohenloher Str. 78. Materialkosten und Barzahlungen werden nicht angesetzt.",
+        variant: "core",
+        pageBreakBefore: true,
         metrics: [
           { label: "Haushaltsnah Arbeitslohn", value: formatTaxCurrency(payload.dashboard.section35aReport.householdServicesLabor) },
           { label: "Handwerker Arbeitslohn", value: formatTaxCurrency(payload.dashboard.section35aReport.craftsmanLabor) },
@@ -1052,61 +1113,70 @@ function openAdvisorPdf(payload: AdvisorExportPayload) {
             : []),
         ],
       },
-      {
-        title: "Darlehen, Leerstand und Fahrtenbuch",
-        subtitle: "Nachvollziehbare Quelltabellen für den Steuerberater.",
-        tables: [
-          {
-            title: "Darlehenswerte",
-            headers: ["Objekt", "Jahr", "Zinsen", "Tilgung", "Restschuld", "Quelle"],
-            rows: payload.loanRows.map((row) => [row.property_label, row.year, eur(row.interest), eur(row.principal), eur(row.balance), row.source || "Darlehens-Ledger"]),
-          },
-          {
-            title: "Fahrtkosten-Nachweise",
-            headers: ["Objekt", "Fahrten", "km", "Fahrt/Ticket", "VMA", "Hotel", "Gesamt"],
-            rows: payload.mileageSummaryRows.map((row) => [
-              row.property_label,
-              row.trips.length,
-              row.total_km.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-              eur(row.total_travel),
-              eur(row.total_vma),
-              eur(row.total_hotel),
-              eur(row.total_amount),
-            ]),
-          },
-          {
-            title: "Leerstands-Nachweise",
-            headers: ["Objekt", "Einheit", "Zeitraum", "Grund", "Steuerhinweis"],
-            rows: payload.vacancyRows.map((row) => [
-              row.object_label || row.object_code || row.property_id,
-              row.unit_label || "Gesamte Immobilie",
-              row.tax_period,
-              row.reason || "",
-              row.tax_hint,
-            ]),
-          },
-        ],
-      },
-      {
-        title: "Buchungsnachweis",
-        subtitle: "Gefilterte Buchungen aus der Hauptquelle finance_entry.",
-        tables: [
-          {
-            title: "Buchungen",
-            headers: ["Datum", "Objekt", "Typ", "Status", "Gruppe", "Kategorie", "Betrag", "Hinweis"],
-            rows: payload.rows.map((row) => [
-              row.booking_date,
-              row.object_label,
-              row.entry_type === "income" ? "Einnahme" : "Ausgabe",
-              row.relevance === "tax" ? "Steuerrelevant" : row.relevance === "check" ? "Prüfen" : "Nicht abziehbar",
-              row.tax_group,
-              row.category ?? "",
-              eur(row.amount),
-              row.tax_hint,
-            ]),
-          },
-        ],
-      },
+      ...(isCompact
+        ? []
+        : [
+            {
+              title: "Anlage A · Darlehen, Leerstand und Fahrtenbuch",
+              subtitle: "Nachvollziehbare Quelltabellen. Diese Anlagen wiederholen keine Anlage-V-Summen.",
+              variant: "appendix" as const,
+              pageBreakBefore: true,
+              tables: [
+                {
+                  title: "Darlehenswerte",
+                  headers: ["Objekt", "Jahr", "Zinsen", "Tilgung", "Restschuld", "Quelle"],
+                  rows: payload.loanRows.map((row) => [row.property_label, row.year, eur(row.interest), eur(row.principal), eur(row.balance), row.source || "Darlehens-Ledger"]),
+                },
+                {
+                  title: "Fahrtkosten-Nachweise",
+                  headers: ["Objekt", "Fahrten", "km", "Fahrt/Ticket", "VMA", "Hotel", "Gesamt"],
+                  rows: payload.mileageSummaryRows.map((row) => [
+                    row.property_label,
+                    row.trips.length,
+                    row.total_km.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                    eur(row.total_travel),
+                    eur(row.total_vma),
+                    eur(row.total_hotel),
+                    eur(row.total_amount),
+                  ]),
+                },
+                {
+                  title: "Leerstands-Nachweise",
+                  headers: ["Objekt", "Einheit", "Zeitraum", "Grund", "Steuerhinweis"],
+                  rows: payload.vacancyRows.map((row) => [
+                    row.object_label || row.object_code || row.property_id,
+                    row.unit_label || "Gesamte Immobilie",
+                    row.tax_period,
+                    row.reason || "",
+                    row.tax_hint,
+                  ]),
+                },
+              ],
+            },
+            {
+              title: "Anlage B · Belegverzeichnis und Buchungsnachweis",
+              subtitle: "Jede Buchung erscheint genau einmal. Belegreferenzen verknüpfen Prüfhinsweise eindeutig mit der Buchung aus der Hauptquelle finance_entry.",
+              variant: "appendix" as const,
+              pageBreakBefore: true,
+              tables: [
+                {
+                  title: "Buchungen",
+                  headers: ["Belegreferenz", "Datum", "Objekt", "Typ", "Status", "Gruppe", "Kategorie", "Betrag", "Hinweis"],
+                  rows: bookingEvidenceRows.map(({ row, reference }) => [
+                    reference,
+                    row.booking_date,
+                    row.object_label,
+                    row.entry_type === "income" ? "Einnahme" : "Ausgabe",
+                    row.relevance === "tax" ? "Steuerrelevant" : row.relevance === "check" ? "Prüfen" : "Nicht abziehbar",
+                    row.tax_group,
+                    row.category ?? "",
+                    eur(row.amount),
+                    row.tax_hint,
+                  ]),
+                },
+              ],
+            },
+          ]),
     ],
   });
 }
@@ -1784,8 +1854,8 @@ export default function SteuerCenter() {
               <TonePill label={advisorStatus} tone={advisorStatusTone} />
             </div>
             <p style={styles.text}>
-              Dieser Extrakt bündelt Jahreskennzahlen, Steuergruppen, Darlehenszinsen und die vollständigen
-              Jahresbuchungen für die Weitergabe an den Steuerberater.
+              Wählen Sie zwischen der kompakten Kurzakte für die fachliche Bearbeitung und der Vollakte mit
+              eindeutigen Buchungsnachweisen, Darlehens-, Leerstands- und Fahrtenanlagen.
             </p>
 
             <div style={styles.advisorMeta}>
@@ -1812,7 +1882,7 @@ export default function SteuerCenter() {
                 style={{ ...styles.primaryButton, opacity: taxReleaseReady ? 1 : 0.55, cursor: taxReleaseReady ? "pointer" : "not-allowed" }}
               >
                 <Download size={16} />
-                Steuerberater-CSV
+                Vollakte CSV
               </button>
               <button
                 type="button"
@@ -1822,11 +1892,15 @@ export default function SteuerCenter() {
                 style={{ ...styles.button, opacity: taxReleaseReady ? 1 : 0.55, cursor: taxReleaseReady ? "pointer" : "not-allowed" }}
               >
                 <FileText size={16} />
-                Steuerberater-TXT
+                Vollakte TXT
               </button>
-              <button type="button" onClick={() => openAdvisorPdf(advisorExportPayload)} disabled={!taxReleaseReady} title={taxReleaseReady ? "Steuerberater-PDF erstellen" : "Export erst nach Abschluss der Freigabe möglich"} style={{ ...styles.button, opacity: taxReleaseReady ? 1 : 0.55, cursor: taxReleaseReady ? "pointer" : "not-allowed" }}>
+              <button type="button" onClick={() => openAdvisorPdf(advisorExportPayload, "compact")} disabled={!taxReleaseReady} title={taxReleaseReady ? "Kompakte Steuerberaterakte als PDF erstellen" : "Export erst nach Abschluss der Freigabe möglich"} style={{ ...styles.button, opacity: taxReleaseReady ? 1 : 0.55, cursor: taxReleaseReady ? "pointer" : "not-allowed" }}>
                 <Printer size={16} />
-                Steuerberater-PDF
+                Kurzakte PDF
+              </button>
+              <button type="button" onClick={() => openAdvisorPdf(advisorExportPayload, "full")} disabled={!taxReleaseReady} title={taxReleaseReady ? "Vollständige Steuerberaterakte als PDF erstellen" : "Export erst nach Abschluss der Freigabe möglich"} style={{ ...styles.button, opacity: taxReleaseReady ? 1 : 0.55, cursor: taxReleaseReady ? "pointer" : "not-allowed" }}>
+                <Printer size={16} />
+                Vollakte PDF
               </button>
             </div>
           </div>
