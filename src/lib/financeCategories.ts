@@ -8,6 +8,11 @@ export type FinanceCategoryOption = {
 export const MIETE_NACHZAHLUNG_CATEGORY = "Miete Nachzahlung";
 export const NK_NACHZAHLUNG_CATEGORY = "NK-Nachzahlung";
 export const DARLEHENSAUSZAHLUNG_CATEGORY = "Darlehensauszahlung";
+// Interne Geldbewegungen bei Eigennutzung werden bewusst getrennt geführt:
+// Sie bleiben im Kontoverlauf sichtbar, dürfen jedoch weder als Miete noch
+// als Anlage-V-Ausgabe in steuerliche Summen gelangen.
+export const EIGENMITTELZUFUEHRUNG_EIGENNUTZUNG_CATEGORY = "Eigenmittelzuführung (Eigennutzung)";
+export const WEG_HAUSGELD_EIGENNUTZUNG_CATEGORY = "WEG-Hausgeld (Eigennutzung)";
 // Eigentümer-Nachzahlungen aus einer WEG-Abrechnung bei Eigennutzung sind
 // weder Mieter-Nebenkosten noch Anlage-V-Werbungskosten. Die eigene Kategorie
 // verhindert, dass sie versehentlich als umlagefähige Kosten klassifiziert
@@ -25,6 +30,7 @@ export const FINANCE_CATEGORY_OPTIONS: FinanceCategoryOption[] = [
   { value: MIETE_NACHZAHLUNG_CATEGORY, type: "income" },
   { value: NK_NACHZAHLUNG_CATEGORY, type: "income" },
   { value: DARLEHENSAUSZAHLUNG_CATEGORY, type: "income" },
+  { value: EIGENMITTELZUFUEHRUNG_EIGENNUTZUNG_CATEGORY, type: "income" },
   { value: "Kaution", type: "both" },
   { value: "Mietbestandteil-NK", type: "income" },
 
@@ -50,6 +56,7 @@ export const FINANCE_CATEGORY_OPTIONS: FinanceCategoryOption[] = [
   { value: "Reparatur", type: "expense" },
   { value: "Versicherung", type: "expense" },
   { value: "Wartung", type: "expense" },
+  { value: WEG_HAUSGELD_EIGENNUTZUNG_CATEGORY, type: "expense" },
   { value: WEG_NK_NACHZAHLUNG_OBJEKT_195_EIGENNUTZUNG_CATEGORY, type: "expense" },
   { value: WEG_NK_NACHZAHLUNG_TG_13_EIGENNUTZUNG_CATEGORY, type: "expense" },
 ];
@@ -65,6 +72,9 @@ const CATEGORY_ALIAS_PAIRS: Array<[string, string]> = [
   ["hausgeld", "Verwaltungskosten"],
   ["weg", "Verwaltungskosten"],
   ["weg hausgeld", "Verwaltungskosten"],
+  ["eigenmittelzufuehrung eigennutzung", EIGENMITTELZUFUEHRUNG_EIGENNUTZUNG_CATEGORY],
+  ["eigenmittelzuführung eigennutzung", EIGENMITTELZUFUEHRUNG_EIGENNUTZUNG_CATEGORY],
+  ["weg hausgeld eigennutzung", WEG_HAUSGELD_EIGENNUTZUNG_CATEGORY],
   ["weg nachzahlung objekt 195", WEG_NK_NACHZAHLUNG_OBJEKT_195_EIGENNUTZUNG_CATEGORY],
   ["weg nk nachzahlung objekt 195", WEG_NK_NACHZAHLUNG_OBJEKT_195_EIGENNUTZUNG_CATEGORY],
   ["nebenkosten nachzahlung objekt 195", WEG_NK_NACHZAHLUNG_OBJEKT_195_EIGENNUTZUNG_CATEGORY],

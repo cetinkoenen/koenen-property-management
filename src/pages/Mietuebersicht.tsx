@@ -331,6 +331,11 @@ function resolveRentStatus(paidAmount: number, expectedAmount: number | null, in
   return paidAmount > 0 ? "paid" : "missing";
 }
 
+/** Eigennutzung erzeugt weder Sollmiete noch einen Mieter-/Zahlungsstatus. */
+function isOwnerOccupiedProperty(objectLabel: string): boolean {
+  return normalizeReferenceText(objectLabel).includes("hohenloher");
+}
+
 function statusLabel(status: RentStatus): string {
   if (status === "paid") return "BEZAHLT";
   if (status === "partial") return "TEILWEISE";
@@ -1745,6 +1750,28 @@ export default function Mietuebersicht({
       sourceObjects.flatMap((object) => {
         const objectCandidateIds = candidatePropertyIdsForObject(object, appData.portfolioRows, portfolioProperties);
         const units = getUnitDefinitions(object.label);
+        if (isOwnerOccupiedProperty(object.label)) {
+          return displayedPeriods.flatMap((period) => units.map((unit): OverviewRow => ({
+            objectId: object.id,
+            objectCode: object.code,
+            tenantKey: `${object.id}::${unit.ref}::${period.year}-${String(period.month).padStart(2, "0")}`,
+            tenantLookupKey: `${object.id}::${unit.ref}`,
+            label: object.label,
+            unitLabel: unit.title,
+            referenceLabel: units.length > 1 ? unit.ref : undefined,
+            paidAmount: 0,
+            expectedAmount: null,
+            expectedColdRent: null,
+            expectedOperatingCosts: null,
+            lastBookingDate: null,
+            status: "inactive" as const,
+            periodLabel: period.label,
+            year: period.year,
+            month: period.month,
+            expectedSource: "Eigennutzung · kein Mietverhältnis und keine Sollmiete",
+            tenantInfo: emptyTenant,
+          })));
+        }
         return displayedPeriods.flatMap((period) => {
           const monthlyKnownBookings = allKnownBookings.filter((booking) =>
             isBookingRelevantForDisplayedMonth(booking, object.label, "hauptmiete", period.start, period.end)
