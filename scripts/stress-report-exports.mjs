@@ -118,6 +118,7 @@ assert.match(taxPreflight, /rosensteinUnit[\s\S]*detectRosensteinTaxUnit/, "Die 
 assert.match(taxClassification, /entryType === "income" && canonicalCategory === "Verwaltungskosten"[\s\S]*taxRelevant: true[\s\S]*locked: false/, "Hausverwaltungs-Gutschriften muessen steuerlich als Kostenminderung freigegeben bleiben");
 assert.match(taxEngine, /category === "Verwaltungskosten"[\s\S]*categoryName: "Nicht umlagefähige Kosten \/ Verwaltung"[\s\S]*expenseAmount: -value/, "Hausverwaltungs-Gutschriften muessen die Verwaltungskosten im Anlage-V-Bericht mindern");
 assert.match(taxEngine, /directBankAccountFees[\s\S]*portfolioBankAccountFeeShare/, "Kontoführungsgebühren müssen ausschließlich aus tatsächlich gebuchten, objektbezogenen oder dokumentiert verteilten Beträgen stammen");
+assert.match(steuerCenter, /Feld 7 · Kontoführungsgebühren[\s\S]*Objektbezogen[\s\S]*Portfolioanteil/, "Die Kontoführungsgebühren müssen in der sichtbaren Feld-7-Ansicht getrennt ausgewiesen werden");
 assert.match(portfolioExpense, /isPersonalMovingExpense[\s\S]*umzugskosten/, "Private Umzugskosten müssen aus der pauschalen Portfolio-Verteilung ausgeschlossen sein");
 assert.match(nkClassification, /anschaffungskosten[\s\S]*erwerbsnebenkosten[\s\S]*grundbuch[\s\S]*grunderwerbsteuer/, "Anschaffungs-/Erwerbsnebenkosten dürfen nie als umlagefähige Nebenkosten klassifiziert werden");
 assert.match(financeCategories, /NK_NACHZAHLUNG_CATEGORY[\s\S]*DARLEHENSAUSZAHLUNG_CATEGORY/, "NK-Nachzahlung und Darlehensauszahlung müssen eindeutige zentrale Kategorien besitzen");

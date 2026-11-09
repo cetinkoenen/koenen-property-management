@@ -2314,6 +2314,15 @@ function AnlageVReportCard({ report }: { report: AnlageVReport }) {
           value={formatTaxCurrency(report.administrationCosts)}
           hint={`Kontoführung ${formatTaxCurrency(report.directBankAccountFees + report.portfolioBankAccountFeeShare)} (objektbezogen ${formatTaxCurrency(report.directBankAccountFees)}, Portfolio ${formatTaxCurrency(report.portfolioBankAccountFeeShare)}), Reisen ${formatTaxCurrency(report.mileageCosts)}, Bewirtung ${formatTaxCurrency(report.businessMealDeductible)}, Telefon/Internet ${formatTaxCurrency(report.telecommunicationDeductible)}`}
         />
+        <div style={{ ...styles.reportField, gridColumn: "1 / -1", borderColor: "#99f6e4", background: "#f0fdfa" }}>
+          <div style={styles.metaLabel}>Feld 7 · Kontoführungsgebühren (tatsächlich gebucht)</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(185px, 1fr))", gap: 10, marginTop: 9 }}>
+            <div><div style={{ fontSize: 12, fontWeight: 800, color: "#0f766e" }}>Objektbezogen</div><div style={{ marginTop: 3, fontSize: 18, fontWeight: 950, color: "#115e59" }}>{formatTaxCurrency(report.directBankAccountFees)}</div></div>
+            <div><div style={{ fontSize: 12, fontWeight: 800, color: "#0f766e" }}>Portfolioanteil</div><div style={{ marginTop: 3, fontSize: 18, fontWeight: 950, color: "#115e59" }}>{formatTaxCurrency(report.portfolioBankAccountFeeShare)}</div></div>
+            <div><div style={{ fontSize: 12, fontWeight: 800, color: "#0f766e" }}>Summe Kontoführung</div><div style={{ marginTop: 3, fontSize: 18, fontWeight: 950, color: "#115e59" }}>{formatTaxCurrency(report.directBankAccountFees + report.portfolioBankAccountFeeShare)}</div></div>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: "#47636b" }}>Keine Pauschale: Es werden ausschließlich im Steuerjahr gebuchte Kontoführungsgebühren berücksichtigt.</div>
+        </div>
         <ReportField label="Ergebnis" value={formatTaxCurrency(report.net)} hint="Vorläufige steuerliche Summe" />
       </div>
     </article>
