@@ -920,35 +920,60 @@ function openAdvisorPdf(payload: AdvisorExportPayload) {
           ["4", "Schuldzinsen", formatTaxCurrency(report.loanInterest), "Tilgung ausgeschlossen"],
           ["5", "Erhaltungsaufwand", formatTaxCurrency(report.maintenance), `${report.maintenanceDistributionYears} Jahr(e) Verteilung`],
           ["6", "Laufende Betriebs- & Nebenkosten", formatTaxCurrency(report.runningCosts), "Grundsteuer, Versicherung, Müll, Wartung"],
-          ["7", "Verwaltung & sonstige Werbungskosten", formatTaxCurrency(report.administrationCosts), "Verwaltung, Inserate, Reisen, Bewirtung, Telefon/Internet, Pauschale"],
+          ["7", "Verwaltung & sonstige Werbungskosten", formatTaxCurrency(report.administrationCosts), "Verwaltung, Inserate, Reisen, Bewirtung, Telefon/Internet und tatsächlich gezahlte Kontoführungsgebühren"],
         ],
       },
       {
         title: "Feld 7 Aufschlüsselung",
         headers: ["Position", "Betrag"],
         rows: [
-          ["Portfolio-Ausgaben anteilig", formatTaxCurrency(report.portfolioAdministrationShare)],
+          ["Übrige Portfolio-Ausgaben anteilig", formatTaxCurrency(report.portfolioAdministrationShare - report.portfolioBankAccountFeeShare)],
+          ["Kontoführungsgebühren – objektbezogen", formatTaxCurrency(report.directBankAccountFees)],
+          ["Kontoführungsgebühren – Portfolioanteil", formatTaxCurrency(report.portfolioBankAccountFeeShare)],
           ["Reisekosten gesamt", formatTaxCurrency(report.mileageCosts)],
           ["Fahrt / Ticket", formatTaxCurrency(report.mileageTravelCosts)],
           ["Verpflegungsmehraufwand", formatTaxCurrency(report.mileageVmaCosts)],
           ["Hotelkosten", formatTaxCurrency(report.mileageHotelCosts)],
           ["Bewirtungskosten 70%", formatTaxCurrency(report.businessMealDeductible)],
           ["Telefon/Internet anteilig", formatTaxCurrency(report.telecommunicationDeductible)],
-          ["Kontoführungsgebühr-Pauschale", formatTaxCurrency(report.bankAccountFlatFee)],
         ],
       },
-      ...(report.portfolioAdministrationRows.length
+      ...(report.portfolioAdministrationRows.some((entry) => !report.portfolioBankAccountFeeRows.some((fee) => fee.id === entry.id))
         ? [
             {
-              title: "Portfolio-Ausgaben-Dokumentation",
+              title: "Übrige Portfolio-Ausgaben-Dokumentation",
               headers: ["Datum", "Kategorie", "Gesamtbetrag", "Objektanteil", "Notiz"],
-              rows: report.portfolioAdministrationRows.map((entry) => [
+              rows: report.portfolioAdministrationRows.filter((entry) => !report.portfolioBankAccountFeeRows.some((fee) => fee.id === entry.id)).map((entry) => [
                 entry.booking_date ?? "",
                 entry.category ?? "",
                 formatTaxCurrency(Math.abs(Number(entry.amount ?? 0))),
                 formatTaxCurrency(Math.abs(Number(entry.amount ?? 0)) / payload.dashboard.AnlageVReports.length),
                 entry.note ?? "",
               ]),
+            },
+          ]
+        : []),
+      ...(report.directBankAccountFeeRows.length || report.portfolioBankAccountFeeRows.length
+        ? [
+            {
+              title: "Kontoführungsgebühren-Dokumentation",
+              headers: ["Datum", "Zuordnung", "Gesamtbetrag", "Objektanteil", "Notiz"],
+              rows: [
+                ...report.directBankAccountFeeRows.map((entry) => [
+                  entry.booking_date ?? "",
+                  "Objektbezogen",
+                  formatTaxCurrency(Math.abs(Number(entry.amount ?? 0))),
+                  formatTaxCurrency(Math.abs(Number(entry.amount ?? 0))),
+                  entry.note ?? "",
+                ]),
+                ...report.portfolioBankAccountFeeRows.map((entry) => [
+                  entry.booking_date ?? "",
+                  "Portfolio-Ausgabe",
+                  formatTaxCurrency(Math.abs(Number(entry.amount ?? 0))),
+                  formatTaxCurrency(Math.abs(Number(entry.amount ?? 0)) / payload.dashboard.AnlageVReports.length),
+                  entry.note ?? "",
+                ]),
+              ],
             },
           ]
         : []),
@@ -2287,7 +2312,7 @@ function AnlageVReportCard({ report }: { report: AnlageVReport }) {
         <ReportField
           label="Feld 7 Verwaltung"
           value={formatTaxCurrency(report.administrationCosts)}
-          hint={`Reisen ${formatTaxCurrency(report.mileageCosts)} (Fahrt ${formatTaxCurrency(report.mileageTravelCosts)}, VMA ${formatTaxCurrency(report.mileageVmaCosts)}, Hotel ${formatTaxCurrency(report.mileageHotelCosts)}), Bewirtung ${formatTaxCurrency(report.businessMealDeductible)}, Telefon/Internet ${formatTaxCurrency(report.telecommunicationDeductible)} + ${formatTaxCurrency(report.bankAccountFlatFee)} Pauschale`}
+          hint={`Kontoführung ${formatTaxCurrency(report.directBankAccountFees + report.portfolioBankAccountFeeShare)} (objektbezogen ${formatTaxCurrency(report.directBankAccountFees)}, Portfolio ${formatTaxCurrency(report.portfolioBankAccountFeeShare)}), Reisen ${formatTaxCurrency(report.mileageCosts)}, Bewirtung ${formatTaxCurrency(report.businessMealDeductible)}, Telefon/Internet ${formatTaxCurrency(report.telecommunicationDeductible)}`}
         />
         <ReportField label="Ergebnis" value={formatTaxCurrency(report.net)} hint="Vorläufige steuerliche Summe" />
       </div>

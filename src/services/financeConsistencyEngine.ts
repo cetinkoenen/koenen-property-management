@@ -214,7 +214,7 @@ function addSteuerberichtSourceChecks(
       propertyId: null,
       propertyName: PORTFOLIO_GENERAL_LABEL,
       detail: `${stPortfolioRows.length} steuerrelevante Portfolio-Ausgaben (${portfolioTotal.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €) werden auf ${rentedObjectCount} Anlage-V-Objekte verteilt.`,
-      repairHint: `Im Bericht erscheint der Anteil unter "Verwaltungskosten & Pauschalen": ${portfolioShare.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € je vermietetem Objekt. Hohenloher bleibt ausgeschlossen.`,
+      repairHint: `Im Bericht erscheint der Anteil unter "Verwaltung & sonstige Werbungskosten": ${portfolioShare.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € je vermietetem Objekt. Hohenloher bleibt ausgeschlossen.`,
       expectedValue: portfolioShare,
       actualValue: portfolioTotal,
     });
@@ -295,7 +295,7 @@ function addSteuerberichtSourceChecks(
       propertyId: null,
       propertyName: profile.reportLabel,
       detail: `Steuerquellen erkannt: ${profileRows.length} Objektbuchungen, Mieteinnahmen ${income.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €, St-Ausgaben ${expenses.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € plus Portfolio-Anteil ${portfolioShare.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €.` ,
-      repairHint: "Diese Werte werden in der Anlage V – Steuerberater-Übergabe objektbezogen verarbeitet; Portfolio-Ausgaben werden zusätzlich anteilig unter Verwaltungskosten & Pauschalen ausgewiesen.",
+      repairHint: "Diese Werte werden in der Anlage V – Steuerberater-Übergabe objektbezogen verarbeitet; Portfolio-Ausgaben werden zusätzlich anteilig unter Verwaltung & sonstige Werbungskosten ausgewiesen.",
       expectedValue: portfolioShare,
       actualValue: round2(income + expenses + portfolioShare),
     });

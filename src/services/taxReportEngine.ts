@@ -20,7 +20,6 @@ export type TaxObjectProfile = {
   buildingYear: number;
   acquisitionPrice: number;
   afaRate: number;
-  bankAccountFlatFee: number;
   homeOfficePercentage: number;
 };
 
@@ -100,6 +99,10 @@ export type AnlageVReport = {
   administrationCosts: number;
   portfolioAdministrationShare: number;
   portfolioAdministrationRows: TaxReportEntry[];
+  directBankAccountFees: number;
+  directBankAccountFeeRows: TaxReportEntry[];
+  portfolioBankAccountFeeShare: number;
+  portfolioBankAccountFeeRows: TaxReportEntry[];
   businessMealDeductible: number;
   businessMealRows: TaxReportEntry[];
   telecommunicationDeductible: number;
@@ -109,7 +112,6 @@ export type AnlageVReport = {
   mileageVmaCosts: number;
   mileageHotelCosts: number;
   mileageRows: MileageTripRow[];
-  bankAccountFlatFee: number;
   net: number;
   warnings: string[];
   entries: TaxReportEntry[];
@@ -153,7 +155,6 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     buildingYear: 1956,
     acquisitionPrice: 145000,
     afaRate: 0.02,
-    bankAccountFlatFee: 16,
     homeOfficePercentage: 0,
   },
   {
@@ -166,7 +167,6 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     buildingYear: 1956,
     acquisitionPrice: 160000,
     afaRate: 0.02,
-    bankAccountFlatFee: 16,
     homeOfficePercentage: 0,
   },
   {
@@ -179,7 +179,6 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     buildingYear: 1956,
     acquisitionPrice: 145000,
     afaRate: 0.02,
-    bankAccountFlatFee: 16,
     homeOfficePercentage: 0,
   },
   {
@@ -192,7 +191,6 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     buildingYear: 1956,
     acquisitionPrice: 140000,
     afaRate: 0.02,
-    bankAccountFlatFee: 16,
     homeOfficePercentage: 0,
   },
   {
@@ -206,7 +204,6 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     buildingYear: 1960,
     acquisitionPrice: 0,
     afaRate: 0,
-    bankAccountFlatFee: 5.33,
     homeOfficePercentage: 0,
   },
   {
@@ -220,7 +217,6 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     buildingYear: 1960,
     acquisitionPrice: 0,
     afaRate: 0,
-    bankAccountFlatFee: 5.33,
     homeOfficePercentage: 0,
   },
   {
@@ -234,7 +230,6 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     buildingYear: 1960,
     acquisitionPrice: 0,
     afaRate: 0,
-    bankAccountFlatFee: 5.34,
     homeOfficePercentage: 0,
   },
   {
@@ -247,7 +242,6 @@ export const TAX_OBJECT_PROFILES: TaxObjectProfile[] = [
     buildingYear: 2025,
     acquisitionPrice: 530000,
     afaRate: 0,
-    bankAccountFlatFee: 0,
     homeOfficePercentage: 0,
   },
 ];
@@ -741,6 +735,8 @@ function buildAnlageVReport(baseProfile: TaxObjectProfile, entries: TaxReportEnt
     && isAllocatablePortfolioExpenseEntry({ ...entry, category: canonicalCategoryForTax(entry, profile.label) })
   ));
   const portfolioAdministrationShare = sumCurrency(portfolioAdministrationRows, (entry) => amount(entry.amount) / rentedObjectCount);
+  const portfolioBankAccountFeeRows = portfolioAdministrationRows.filter((entry) => categoryMatches(entry, ["Kontoführungsgebühr"], profile));
+  const portfolioBankAccountFeeShare = sumCurrency(portfolioBankAccountFeeRows, (entry) => amount(entry.amount) / rentedObjectCount);
   const telecommunicationRows = entries.filter((entry) => entryYear(entry) === year && entry.entry_type === "expense" && isTelecommunicationCategory(canonicalCategoryForTax(entry)));
   const telecommunicationDeductible = sumCurrency(telecommunicationRows, (entry) => {
     const details = parseTelecommunicationTaxDetails({ ...entry, rentedObjectCount });
@@ -779,6 +775,8 @@ function buildAnlageVReport(baseProfile: TaxObjectProfile, entries: TaxReportEnt
     bookingRows.filter((row) => row.categoryName === "Nicht umlagefähige Kosten / Verwaltung" || row.categoryName === "Sonstige Werbungskosten"),
     (row) => row.expenseAmount,
   );
+  const directBankAccountFeeRows = profileEntries.filter((entry) => entry.entry_type === "expense" && categoryMatches(entry, ["Kontoführungsgebühr"], profile));
+  const directBankAccountFees = sumCurrency(directBankAccountFeeRows, (entry) => amount(entry.amount));
   const businessMealRows = profileEntries.filter((entry) => entry.entry_type === "expense" && isBusinessMealCategory(canonicalCategoryForTax(entry, profile.label)));
   const businessMealDeductible = sumCurrency(businessMealRows, (entry) => calculateBusinessMealDeductible(amount(entry.amount)));
   const mileageRows = trips.filter((trip) => trip.steuerjahr === year && matchesProfileTrip(trip, profile));
@@ -823,6 +821,10 @@ function buildAnlageVReport(baseProfile: TaxObjectProfile, entries: TaxReportEnt
     administrationCosts,
     portfolioAdministrationShare,
     portfolioAdministrationRows,
+    directBankAccountFees,
+    directBankAccountFeeRows,
+    portfolioBankAccountFeeShare,
+    portfolioBankAccountFeeRows,
     businessMealDeductible,
     businessMealRows,
     telecommunicationDeductible,
@@ -832,7 +834,6 @@ function buildAnlageVReport(baseProfile: TaxObjectProfile, entries: TaxReportEnt
     mileageVmaCosts,
     mileageHotelCosts,
     mileageRows,
-    bankAccountFlatFee: 0,
     net,
     warnings,
     entries: profileEntries,
@@ -1014,7 +1015,9 @@ export function buildAnlageVReportLines(report: AnlageVReport): string[] {
     `Feld 5 - Erhaltungsaufwand: ${formatTaxCurrency(report.maintenance)}`,
     `Feld 6 - Laufende Betriebs- & Nebenkosten: ${formatTaxCurrency(report.runningCosts)}`,
     `Feld 7 - Verwaltung & sonstige Werbungskosten: ${formatTaxCurrency(report.administrationCosts)}`,
-    `  davon Portfolio-Ausgaben anteilig: ${formatTaxCurrency(report.portfolioAdministrationShare)}`,
+    `  davon übrige Portfolio-Ausgaben anteilig: ${formatTaxCurrency(report.portfolioAdministrationShare - report.portfolioBankAccountFeeShare)}`,
+    `  davon Kontoführungsgebühren objektbezogen: ${formatTaxCurrency(report.directBankAccountFees)}`,
+    `  davon Kontoführungsgebühren Portfolioanteil: ${formatTaxCurrency(report.portfolioBankAccountFeeShare)}`,
     `  davon Bewirtungskosten (70% Anteil): ${formatTaxCurrency(report.businessMealDeductible)}`,
     `  davon Telekommunikation (20% gedeckelt, anteilig): ${formatTaxCurrency(report.telecommunicationDeductible)}`,
     `  davon Reisekosten gesamt: ${formatTaxCurrency(report.mileageCosts)}`,
@@ -1051,11 +1054,21 @@ export function buildAnlageVReportLines(report: AnlageVReport): string[] {
           }),
         ]
       : []),
-    ...(report.portfolioAdministrationRows.length
+    ...(report.portfolioAdministrationRows.some((entry) => !report.portfolioBankAccountFeeRows.some((fee) => fee.id === entry.id))
       ? [
           "",
           "Portfolio-Ausgaben-Dokumentation:",
-          ...report.portfolioAdministrationRows.map((entry) => `- ${entry.booking_date ?? "-"} | ${entry.category ?? "-"} | Gesamt: ${formatTaxCurrency(amount(entry.amount))} | Objektanteil: ${formatTaxCurrency(amount(entry.amount) / anlageVObjectCountForYear(report.year))} | ${entry.note ?? ""}`),
+          ...report.portfolioAdministrationRows
+            .filter((entry) => !report.portfolioBankAccountFeeRows.some((fee) => fee.id === entry.id))
+            .map((entry) => `- ${entry.booking_date ?? "-"} | ${entry.category ?? "-"} | Gesamt: ${formatTaxCurrency(amount(entry.amount))} | Objektanteil: ${formatTaxCurrency(amount(entry.amount) / anlageVObjectCountForYear(report.year))} | ${entry.note ?? ""}`),
+        ]
+      : []),
+    ...(report.directBankAccountFeeRows.length || report.portfolioBankAccountFeeRows.length
+      ? [
+          "",
+          "Kontoführungsgebühren-Dokumentation:",
+          ...report.directBankAccountFeeRows.map((entry) => `- ${entry.booking_date ?? "-"} | objektbezogen | ${formatTaxCurrency(amount(entry.amount))} | ${entry.note ?? ""}`),
+          ...report.portfolioBankAccountFeeRows.map((entry) => `- ${entry.booking_date ?? "-"} | Portfolio-Gesamt: ${formatTaxCurrency(amount(entry.amount))} | Objektanteil: ${formatTaxCurrency(amount(entry.amount) / anlageVObjectCountForYear(report.year))} | ${entry.note ?? ""}`),
         ]
       : []),
     ...(report.businessMealRows.length
