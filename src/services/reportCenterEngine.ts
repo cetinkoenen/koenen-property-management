@@ -17,6 +17,8 @@ export const reportNames = [
   ['validation', 'Prüfliste mit Ausnahmen vor Steuerexport'],
   ['cover', 'Steuerberater-Report · Deckblatt & Kennzahlen'],
   ['eur', 'Einnahmen-Überschuss-Rechnung (EÜR)'],
+  ['completeness', 'Vollständigkeitsampel je Immobilie'],
+  ['owner-occupancy', 'Eigennutzung · nicht Anlage V'],
   ['tenants', 'Mieterübersicht & Zahlungsmatrix'],
   ['journal', 'Belegverzeichnis & Buchungsjournal'],
   ['objects', 'Objektübersicht & Eckdaten'],
@@ -28,6 +30,7 @@ export const reportNames = [
   ['wealth-statement', 'Aufstellung Ihres Immobilienvermögens'],
   ['register', 'Immobilien-Stammdaten (Portfolio-Register)'],
   ['acquisition', 'Anschaffungskosten & AfA-Basis'],
+  ['rosenstein-allocation', 'Rosenstein · Verteilung gemeinsamer Belege'],
   ['loans', 'Immobilien-Eigenschaften & Darlehen'],
   ['arrears', 'Mietkonto-Check & Offene Zahlungen'],
   ['cashflow', 'Vermögen Cashflow Report'],
@@ -36,8 +39,11 @@ export const reportNames = [
 export const taxAdvisorReportIds = [
   'validation',
   'cover',
+  'completeness',
+  'owner-occupancy',
   'objects',
   'acquisition',
+  'rosenstein-allocation',
   'tenants',
   'adjustments',
   'eur',
@@ -49,7 +55,7 @@ export const taxAdvisorReportIds = [
   'journal',
 ] as const;
 /** Schlanke Standardakte: Steuerberater sieht zuerst nur entscheidungsrelevante Kapitel. */
-export const taxAdvisorCompactReportIds = ['validation','cover','objects','tenants','eur','acquisition','loan-interest','utilities'] as const;
+export const taxAdvisorCompactReportIds = ['validation','cover','completeness','owner-occupancy','objects','tenants','eur','acquisition','rosenstein-allocation','loan-interest','utilities'] as const;
 export const portfolioReportIds = ['wealth-statement', 'register', 'acquisition', 'loans', 'arrears', 'cashflow', 'loan-interest'] as const;
 export const euro = (v: unknown) => v == null || v === '' ? 'Nicht gepflegt' : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(parseLocaleNumber(v, 0));
 const percent = (v: number, digits = 1) => `${new Intl.NumberFormat('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v)} %`;
@@ -211,13 +217,17 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
       }];
     })
     .sort((a,b) => text(a.booking_date).localeCompare(text(b.booking_date)) || text(a.id).localeCompare(text(b.id)));
+  const sourceEntries = preflight.entries
+    .filter(e => dateIn(e.booking_date, from, to) && scoped(e));
   // Eine stabile Belegreferenz ist ausschließlich eine Darstellungskennung.
   // Die Buchung selbst bleibt der einzige Datensatz in finance_entry.
   const journalEntries = [...entries];
   const evidenceReferences = new Map<FinanceEntry, string>(
     journalEntries.map((entry, index) => [entry, `B-${String(index + 1).padStart(5, '0')}`]),
   );
+  const evidenceReferencesById = new Map(journalEntries.map((entry, index) => [text(entry.id), `B-${String(index + 1).padStart(5, '0')}`]));
   const evidenceReference = (entry: FinanceEntry) => evidenceReferences.get(entry) ?? 'B-—';
+  const evidenceReferenceById = (entry: FinanceEntry) => evidenceReferencesById.get(text(entry.id)) ?? 'B-—';
   const incomes = entries.filter(e => e.entry_type === 'income');
   const expenses = entries.filter(e => e.entry_type === 'expense');
   const adjustments = (s.rent_adjustments ?? []).filter(r => scoped(r) && unitScoped(r) && !isOwnerOccupiedRecord(r)).sort((a,b) => text(b.effective_date).localeCompare(text(a.effective_date)));
@@ -487,6 +497,25 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const excluded: FinanceEntry[] = [];
   const isAcquisitionEntry = (entry: FinanceEntry) => /anschaffung|erwerbsneben|kaufpreis|grundbuch|notar|immobilienmakler|makler/i.test(`${text(entry.category)} ${text(entry.note)}`);
   const isLoanRateEntry = (entry: FinanceEntry) => /kreditrate|darlehensrate/i.test(text(entry.category));
+  // Fachliche Orientierung fuer die Anlage V. Es handelt sich bewusst nicht
+  // um eine starre ELSTER-Zeilennummer, weil sich amtliche Formulare aendern
+  // koennen; die abschliessende Zuordnung bleibt beim Steuerberater.
+  const anlageVMapping = (category: string): string => {
+    const key = normalizePerson(category);
+    if (/kaltmiete|mieteinnahmen|mietnachzahlung/.test(key)) return 'Mieteinnahmen';
+    if (/nebenkosten|betriebskosten/.test(key)) return 'Umlagen / Nebenkosten';
+    if (/mahn/.test(key)) return 'Sonstige Einnahmen';
+    if (/kreditrate|darlehen|zins/.test(key)) return 'Schuldzinsen';
+    if (/verwaltung/.test(key)) return 'Verwaltungskosten';
+    if (/instand|reparatur|wartung|modernisierung/.test(key)) return 'Erhaltungsaufwand prüfen';
+    if (/kontof.hr|bankgeb.hr/.test(key)) return 'Kontoführungsgebühren';
+    if (/grundsteuer|versicherung|m.ll|wasser|abwasser|strom|reinigung|schornstein/.test(key)) return 'Laufende Grundstückskosten';
+    if (/summe|ergebnis/.test(key)) return 'Zwischensumme / Ergebnis';
+    return 'Sonstige Werbungskosten / Einordnung prüfen';
+  };
+  const vatHintForEur = (category: string) => /miete|nebenkosten|betriebskosten/.test(normalizePerson(category))
+    ? 'Wohnraumvermietung – regelmäßig umsatzsteuerfrei*'
+    : 'Betrag aus Buchung; USt-Einordnung prüfen';
   for (const e of incomes) {
     const c = text(e.category).toLowerCase();
     if (e.tax_relevant === false || isOwnerOccupied(objectFor(e)) || /kaution|darlehensauszahlung|darlehensrate|kreditrate|umbuchung/.test(c)) { excluded.push(e); continue; }
@@ -513,7 +542,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     expenseGroups.set(key,(expenseGroups.get(key) ?? 0)+amount); deductible += amount;
   }
   const revenue = [...incomeGroups.values()].reduce((sum,amount) => sum+amount,0);
-  const amountRow = (category: string, amount: number) => [category,'Nicht hinterlegt','Nicht hinterlegt',euro(amount)];
+  const amountRow = (category: string, amount: number) => [category,anlageVMapping(category),vatHintForEur(category),euro(amount)];
   const eurRows = [...incomeGroups].map(([k,amount]) => amountRow(k,amount));
   eurRows.push(amountRow('Summe Einnahmen',revenue));
   for (const group of ['Umlagefähige Kosten','Nicht umlagefähige Kosten','Umlagefähigkeit nicht gepflegt']) {
@@ -537,7 +566,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     ['Separat abgegrenzt · nicht EÜR', euro(excludedIncome), euro(excludedExpense), euro(excludedIncome - excludedExpense), 'Kautionen, Anschaffung, Umbuchungen, nicht steuerrelevante Vorgänge'],
     ['Rechenprüfung EÜR', euro(revenue), euro(deductible), euro(roundMoney(revenue - deductible)), 'Einnahmen minus Ausgaben = vorbereitetes Ergebnis'],
   ];
-  const eur = module('eur',[table('Einnahmen und Ausgaben',['Kategorie','Netto','Steuer','Brutto'],eurRows),table('Abstimmung Buchungsjournal → EÜR',['Bereich','Einnahmen','Ausgaben','Saldo','Einordnung'],reconciliationRows,'Die Zeilen sind getrennte Berichtssichten und werden nicht untereinander addiert. Entscheidend für die Anlage V ist die Zeile „Steuerlich vorbereitete EÜR“.') ,table(ownerOccupiedScope ? 'Kontobewegungen Eigennutzung · nicht Anlage V' : 'Weitere separat abzugrenzende Geldbewegungen',['Datum','Objekt','Mieter / Bezug','Vorgang','Beschreibung','Betrag','Einordnung'],separatelyReported
+  const eur = module('eur',[table('Einnahmen und Ausgaben',['EÜR-Kategorie','Anlage-V-Zuordnung (prüfen)','Umsatzsteuer-Hinweis','Betrag'],eurRows,'Die Anlage-V-Zuordnung ist eine fachliche Arbeitshilfe, keine starre Formularzeile. *Wohnraumvermietung ist regelmäßig umsatzsteuerfrei, sofern keine abweichende Behandlung hinterlegt wurde.'),table('Abstimmung Buchungsjournal → EÜR',['Bereich','Einnahmen','Ausgaben','Saldo','Einordnung'],reconciliationRows,'Die Zeilen sind getrennte Berichtssichten und werden nicht untereinander addiert. Entscheidend für die Anlage V ist die Zeile „Steuerlich vorbereitete EÜR“.') ,table(ownerOccupiedScope ? 'Kontobewegungen Eigennutzung · nicht Anlage V' : 'Weitere separat abzugrenzende Geldbewegungen',['Datum','Objekt','Mieter / Bezug','Vorgang','Beschreibung','Betrag','Einordnung'],separatelyReported
     .slice()
     .sort((a,b) => text(a.booking_date).localeCompare(text(b.booking_date)) || text(a.id).localeCompare(text(b.id)))
     .map(e => [
@@ -609,10 +638,15 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const tenants = module('tenants',[table(ownerOccupiedScope ? 'Mietverhältnis' : 'Mieter- und Vertragszeitleiste',['Objekt','Einheit','Mieter','Von','Bis','Kaltmiete','NK','Sonstiges','Gesamtmiete','Fläche m²','€/m²','Kaution (vereinbart)'],contractRows,'Chronologisch nach Einheit und Vertragsbeginn. Jeder Zeitraum erscheint genau einmal; für die Zahlungsmonate gilt die nachfolgende Soll-/Ist-Matrix.'),matrix],[ownerOccupiedScope ? ownerOccupancyNote : rentNote, ...(ownerOccupiedScope ? ['Für dieses Objekt werden bewusst keine Vertrags-, Kautions- oder Sollmietdaten erzeugt.'] : ['Die vereinbarte Kaution wird ausschließlich aus dem für den Berichtszeitraum gültigen Mietvertrag übernommen. Ein Zahlungseingang wird daraus nicht abgeleitet.'])]);
   if (billingPeriods.length && !input.compact) tenants.tables?.splice(1,0,table('Vermietungszeiträume aus gespeicherten Abrechnungen',['Objekt','Einheit','Mieter','Von','Bis','Fläche m²','NK-Vorauszahlungen','Monate','Quelle'],billingPeriods.map(p=>[p.object?.label ?? 'Nicht zugeordnet',p.unit,p.tenant,p.from,p.to,str(p.area),euro(p.advancePayments),p.occupancyMonths ?? '—',p.source])));
   let balance = 0;
-  const journal = module('journal',[table('Belegverzeichnis & Buchungsjournal',['Belegreferenz','Datum','Einheit / Objekt','Mieter','Typ','Kategorie','Beschreibung','Eingang (+)','Ausgaben (-)','Saldo'],journalEntries.map(e => {
+  const evidenceFileSuggestion = (entry: FinanceEntry) => {
+    const unit = input.rosensteinUnit ?? recordUnit(entry) ?? unitLabel(entry, label(entry));
+    const unitToken = text(unit).replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 28) || 'Beleg';
+    return `${text(entry.booking_date).slice(0,10)}_${unitToken}_${evidenceReference(entry)}.pdf`;
+  };
+  const journal = module('journal',[table('Belegverzeichnis & Buchungsjournal',['Belegreferenz','Datum','Einheit / Objekt','Mieter','Typ','Kategorie','Beschreibung','Eingang (+)','Ausgaben (-)','Saldo','Dateiname (Vorschlag)'],journalEntries.map(e => {
     balance += e.entry_type === 'income' ? Math.abs(e.amount) : e.entry_type === 'expense' ? -Math.abs(e.amount) : 0;
-    return [evidenceReference(e),e.booking_date,label(e),tenantForEntry(e),e.entry_type,e.category,e.note,e.entry_type==='income'?euro(Math.abs(e.amount)):'',e.entry_type==='expense'?euro(Math.abs(e.amount)):'',euro(balance)];
-  }))],['Jede Buchung erscheint genau einmal mit einer stabilen Belegreferenz. Saldo = kumulierte Bewegung im gewählten Zeitraum, Anfangswert 0; kein Bankkontostand.']);
+    return [evidenceReference(e),e.booking_date,label(e),tenantForEntry(e),e.entry_type,e.category,e.note,e.entry_type==='income'?euro(Math.abs(e.amount)):'',e.entry_type==='expense'?euro(Math.abs(e.amount)):'',euro(balance),evidenceFileSuggestion(e)];
+  }))],['Jede Buchung erscheint genau einmal mit einer stabilen Belegreferenz. Der Dateiname ist ein Vorschlag für neue Dateien; bestehende Originaldateien werden dadurch nicht umbenannt. Saldo = kumulierte Bewegung im gewählten Zeitraum, Anfangswert 0; kein Bankkontostand.']);
   const rentValueForObject = (o: AppObject, field: 'cold_rent' | 'operating_costs'): number | null => {
     const objectContracts = active.filter(c => objectFor(c)?.id === o.id);
     if (objectContracts.length && objectContracts.every(c => currentRent(c,field) != null)) {
@@ -661,6 +695,43 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const unitDetails = reportingUnits.map(({object,row}) => { const parking=isParkingText(row.unitLabel); const area=areaForUnit(object,row.unitLabel); const activeInPeriod=row.months.some(m=>m.month>=firstMonth&&m.month<=lastMonth&&m.expected>0); return [row.objectLabel,row.unitLabel,parking?'Stellplatz / Garage':'Wohnung',str(area),activeInPeriod?'Vermietet im Zeitraum':'Ohne Soll-Miete im Zeitraum',tenantForRentRow(row)]; });
   const objectModule = module('objects',[table('Datenvollständigkeit Fläche',['Objekt','Fläche m²','Status','Hauptquelle'],areaStatus),table('Eckdaten · Stand zum Periodenende',['Objekt','Einheiten','Wohnen','Gewerbe','Garagen / Stellplätze','Unklassifiziert','Fläche m²','Nutzfläche m²','Kalt monatlich','NK monatlich','Gesamt monatlich','Kalt €/m²','Vermietungsquote'],objectRows),table('Einheiten-Details aus dem Mietkonto',['Objekt','Einheit','Art','Fläche m²','Status','Mieter'],unitDetails)],['Einheiten und Belegungsstatus stammen aus dem zentralen Mietkonto; Flächen aus der jeweiligen Objektakte im Immobilienvermögen. Bei Rosenstein gilt die dort gepflegte Fläche je TG-Stellplatz.']);
   objectModule.tables?.unshift(portfolioStats);
+  const completenessRows = objects.map((object) => {
+    const ownerOccupied = isOwnerOccupied(object);
+    const objectRentRows = rentRows.filter(row => row.objectId === object.id);
+    const objectRentals = rentalHistory.filter(row => objectFor(row)?.id === object.id);
+    const objectContracts = contracts.filter(row => objectFor(row)?.id === object.id);
+    const relevantUnits = allUnits.filter(row => objectFor(row)?.id === object.id);
+    const hasExpectedRent = objectRentRows.some(row => row.months.some(month => month.month >= firstMonth && month.month <= lastMonth && month.expected > 0));
+    const tenantKnown = ownerOccupied || !hasExpectedRent || objectRentRows.every(row => meaningfulTenant(tenantForRentRow(row)));
+    const areaComplete = ownerOccupied || isRosensteinLabel(object.label)
+      ? relevantUnits.length > 0 && relevantUnits.every(unit => n(areaForUnit(object,unit.name)) > 0)
+      : n(areaForObject(object)) > 0;
+    const contractKnown = ownerOccupied || !hasExpectedRent || objectContracts.length > 0 || objectRentals.length > 0;
+    const rentPaid = ownerOccupied || !hasExpectedRent || objectRentRows.every(row => row.months
+      .filter(month => month.month >= firstMonth && month.month <= lastMonth && month.expected > 0)
+      .every(month => rentBalancePart(month.expected, month.paid, 'open') === 0));
+    const interestKnown = ownerOccupied
+      ? true
+      : !entries.some(entry => objectFor(entry)?.id === object.id && isLoanRateEntry(entry))
+        || entries.some(entry => objectFor(entry)?.id === object.id && isLoanRateEntry(entry) && entry.loan_interest_amount != null);
+    const hasUtilityEvidence = (s.billing_workspaces ?? []).some(billing => objectFor({ object_code: billing.object_id })?.id === object.id)
+      || (s.property_documents ?? []).some(document => objectFor(document)?.id === object.id && /nk_abrechnung|betriebskosten/i.test(`${text(document.category)} ${text(document.title)}`));
+    const hasEvidence = (s.property_documents ?? []).some(document => objectFor(document)?.id === object.id)
+      || entries.some(entry => objectFor(entry)?.id === object.id);
+    const requiredMissing = [tenantKnown, areaComplete, contractKnown].filter(Boolean).length < 3;
+    const reviewNeeded = !rentPaid || !interestKnown || !hasUtilityEvidence || !hasEvidence;
+    const status = ownerOccupied ? '— Eigennutzung' : requiredMissing ? 'ROT' : reviewNeeded ? 'GELB' : 'GRÜN';
+    const flag = (value: boolean, notApplicable = false) => notApplicable ? '—' : value ? 'OK' : 'Prüfen';
+    return [object.label,status,flag(areaComplete,ownerOccupied),flag(tenantKnown,ownerOccupied),flag(contractKnown,ownerOccupied),flag(rentPaid,ownerOccupied),flag(interestKnown,ownerOccupied),flag(hasUtilityEvidence,ownerOccupied),flag(hasEvidence,ownerOccupied)];
+  });
+  const completeness = module('completeness', [table('Vollständigkeitsampel je Immobilie', ['Objekt','Gesamtstatus','Stammdaten / Fläche','Mieter','Mietvertrag','Mieteingänge','Darlehenszinsen','Nebenkosten','Belege'], completenessRows, 'GRÜN = vollständig; GELB = prüfen; ROT = Export blockiert. Eigennutzung wird getrennt und nicht als Anlage-V-Objekt bewertet.')], ['Die Ampel fasst ausschließlich vorhandene zentrale Datenquellen zusammen. Sie ändert keine Buchung und ersetzt keine fachliche Prüfung durch die Steuerberatung.']);
+  const ownerOccupancy = module('owner-occupancy', [table('Eigennutzung · nicht Anlage V', ['Bereich','Steuerliche Einordnung / Bearbeitung'], [
+    ['Nutzung', 'Eigennutzung · kein Mietverhältnis und keine Mieteinnahmen'],
+    ['Anlage V / EÜR', 'Nicht Bestandteil der Anlage V; keine Werbungskosten-EÜR ausweisen'],
+    ['Kreditrate und Hausgeld', 'Ausschließlich Finanzierungs- bzw. Kontobewegungsnachweis; nicht als Miete oder Werbungskosten behandeln'],
+    ['§ 35a', 'Nur anhand der WEG-Jahresabrechnung und der dort ausgewiesenen haushaltsnahen Dienstleistungen separat prüfen'],
+    ['Mieter-Nebenkosten', 'Nicht anwendbar; keine Mieterabrechnung erzeugen'],
+  ])], [ownerOccupancyNote, 'Dieser Abschnitt trennt die Eigennutzung vollständig von vermieteten Anlage-V-Objekten.']);
   const rentalHistoryRows = rentalHistory.map(r => {
     const object = objectFor(r);
     const unitLabel = rentalUnitLabel(r);
@@ -698,10 +769,13 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
         const periodFrom=str(meta.periodFrom);
         const periodTo=str(meta.periodTo);
         const object = objectFor({object_code:meta.propertyCode ?? billing.object_id,property_label:meta.propertyLabel});
-        const resolvedTenant = tenantForUtilityPeriod(object,apartment.label,periodFrom,periodTo,apartment.tenantName);
-        if (!meaningfulTenant(resolvedTenant)) registerUnresolvedUtilityTenant(object,apartment.label,periodFrom,periodTo);
-        utilities.tables?.push(table(`Anlage ${utilityAttachmentIndex} · Nebenkostenabrechnung · ${resolvedTenant} · ${periodFrom} bis ${periodTo}`, ['Objekt','Einheit','Mieter','Von','Bis','Fläche m²','Monate','Vorauszahlungen','Umlagefähige Kosten','Abrechnungsergebnis','Buchungs-/Quellenhinweis'], [[str(meta.propertyLabel),str(apartment.label),resolvedTenant,periodFrom,periodTo,n(apartment.area),n(apartment.occupancyMonths),euro(apartment.advancePayments),euro(result.tenantCosts),result.result,n(apartment.occupancyMonths)>0?`NK-Vorauszahlung aus Warmmiete: ${n(apartment.occupancyMonths)} × ${euro(monthly)} = ${euro(apartment.advancePayments)}`:'Vorauszahlungen gemäß gespeicherter Abrechnung']], `Anlage ${utilityAttachmentIndex} gehört ausschließlich zu ${resolvedTenant} im Zeitraum ${periodFrom} bis ${periodTo}. Mieterquelle: Mietvertrag, Vermietungszeitraum oder gespeicherte Abrechnung.`));
-        utilities.tables?.push(table(`Anlage ${utilityAttachmentIndex} · Kosten und gespeicherte Verteilerschlüssel`,['Kategorie','Gesamtkosten','Verteilung','Gesamtschlüssel','Einheitenschlüssel','Direktbetrag'],records(ws.costs).map(c=>[str(c.label),euro(c.amount),str(c.allocation),n(c.totalKey),n(c.apartmentKey),euro(c.directAmount)]),`Kostenbasis der unmittelbar vorhergehenden Anlage ${utilityAttachmentIndex}.`));
+        const canonicalApartmentLabel = canonicalUnitLabel({ objectLabel: str(meta.propertyLabel), objectCode: object?.code, unitLabel: str(apartment.label) }) ?? str(apartment.label);
+        const resolvedTenant = tenantForUtilityPeriod(object,canonicalApartmentLabel,periodFrom,periodTo,apartment.tenantName);
+        if (!meaningfulTenant(resolvedTenant)) registerUnresolvedUtilityTenant(object,canonicalApartmentLabel,periodFrom,periodTo);
+        const workflowStatus = text(meta.workflowStatus) || (meta.locked === true ? 'Freigegeben' : 'In Arbeit');
+        const appendixTitle = `Anlage NK-${utilityAttachmentIndex} · ${str(meta.propertyLabel)} · ${canonicalApartmentLabel} · ${meta.billingYear ?? billing.year} · ${workflowStatus}`;
+        utilities.tables?.push(table(appendixTitle, ['Objekt','Einheit','Mieter','Von','Bis','Fläche m²','Monate','Vorauszahlungen','Umlagefähige Kosten','Abrechnungsergebnis','Buchungs-/Quellenhinweis'], [[str(meta.propertyLabel),canonicalApartmentLabel,resolvedTenant,periodFrom,periodTo,n(apartment.area),n(apartment.occupancyMonths),euro(apartment.advancePayments),euro(result.tenantCosts),result.result,n(apartment.occupancyMonths)>0?`NK-Vorauszahlung aus Warmmiete: ${n(apartment.occupancyMonths)} × ${euro(monthly)} = ${euro(apartment.advancePayments)}`:'Vorauszahlungen gemäß gespeicherter Abrechnung']], `${appendixTitle}. Gehört ausschließlich zu ${resolvedTenant} im Zeitraum ${periodFrom} bis ${periodTo}. Mieterquelle: Mietvertrag, Vermietungszeitraum oder gespeicherte Abrechnung.`));
+        utilities.tables?.push(table(`Anlage NK-${utilityAttachmentIndex} · Kosten und gespeicherte Verteilerschlüssel`,['Kategorie','Gesamtkosten','Verteilung','Gesamtschlüssel','Einheitenschlüssel','Direktbetrag'],records(ws.costs).map(c=>[str(c.label),euro(c.amount),str(c.allocation),n(c.totalKey),n(c.apartmentKey),euro(c.directAmount)]),`Kostenbasis der unmittelbar vorhergehenden Anlage NK-${utilityAttachmentIndex}.`));
       }
   }
   for (const billing of s.billing_workspaces ?? []) {
@@ -713,8 +787,9 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
       const periodFrom=str(garage.periodFrom); const periodTo=str(garage.periodTo);
       const resolvedTenant=tenantForUtilityPeriod(object,garage.unitLabel,periodFrom,periodTo,garage.tenantName);
       if (!meaningfulTenant(resolvedTenant)) registerUnresolvedUtilityTenant(object,garage.unitLabel,periodFrom,periodTo);
-      utilities.tables?.push(table(`Anlage ${utilityAttachmentIndex} · Nebenkostenabrechnung · ${resolvedTenant} · ${periodFrom} bis ${periodTo}`,['Objekt','Einheit','Mieter','Von','Bis','Vorauszahlungen','Freigegeben'],[[str(garage.propertyLabel),str(garage.unitLabel),resolvedTenant,periodFrom,periodTo,euro(garage.tenantPrepayments),garage.finalized?'Ja':'Nein']],`Anlage ${utilityAttachmentIndex} gehört ausschließlich zu ${resolvedTenant} im Zeitraum ${periodFrom} bis ${periodTo}. Mieterquelle: Mietvertrag, Vermietungszeitraum oder gespeicherte Abrechnung.`));
-      utilities.tables?.push(table(`Anlage ${utilityAttachmentIndex} · Kosten und gespeicherte Verteilerschlüssel`,['Kategorie','Gesamtkosten','Verteilung','Gesamteinheiten','Eigene Einheiten'],records(garage.apportionableRows).map(c=>[str(c.label),euro(c.totalCost),str(c.key),n(c.totalUnits),n(c.yourUnits)]),`Kostenbasis der unmittelbar vorhergehenden Anlage ${utilityAttachmentIndex}.`));
+      const garageAppendixTitle = `Anlage NK-${utilityAttachmentIndex} · ${str(garage.propertyLabel)} · ${str(garage.unitLabel)} · ${garage.year} · ${garage.finalized ? 'Freigegeben' : 'In Arbeit'}`;
+      utilities.tables?.push(table(garageAppendixTitle,['Objekt','Einheit','Mieter','Von','Bis','Vorauszahlungen','Status'],[[str(garage.propertyLabel),str(garage.unitLabel),resolvedTenant,periodFrom,periodTo,euro(garage.tenantPrepayments),garage.finalized?'Freigegeben':'In Arbeit']],`${garageAppendixTitle}. Gehört ausschließlich zu ${resolvedTenant} im Zeitraum ${periodFrom} bis ${periodTo}. Mieterquelle: Mietvertrag, Vermietungszeitraum oder gespeicherte Abrechnung.`));
+      utilities.tables?.push(table(`Anlage NK-${utilityAttachmentIndex} · Kosten und gespeicherte Verteilerschlüssel`,['Kategorie','Gesamtkosten','Verteilung','Gesamteinheiten','Eigene Einheiten'],records(garage.apportionableRows).map(c=>[str(c.label),euro(c.totalCost),str(c.key),n(c.totalUnits),n(c.yourUnits)]),`Kostenbasis der unmittelbar vorhergehenden Anlage NK-${utilityAttachmentIndex}.`));
     }
   }
   const proofs = module('proofs',[docTable(docs.filter(r=>/leerstand|inserat|vermietungsbem|vacancy/i.test(JSON.stringify([r.title,r.notes,r.meta]))))]);
@@ -878,6 +953,17 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
       str(record(e)._report_allocation ?? (recordUnit(e)?'Direkte Einheitenzuordnung':'Gesamtobjekt')),
     ])),
   ],['Dokumentation der gespeicherten Kaufpreisaufteilung. AfA-Satz, zu aktivierende Nebenkosten und zeitanteilige Abschreibung werden ohne hinterlegte Grundlage nicht errechnet.',...(input.rosensteinUnit?[`Gemeinsame Rosenstein-Kaufpreise und Erwerbsbelege werden centgenau zu einem Drittel auf ${rosensteinTaxUnitLabel(input.rosensteinUnit)} verteilt. Die Summe der drei Einzelreports entspricht stets exakt dem Gesamtbeleg; Rechnungsnummer und Originalbetrag bleiben sichtbar.`]:[])]);
+  const rosensteinSharedEntries = sourceEntries.filter(entry => entry.entry_type === 'expense'
+    && isRosensteinLabel(objectFor(entry)?.label)
+    && detectRosensteinTaxUnits(entry.objekt_code, entry.category, entry.note).length !== 1
+    && (isAcquisitionEntry(entry) || isLoanRateEntry(entry)));
+  const rosensteinAllocation = module('rosenstein-allocation', [table('Verteilung gemeinsamer Rosenstein-Belege', ['Belegreferenz','Gesamtbeleg','P250','P253','P254','Summe Einzelanteile','Rundungsregel'], rosensteinSharedEntries.map(entry => {
+    const original = Math.abs(n(entry.amount));
+    const shares = ROSENSTEIN_TAX_UNITS.map(unit => Math.abs(allocateRosensteinThird(original, unit.code)));
+    return [evidenceReferenceById(entry), euro(original), ...shares.map(euro), euro(roundMoney(shares.reduce((sum, share) => sum + share, 0))), 'Centgenau 1/3; Restcent wird systematisch verteilt'];
+  }))], rosensteinSharedEntries.length
+    ? ['Gemeinsame Rosenstein-Belege werden ausschließlich nach dieser transparenten Drittelregel auf P250, P253 und P254 verteilt. Die Summe der drei Einzelanteile entspricht dem Gesamtbeleg.']
+    : ['Im gewählten Zeitraum liegen keine gemeinsamen Rosenstein-Erwerbs- oder Darlehensbelege vor. Direkte Stellplatzbuchungen werden nicht erneut verteilt.']);
   const loans = module('loans',[table('Eigenschaften und Finanzierung',['Objekt','Nutzung','Baujahr','Bank','IBAN / BIC','Darlehensnummer','Ursprungsdarlehen','Monatsrate','Zins %','Zinsbindung','Restschuld (letzter Stand)'],objects.map(o=>{const p=profiles(o);const loan=input.loans.find(l=>aliases(o).has(l.property_id));return[o.label,str(p.usageType),str(p.equipmentYear),str(p.lender),str(p.ibanBic),str(p.loanNumber),euro(p.originalLoanAmount),euro(p.currentMonthlyRate),str(p.interestRate),str(p.interestBinding),euro(loan?.last_balance??p.remainingDebt)];}))]);
   const cashflow = module('cashflow',[table(ownerOccupiedScope ? 'Gebuchte Eigenmittel- und Kontobewegungen' : 'Gebuchter Netto-Cashflow',['Objekt','Einnahmen','Kosten ohne Kreditraten','Gebuchte Kreditraten',ownerOccupiedScope ? 'Kontosaldo (informativ)' : 'Netto-Cashflow'],[...objects.map(o=>({label:o.label,rows:entries.filter(e=>objectFor(e)?.id===o.id)})),...(!input.objectId?[{label:'Portfolio / nicht zugeordnet',rows:entries.filter(e=>!objectFor(e))}]:[])].map(group=>{
     const inc=total(group.rows.filter(e=>e.entry_type==='income')); const out=group.rows.filter(e=>e.entry_type==='expense');const rates=total(out.filter(e=>/kreditrate|darlehensrate/i.test(text(e.category))));const costs=total(out)-rates;return[group.label,euro(inc),euro(costs),euro(rates),euro(inc-costs-rates)];}))],[ownerOccupiedScope ? `${ownerOccupancyNote} Der dargestellte Saldo ist kein Vermietungs-Cashflow und kein steuerliches Ergebnis.` : 'Zahlungsbasierter Cashflow: gebuchte Darlehensraten werden genau einmal abgezogen. Nicht gebuchte Raten werden nicht als tatsächliche Zahlung angenommen.']);
@@ -968,5 +1054,5 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   }]:[];
   const validation = taxPreflightModule(preflight);
   validation.variant = 'summary';
-  return [validation,cover,eur,tenants,journal,objectModule,changeModule,mileage,vacancy,utilities,proofs,wealthStatement,register,acquisition,loans,module('arrears',[table('Offene Zahlungen',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears),matrix],[rentNote]),cashflow,loanInterest];
+  return [validation,cover,completeness,...(ownerOccupiedScope ? [ownerOccupancy] : []),eur,tenants,journal,objectModule,changeModule,mileage,vacancy,utilities,proofs,wealthStatement,register,acquisition,...(objects.some(object => isRosensteinLabel(object.label)) ? [rosensteinAllocation] : []),loans,module('arrears',[table('Offene Zahlungen',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears),matrix],[rentNote]),cashflow,loanInterest];
 }

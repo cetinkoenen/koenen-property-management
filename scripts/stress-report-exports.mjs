@@ -91,7 +91,7 @@ assert.match(reportCenter, /Kaution \(vereinbart\)/, "Die vereinbarte Kaution mu
 assert.match(reportCenter, /Kaution wird ausschließlich aus dem für den Berichtszeitraum gültigen Mietvertrag übernommen/, "Die Kautionsquelle und ihre jahresbezogene Vertragslogik müssen im Report professionell dokumentiert sein");
 assert.match(reportCenter, /sameTenancyUnit[\s\S]*const tenancyPeriods = \[[\s\S]*rentPeriods[\s\S]*contractPeriods[\s\S]*billingPeriods/, "Die zentrale Mietentwicklung muss Vertragsgrenzen definieren; Verträge und Abrechnungen dürfen nur fehlende Zeiträume ergänzen");
 assert.match(reportCenter, /Verwahrt · steuerneutral[\s\S]*Zurückgezahlt · steuerneutral/, "Kautionseingang und Kautionsauszahlung müssen eindeutig getrennt bezeichnet werden");
-assert.match(reportCenter, /Anlage \$\{utilityAttachmentIndex\} · Nebenkostenabrechnung[\s\S]*gehört ausschließlich zu/, "Jede Nebenkostenanlage muss Mieter und Zeitraum eindeutig nennen");
+assert.match(reportCenter, /Anlage NK-\$\{utilityAttachmentIndex\}[\s\S]*Gehört ausschließlich zu/, "Jede Nebenkostenanlage muss Mieter und Zeitraum eindeutig nennen");
 assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'validation'[\s\S]*'cover'/, "Datenprüfung und Management Summary müssen den Steuerberater-Report eröffnen");
 assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'objects'[\s\S]*'acquisition'[\s\S]*'tenants'/, "Anschaffungskosten müssen im Steuerberater-Report verbindlich nach den Objektdaten folgen");
 assert.match(reportCenter, /const separatelyReported = excluded\.filter\(entry => !isAcquisitionEntry\(entry\) && !isLoanRateEntry\(entry\)\)/, "Anschaffungsbelege und Kreditraten dürfen nicht zusätzlich in der allgemeinen EÜR-Abgrenzung wiederholt werden");

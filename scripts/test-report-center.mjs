@@ -37,7 +37,7 @@ const entry=(id,category,amount,type='expense',extra={})=>({id,object_id:'core-1
 const entries=[entry('1','Kaltmiete',800,'income'),entry('2','Nebenkosten',200,'income'),entry('3','Kaution',2400,'income'),entry('4','Wasser',100,'expense',{nk_relevant:true}),entry('5','Verwaltungskosten',50,'expense',{nk_relevant:true}),entry('6','Kreditrate',500,'expense',{loan_interest_amount:200,loan_principal_amount:300}),entry('7','Kaltmiete',777,'income',{booking_date:'2025-12-31'}),entry('8','Kaltmiete',999,'income',{object_id:'core-2'})];
 const rent={year:2026,objectFilter:'core-1',rows:[{key:'u1',objectId:'core-1',objectLabel:'Testobjekt',unitLabel:'Wohnung 1',tenantName:'Ada Test',months:Array.from({length:12},(_,i)=>({month:i+1,expected:1000,paid:i===1?900:1000,open:i===1?100:0,status:i===1?'partial':'paid'}))}],totals:{},propertyTotals:[],kpis:{}};
 const input={objects,entries,loans:[],sources,rent,from:'2026-01-01',to:'2026-12-31',objectId:'core-1',today:'2026-09-06'};
-const modules=buildReportCenter(input);assert.equal(modules.length,18);
+const modules=buildReportCenter(input);assert.equal(modules.length,19);
 const module=id=>modules.find(m=>m.id===id);
 const reportTable=(reportModule,title)=>{
   const selected=reportModule.tables.find(candidate=>candidate.title===title);
@@ -48,6 +48,10 @@ const row=(id,label)=>module(id).tables[0].rows.find(r=>r[0]===label);
 assert.equal(row('cover','Alle Geldbewegungen: Einnahmen')[1],'3.400,00 €');
 assert.equal(row('cover','Steuerlich vorbereitete Einnahmen (EÜR)')[1],'1.000,00 €');
 assert.equal(row('eur','Summe Einnahmen')[3],'1.000,00 €');
+assert.equal(module('eur').tables[0].headers[1],'Anlage-V-Zuordnung (prüfen)','Die EÜR muss die fachliche Anlage-V-Zuordnung ausweisen');
+assert.match(String(module('eur').tables[0].rows.find(reportRow=>reportRow[0]==='Kaltmiete')?.[1]),/Mieteinnahmen/,'Mieteinnahmen müssen als Anlage-V-Arbeitshilfe bezeichnet werden');
+assert.match(String(module('eur').tables[0].rows.find(reportRow=>reportRow[0]==='Kaltmiete')?.[2]),/umsatzsteuerfrei/,'Wohnraummieten müssen ohne unnötige Netto-/Steuer-/Brutto-Spalten als regelmäßig umsatzsteuerfrei gekennzeichnet werden');
+assert.equal(module('completeness').tables[0].rows[0][1],'GELB','Eine offene Miete oder fehlende Nachweisquelle muss in der Vollständigkeitsampel als Prüffall erscheinen');
 assert.equal(row('eur','Summe Ausgaben')[3],'350,00 €');
 assert.equal(row('eur','Ergebnis (Überschuss)')[3],'650,00 €');
 assert.equal(row('eur','Summe Nicht umlagefähige Kosten')[3],'250,00 €');
@@ -65,7 +69,8 @@ assert.doesNotMatch(module('wealth-statement').paragraphs.join(' '),/property_ex
 const migratedWealth=buildReportCenter({...input,sources:{...sources,tenant_profiles:[...sources.tenant_profiles,{id:'t0',first_name:'Alt',last_name:'Mieter'}],tenant_contracts:[{id:'legacy-open',tenant_id:'t0',property_id:'core-1',unit_label:'Gesamte Immobilie',start_date:'2024-01-01',end_date:null,status:'active',cold_rent:500,operating_costs:150,total_rent:650},...sources.tenant_contracts]}}).find(m=>m.id==='wealth-statement');
 assert.equal(migratedWealth.tables[0].rows.find(row=>row[0]==='Nettokaltmiete pro Monat')?.[1],'800,00 €','Ein offener historischer Altvertrag darf die aktuelle Kaltmiete nicht verdoppeln');
 assert.equal(migratedWealth.tables[0].rows.find(row=>row[0]==='Davon vermietete Wohnfläche')?.[1],'50 m²','Ein offener historischer Altvertrag darf die aktuelle Wohnfläche nicht verdoppeln');
-assert.equal(module('journal').tables[0].rows.at(-1).at(-1),'2.750,00 €');
+assert.equal(module('journal').tables[0].rows.at(-1)?.[9],'2.750,00 €');
+assert.match(String(module('journal').tables[0].rows.at(-1)?.[10]),/^2026-02-03_.*_B-00006\.pdf$/,'Belegverzeichnis muss einen einheitlichen Dateinamenvorschlag mit derselben Belegreferenz ausgeben');
 assert.equal(row('cover','Einheiten mit Soll-Miete / Mietkonto-Zeilen')[1],'1/1');
 assert.match(module('tenants').tables[1].rows[0][4],/teilweise$/);
 assert.match(module('tenants').tables[1].rows[0][14],/künftig$/);
@@ -130,6 +135,7 @@ assert.equal(ownerOccupiedSingle.find(m=>m.id==='tenants').tables[1].rows.length
 assert.equal(ownerOccupiedSingle.find(m=>m.id==='adjustments').tables.every(table=>table.rows.length===0),true,'Eigennutzung darf keine Mietanpassungen oder Mietrückstände ausweisen');
 assert.equal(ownerOccupiedSingle.find(m=>m.id==='utilities').tables[1].rows.length,0,'Eigennutzung darf nie eine Mieter-Nebenkostenbuchung ausweisen');
 assert.match(ownerOccupiedSingle.find(m=>m.id==='journal').tables[0].rows[0][3],/Eigennutzung · kein Mieter/,'Interne Hohenloher-Bewegungen dürfen keinen fiktiven Mieter erhalten');
+assert.match(ownerOccupiedSingle.find(m=>m.id==='owner-occupancy').tables[0].rows[1][1],/Nicht Bestandteil der Anlage V/,'Eigennutzung muss als eigener Informationsbereich vollständig von Anlage V getrennt werden');
 assert.match(ownerOccupiedSingle.find(m=>m.id==='loan-interest').tables[0].headers[2],/informativ.*nicht Anlage V/,'Hohenloher-Zinsen müssen in allen Reports als nicht Anlage-V-relevant bezeichnet werden');
 assert.match(ownerOccupiedSingle.find(m=>m.id==='cashflow').paragraphs.join(' '),/kein Vermietungs-Cashflow/,'Eigennutzungs-Cashflow muss fachlich eindeutig beschriftet sein');
 
@@ -156,8 +162,8 @@ assert.deepEqual(fuertherTenants.tables[0].rows.map(reportRow=>[reportRow[1],rep
 assert.equal(fuertherTenants.tables[0].rows.find(reportRow=>reportRow[1]==='Wohnung 03')?.[9],'45','Fürther Wohnfläche muss aus Immobilienvermögen kommen');
 assert.equal(fuertherTenants.tables[0].rows.find(reportRow=>reportRow[1]==='Garage 01')?.[9],'Nicht hinterlegt','Die Wohnfläche der Wohnung darf nicht fälschlich als Garagenfläche ausgegeben werden');
 assert.equal(fuertherTenants.tables[1].rows.every(reportRow=>reportRow[2]==='Wolfgang Stange'),true,'Auch die Fürther Zahlungsmatrix muss für beide Einheiten den richtigen Mieter zeigen');
-const fuertherUtility=fuertherReport.find(m=>m.id==='utilities').tables.find(reportTable=>reportTable.title.startsWith('Anlage 1 · Nebenkostenabrechnung'));
-assert.match(fuertherUtility?.title??'',/Wolfgang Stange/,'Eine Nebenkostenanlage ohne gespeicherten Namen muss den eindeutigen Mieter aus dem zeitlich passenden Vertrag erhalten');
+const fuertherUtility=fuertherReport.find(m=>m.id==='utilities').tables.find(reportTable=>reportTable.title.startsWith('Anlage NK-1 · Fürther Str. 74'));
+assert.match(fuertherUtility?.subtitle??'',/Wolfgang Stange/,'Eine Nebenkostenanlage ohne gespeicherten Namen muss den eindeutigen Mieter aus dem zeitlich passenden Vertrag erhalten');
 assert.equal(fuertherUtility?.rows[0][2],'Wolfgang Stange','Die Mieterzelle der Nebenkostenanlage darf nicht leer bleiben');
 assert.match(fuertherUtility?.subtitle??'',/Mieterquelle: Mietvertrag, Vermietungszeitraum oder gespeicherte Abrechnung/,'Die Mieterquelle der Nebenkostenanlage muss transparent dokumentiert sein');
 
@@ -237,6 +243,9 @@ assert.match(p253Module('eur').paragraphs.join(' '),/ausschließlich im Kapitel 
 assert.match(p253Module('eur').paragraphs.join(' '),/ausschließlich im Kapitel „Tilgung & Zinsen“/,'Der Report muss die einmalige fachliche Darstellung der Kreditraten erläutern');
 assert.equal(p253Module('loan-interest').tables[0].rows.length,1,'Gesamtdarlehen muss anteilig P253 zugeordnet werden');
 assert.equal(p253Module('loan-interest').tables[0].rows[0][2],'284,48 €');
+const p253Allocation=p253Module('rosenstein-allocation').tables[0];
+assert.ok(p253Allocation.rows.length>=6,'Rosenstein-Einzelreport muss die gemeinsamen Erwerbs- und Darlehensbelege transparent verteilen');
+for (const allocationRow of p253Allocation.rows) assert.equal(allocationRow[5],allocationRow[1],'Die Summe der drei Drittel muss centgenau dem Gesamtbeleg entsprechen');
 assert.equal(p253Module('loan-interest').tables[2].rows.find(row=>row[1]==='2025-11')?.[3],'101,67 €','November-Kreditrate muss anteilig erscheinen');
 assert.equal(p253Module('loan-interest').tables[2].rows.find(row=>row[1]==='2025-12')?.[4],'186,57 €','Dezember-Zins muss anteilig erscheinen');
 assert.match(p253Module('loan-interest').paragraphs.join(' '),/centgenau zu einem Drittel verteilt/);
@@ -303,10 +312,11 @@ assert.equal(colModule('tenants').tables[2].rows[0][10],'—','Cansu darf ab Aug
 assert.equal(colModule('tenants').tables[2].rows[1][3],'—','Nicholas darf vor August nicht zugeordnet sein');
 assert.notEqual(colModule('tenants').tables[2].rows[1][10],'—','Nicholas muss ab August zugeordnet sein');
 assert.equal(colModule('utilities').tables[1].rows.reduce((sum,r)=>sum+Number(String(r[4]).replace(/[^0-9,]/g,'').replace(',','.')),0).toFixed(2),'336.36');
-assert.match(colModule('utilities').tables[2].title,/Anlage 1 · Nebenkostenabrechnung · Cansu Kurt · 2025-01-01 bis 2025-07-31/);
-assert.match(colModule('utilities').tables[2].subtitle,/Anlage 1 gehört ausschließlich zu Cansu Kurt/);
-assert.match(colModule('utilities').tables[4].title,/Anlage 2 · Nebenkostenabrechnung · Nicholas Kraeft-Wendte · 2025-08-01 bis 2025-12-31/);
-assert.match(colModule('utilities').tables[4].subtitle,/Anlage 2 gehört ausschließlich zu Nicholas Kraeft-Wendte/);
+assert.match(colModule('utilities').tables[2].title,/Anlage NK-1 · Colmarer Str. 45 · Wohnung 02 · 2025/);
+assert.match(colModule('utilities').tables[2].subtitle,/Anlage NK-1 .*Gehört ausschließlich zu Cansu Kurt/);
+assert.match(colModule('utilities').tables[4].title,/Anlage NK-2 · Colmarer Str. 45 · Wohnung 02 · 2025/);
+assert.match(colModule('utilities').tables[4].subtitle,/Nicholas Kraeft-Wendte.*2025-08-01 bis 2025-12-31/);
+assert.match(colModule('utilities').tables[4].subtitle,/Anlage NK-2 .*Gehört ausschließlich zu Nicholas Kraeft-Wendte/);
 assert.match(String(colModule('utilities').tables[2].rows[0][9]),/^Guthaben ·/);
 assert.match(String(colModule('utilities').tables[4].rows[0][9]),/^Nachzahlung ·/);
 const aliasReport=buildReportCenter({...input,sources:{...sources,portfolio_properties:[{id:'portfolio-shadow',core_property_id:'legacy-1',name:'Testobjekt Core Shadow'}],property_id_aliases:[{legacy_property_id:'legacy-1',object_id:'core-1'}],portfolio_units:[{id:'u-shadow',property_id:'portfolio-shadow',name:'Wohnung 1',unit_type:'apartment',is_active:true}]}});
@@ -318,7 +328,7 @@ assert.equal(elsHistory.rows.length,2,'Alle Elsasser-Vermietungszeiträume vor N
 assert.equal(elsHistory.rows.find(row=>row[2]==='2025-10-01')?.[8],'13,85 €','Kaltmiete je m² muss aus zentraler Wohnfläche und Kaltmiete berechnet werden');
 assert.equal(rentalHistoryReport.find(m=>m.id==='eur').tables[0].rows.find(row=>row[0]==='Kaltmiete')?.[3],'540,00 €','Eine am Monatsende eingegangene Miete muss über den Vermietungszeitraum des Folgemonats aufgeteilt werden');
 assert.equal(rentalHistoryReport.find(m=>m.id==='eur').tables[0].rows.find(row=>row[0]==='Nebenkostenzahlungen')?.[3],'80,00 €');
-const empty=buildReportCenter({...input,entries:[],sources:{},rent:null});assert.equal(empty.length,18);assert.equal(empty.find(m=>m.id==='journal').tables[0].rows.length,0);
+const empty=buildReportCenter({...input,entries:[],sources:{},rent:null});assert.equal(empty.length,19);assert.equal(empty.find(m=>m.id==='journal').tables[0].rows.length,0);
 assert.equal(empty.find(m=>m.id==='objects').tables[2].rows[0][8],'Nicht gepflegt','Fehlende Kaltmiete darf nicht als scheinbarer Nullwert erscheinen');
 assert.equal(empty.find(m=>m.id==='objects').tables[2].rows[0][9],'Nicht gepflegt','Fehlende Nebenkosten dürfen nicht als scheinbarer Nullwert erscheinen');
 assert.equal(empty.find(m=>m.id==='objects').tables[2].rows[0][10],'Nicht gepflegt','Fehlende Gesamtmiete darf nicht als scheinbarer Nullwert erscheinen');
