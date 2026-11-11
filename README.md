@@ -71,3 +71,13 @@ koenen-property-management/
 ├─ tsconfig.node.json       # Node/Vite TS config
 ├─ package.json             # Dependencies & scripts
 └─ README.md                # Project documentation
+## Produktions-Smoke-Test
+
+Nach jedem erfolgreichen Vercel-Produktions-Deployment auf `main` startet der Workflow **Produktions-Smoke-Test**. Er prüft die öffentliche Erreichbarkeit immer und – nach einmaliger Einrichtung eines schreibgeschützten Testzugangs – zusätzlich Login, Cockpit, Buchungen und die PDF-Druckansicht eines Portfolio-Reports.
+
+Für den echten Login-Test in GitHub unter **Settings → Secrets and variables → Actions** zwei Repository-Secrets anlegen:
+
+- `SMOKE_TEST_EMAIL`
+- `SMOKE_TEST_PASSWORD`
+
+Verwenden Sie ausschließlich ein bereits freigegebenes Nur-Lesen-Konto ohne MFA-Pflicht, niemals das Administratorkonto. Die Secrets werden nicht ausgegeben, nicht im Code gespeichert und nicht in Artefakte übernommen. Ohne diese Secrets bleibt der Workflow grün, prüft die öffentliche Verfügbarkeit und meldet eindeutig, dass der authentifizierte Teil noch übersprungen wurde.

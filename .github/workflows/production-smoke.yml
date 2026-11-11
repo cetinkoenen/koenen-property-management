@@ -1,0 +1,74 @@
+name: Produktions-Smoke-Test
+
+on:
+  deployment_status:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-smoke-${{ github.event.deployment.id }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment.ref == 'main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SMOKE_TEST_URL: https://koenen-investment.com
+      SMOKE_TEST_EMAIL: ${{ secrets.SMOKE_TEST_EMAIL }}
+      SMOKE_TEST_PASSWORD: ${{ secrets.SMOKE_TEST_PASSWORD }}
+    steps:
+      - name: Quellcode auschecken
+        uses: actions/checkout@v5
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Abhängigkeiten installieren
+        run: npm ci --legacy-peer-deps
+
+      - name: Chromium für Smoke-Test installieren
+        run: npx playwright install --with-deps chromium
+
+      - name: Testzugang prüfen
+        id: credentials
+        run: |
+          if [ -n "$SMOKE_TEST_EMAIL" ] && [ -n "$SMOKE_TEST_PASSWORD" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Login-Test übersprungen: SMOKE_TEST_EMAIL und SMOKE_TEST_PASSWORD als GitHub-Secrets hinterlegen."
+          fi
+
+      - name: Produktion prüfen
+        run: npm run test:smoke:production
+
+      - name: Testprotokoll bei Fehler sichern
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-smoke-${{ github.run_id }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Zusammenfassung schreiben
+        if: always()
+        run: |
+          echo "## Produktions-Smoke-Test" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Ziel: $SMOKE_TEST_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Öffentliche Erreichbarkeit: geprüft" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.credentials.outputs.configured }}" = "true" ]; then
+            echo "- Login, Dashboard, Buchungen und PDF-Export: geprüft" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- Login, Dashboard, Buchungen und PDF-Export: übersprungen (Test-Secrets fehlen)" >> "$GITHUB_STEP_SUMMARY"
+          fi
