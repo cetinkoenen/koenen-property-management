@@ -39,6 +39,11 @@ const rent={year:2026,objectFilter:'core-1',rows:[{key:'u1',objectId:'core-1',ob
 const input={objects,entries,loans:[],sources,rent,from:'2026-01-01',to:'2026-12-31',objectId:'core-1',today:'2026-09-06'};
 const modules=buildReportCenter(input);assert.equal(modules.length,18);
 const module=id=>modules.find(m=>m.id===id);
+const reportTable=(reportModule,title)=>{
+  const selected=reportModule.tables.find(candidate=>candidate.title===title);
+  assert.ok(selected,`Tabelle „${title}“ muss vorhanden sein`);
+  return selected;
+};
 const row=(id,label)=>module(id).tables[0].rows.find(r=>r[0]===label);
 assert.equal(row('cover','Alle Geldbewegungen: Einnahmen')[1],'3.400,00 €');
 assert.equal(row('cover','Steuerlich vorbereitete Einnahmen (EÜR)')[1],'1.000,00 €');
@@ -66,7 +71,7 @@ assert.match(module('tenants').tables[1].rows[0][4],/teilweise$/);
 assert.match(module('tenants').tables[1].rows[0][14],/künftig$/);
 assert.equal(module('tenants').tables[0].rows[0][11],'2.400,00 €','Vereinbarte Kaution muss aus dem zeitlich passenden Mietvertrag übernommen werden');
 assert.match(module('tenants').paragraphs.join(' '),/gültigen Mietvertrag/,'Der Steuerberater-Report muss die eindeutige Kautionsquelle professionell ausweisen');
-assert.equal(module('journal').tables[0].rows.find(reportRow=>reportRow[4]==='Wasser')?.[2],'Objektbezogen · kein Mieterbezug','Allgemeine Objektkosten dürfen nicht wie fehlende Mieterstammdaten wirken');
+assert.equal(module('journal').tables[0].rows.find(reportRow=>reportRow[5]==='Wasser')?.[3],'Objektbezogen · kein Mieterbezug','Allgemeine Objektkosten dürfen nicht wie fehlende Mieterstammdaten wirken');
 const duplicateExtraReport=buildReportCenter({...input,sources:{...sources,property_extra:[...sources.property_extra,{property_id:'core-1',living_area:null,wealth_profile:{livingArea:null,totalArea:null}}]}});
 assert.equal(duplicateExtraReport.find(m=>m.id==='tenants').tables[0].rows[0][9],'50','Eine leere migrierte Parallelzeile darf die gepflegte Wohnfläche nicht überschreiben');
 assert.equal(module('arrears').tables[0].rows[0][3],'100,00 €');
@@ -124,7 +129,7 @@ assert.equal(ownerOccupiedSingle.find(m=>m.id==='tenants').tables[0].rows.length
 assert.equal(ownerOccupiedSingle.find(m=>m.id==='tenants').tables[1].rows.length,0,'Eigennutzung darf keine Zahlungs- oder Sollmietenmatrix erzeugen');
 assert.equal(ownerOccupiedSingle.find(m=>m.id==='adjustments').tables.every(table=>table.rows.length===0),true,'Eigennutzung darf keine Mietanpassungen oder Mietrückstände ausweisen');
 assert.equal(ownerOccupiedSingle.find(m=>m.id==='utilities').tables[1].rows.length,0,'Eigennutzung darf nie eine Mieter-Nebenkostenbuchung ausweisen');
-assert.match(ownerOccupiedSingle.find(m=>m.id==='journal').tables[0].rows[0][2],/Eigennutzung · kein Mieter/,'Interne Hohenloher-Bewegungen dürfen keinen fiktiven Mieter erhalten');
+assert.match(ownerOccupiedSingle.find(m=>m.id==='journal').tables[0].rows[0][3],/Eigennutzung · kein Mieter/,'Interne Hohenloher-Bewegungen dürfen keinen fiktiven Mieter erhalten');
 assert.match(ownerOccupiedSingle.find(m=>m.id==='loan-interest').tables[0].headers[2],/informativ.*nicht Anlage V/,'Hohenloher-Zinsen müssen in allen Reports als nicht Anlage-V-relevant bezeichnet werden');
 assert.match(ownerOccupiedSingle.find(m=>m.id==='cashflow').paragraphs.join(' '),/kein Vermietungs-Cashflow/,'Eigennutzungs-Cashflow muss fachlich eindeutig beschriftet sein');
 
@@ -211,6 +216,7 @@ const rosensteinRent={year:2025,objectFilter:'rosen-core',rows:[
 ],totals:{},propertyTotals:[],kpis:{}};
 const p253Report=buildReportCenter({objects:[rosensteinObject],entries:rosensteinEntries,loans:[],sources:rosensteinSources,rent:rosensteinRent,from:'2025-01-01',to:'2025-12-31',objectId:'rosen-core',rosensteinUnit:'P253',today:'2026-09-23'});
 const p253Module=id=>p253Report.find(module=>module.id===id);
+const p253Separate=reportTable(p253Module('eur'),'Weitere separat abzugrenzende Geldbewegungen');
 assert.equal(p253Module('tenants').tables[0].rows.length,1,'P253-Einzelreport darf nur den P253-Mietvertrag enthalten');
 assert.match(String(p253Module('tenants').tables[0].rows[0][1]),/P253/);
 assert.equal(p253Module('tenants').tables[0].rows[0][2],'Lena Huhn','Historischer Mieter muss aus Mietkonto und Vermietungszeitraum stammen');
@@ -220,13 +226,13 @@ assert.equal(p253Module('tenants').tables[0].rows[0][9],'7','Stellplatzfläche m
 assert.equal(p253Module('tenants').tables[1].rows.length,1,'P253-Einzelreport darf nur die P253-Zahlungsmatrix enthalten');
 assert.equal(p253Module('tenants').tables[1].rows[0][2],'Lena Huhn','Zahlungsmatrix muss den zeitlich passenden historischen Mieter statt eines Platzhalters zeigen');
 assert.ok(p253Module('journal').tables[0].rows.length>=7,'P253 enthält direkte Buchungen sowie gemeinsame Erwerbs- und Kreditbuchungen anteilig');
-assert.equal(p253Module('journal').tables[0].rows.find(row=>String(row[5]).includes('gemeinsame Verwaltung'))?.[7],'10,00 €','Gemeinsame Rosenstein-Ausgabe muss nachvollziehbar zu einem Drittel erscheinen');
+assert.equal(p253Module('journal').tables[0].rows.find(row=>String(row[6]).includes('gemeinsame Verwaltung'))?.[8],'10,00 €','Gemeinsame Rosenstein-Ausgabe muss nachvollziehbar zu einem Drittel erscheinen');
 assert.equal(p253Module('objects').tables[3].rows[0][3],'7','Einheitendetail muss die gepflegte TG-Fläche zeigen');
 assert.equal(p253Module('acquisition').tables[0].rows[0][2],'19.000,00 €','Gesamtkaufpreis muss exakt zu einem Drittel zugeordnet werden');
-assert.equal(p253Module('acquisition').tables[1].rows.find(row=>String(row[2]).includes('R20252087'))?.[5],'391,02 €','Notarrechnung muss mit Rechnungsnummer und exaktem Anteil erscheinen');
-assert.equal(p253Module('acquisition').tables[1].rows.find(row=>String(row[2]).includes('Immobilienmakler'))?.[5],'904,40 €','Maklerrechnung mit allen Stellplatzcodes ist ein gemeinsamer Beleg');
-assert.equal(p253Module('eur').tables[1].rows.some(row=>/Erwerbsnebenkosten|Anschaffungskosten/i.test(String(row[3]))),false,'Erwerbsbelege dürfen nicht zusätzlich in der allgemeinen EÜR-Abgrenzung erscheinen');
-assert.equal(p253Module('eur').tables[1].rows.some(row=>/Kreditrate|Darlehensrate/i.test(String(row[3]))),false,'Kreditraten dürfen nicht zusätzlich in der allgemeinen EÜR-Abgrenzung erscheinen');
+assert.equal(p253Module('acquisition').tables[1].rows.find(row=>String(row[4]).includes('R20252087'))?.[6],'391,02 €','Notarrechnung muss mit Rechnungsnummer und exaktem Anteil erscheinen');
+assert.equal(p253Module('acquisition').tables[1].rows.find(row=>String(row[4]).includes('Immobilienmakler'))?.[6],'904,40 €','Maklerrechnung mit allen Stellplatzcodes ist ein gemeinsamer Beleg');
+assert.equal(p253Separate.rows.some(row=>/Erwerbsnebenkosten|Anschaffungskosten/i.test(String(row[3]))),false,'Erwerbsbelege dürfen nicht zusätzlich in der allgemeinen EÜR-Abgrenzung erscheinen');
+assert.equal(p253Separate.rows.some(row=>/Kreditrate|Darlehensrate/i.test(String(row[3]))),false,'Kreditraten dürfen nicht zusätzlich in der allgemeinen EÜR-Abgrenzung erscheinen');
 assert.match(p253Module('eur').paragraphs.join(' '),/ausschließlich im Kapitel „Anschaffungskosten & AfA-Basis“/,'Der Report muss die einmalige fachliche Darstellung der Erwerbsbelege erläutern');
 assert.match(p253Module('eur').paragraphs.join(' '),/ausschließlich im Kapitel „Tilgung & Zinsen“/,'Der Report muss die einmalige fachliche Darstellung der Kreditraten erläutern');
 assert.equal(p253Module('loan-interest').tables[0].rows.length,1,'Gesamtdarlehen muss anteilig P253 zugeordnet werden');
@@ -242,7 +248,7 @@ assert.match(String(p253Module('vacancy').tables[0].rows[0][1]),/P253/);
 const individualRosensteinReports=['P250','P253','P254'].map(rosensteinUnit=>buildReportCenter({objects:[rosensteinObject],entries:rosensteinEntries,loans:[],sources:rosensteinSources,rent:rosensteinRent,from:'2025-01-01',to:'2025-12-31',objectId:'rosen-core',rosensteinUnit,today:'2026-09-23'}));
 assert.deepEqual(individualRosensteinReports.map(report=>report.find(module=>module.id==='tenants').tables[0].rows[0][2]),['Miriam Frommer','Lena Huhn','Sebastian Pilsl'],'Alle drei Einzelreports müssen den aus dem anschließenden zentralen Mietvertrag belegten historischen Mieter zeigen');
 const parseEuro=value=>Number(String(value).replace(/[^0-9,\-]/g,'').replace(',','.'));
-const invoiceShares=individualRosensteinReports.map(report=>parseEuro(report.find(module=>module.id==='acquisition').tables[1].rows.find(row=>String(row[2]).includes('R20252787'))[5]));
+const invoiceShares=individualRosensteinReports.map(report=>parseEuro(report.find(module=>module.id==='acquisition').tables[1].rows.find(row=>String(row[4]).includes('R20252787'))[6]));
 assert.equal(invoiceShares.reduce((sum,value)=>sum+value,0).toFixed(2),'225.01','Drei Einzelreports müssen den gemeinsamen Beleg centgenau reproduzieren');
 const novemberRates=individualRosensteinReports.map(report=>parseEuro(report.find(module=>module.id==='loan-interest').tables[2].rows.find(row=>row[1]==='2025-11')[3]));
 assert.equal(novemberRates.reduce((sum,value)=>sum+value,0).toFixed(2),'305.00','Drei Einzelreports müssen die November-Kreditrate centgenau reproduzieren');
@@ -251,7 +257,7 @@ assert.equal(decemberInterest.reduce((sum,value)=>sum+value,0).toFixed(2),'559.7
 const allRosensteinReport=buildReportCenter({objects:[rosensteinObject],entries:rosensteinEntries,loans:[],sources:rosensteinSources,rent:rosensteinRent,from:'2025-01-01',to:'2025-12-31',objectId:'rosen-core',today:'2026-09-23'});
 assert.equal(allRosensteinReport.find(module=>module.id==='tenants').tables[0].rows.length,3,'Gesamtreport muss alle drei Rosenstein-Stellplätze enthalten');
 assert.equal(allRosensteinReport.find(module=>module.id==='journal').tables[0].rows.length,11,'Gesamtreport darf direkte oder gemeinsame Rosenstein-Buchungen nicht verlieren');
-assert.equal(allRosensteinReport.find(module=>module.id==='eur').tables[1].rows.some(row=>/Erwerbsnebenkosten|Anschaffungskosten|Kreditrate|Darlehensrate/i.test(String(row[3]))),false,'Auch der Gesamtobjekt-Report darf Fachkapitel nicht in der EÜR-Abgrenzung duplizieren');
+assert.equal(reportTable(allRosensteinReport.find(module=>module.id==='eur'),'Weitere separat abzugrenzende Geldbewegungen').rows.some(row=>/Erwerbsnebenkosten|Anschaffungskosten|Kreditrate|Darlehensrate/i.test(String(row[3]))),false,'Auch der Gesamtobjekt-Report darf Fachkapitel nicht in der EÜR-Abgrenzung duplizieren');
 assert.equal(allRosensteinReport.find(module=>module.id==='validation').metrics.find(metric=>metric.label==='Blocker')?.value,'0','Exakt als Gesamtmiete minus Kaltmiete ableitbare TG-Nebenkosten dürfen den Export nicht blockieren');
 assert.match(allRosensteinReport.find(module=>module.id==='validation').tables[0].rows.map(row=>row.join(' ')).join(' '),/7\.00 m²/,'Vorprüfung muss die zentrale Stellplatzfläche verwenden');
 
@@ -274,16 +280,17 @@ const colmarerEntries=[
 const colmarerRent={year:2025,objectFilter:'colmarer-core',rows:[{key:'col',objectId:'colmarer-core',objectLabel:'Colmarer Str. 45',unitLabel:'Wohnung',tenantName:'Nicholas Kraeft-Wendte',months:Array.from({length:12},(_,i)=>({month:i+1,expected:i<7?595:670,paid:i<7?595:670,open:0,status:'paid'}))}],totals:{},propertyTotals:[],kpis:{}};
 const colmarer=buildReportCenter({objects:colmarerObjects,entries:colmarerEntries,loans:[],sources:colmarerSources,rent:colmarerRent,from:'2025-01-01',to:'2025-12-31',objectId:'colmarer-core',today:'2026-09-06'});
 const colModule=id=>colmarer.find(m=>m.id===id);
+const colSeparate=reportTable(colModule('eur'),'Weitere separat abzugrenzende Geldbewegungen');
 const colEur=label=>colModule('eur').tables[0].rows.find(r=>r[0]===label)?.[3];
 assert.equal(colEur('Kaltmiete'),'6.145,00 €');
 assert.equal(colEur('Nebenkostenzahlungen'),'1.370,00 €');
 assert.equal(colEur('Mietnachzahlung – Aufteilung Kalt/NK nicht belegt'),'192,09 €');
-assert.equal(colModule('eur').tables[1].rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='940,00 €')?.[2],'Cansu Kurt');
-assert.equal(colModule('eur').tables[1].rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='1.650,00 €')?.[2],'Nicholas Kraeft-Wendte');
-assert.match(colModule('eur').tables[1].rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='1.650,00 €')?.[3],/Eingang \(\+\)/);
-assert.match(colModule('eur').tables[1].rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='940,00 €')?.[6],/Zurückgezahlt/);
+assert.equal(colSeparate.rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='940,00 €')?.[2],'Cansu Kurt');
+assert.equal(colSeparate.rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='1.650,00 €')?.[2],'Nicholas Kraeft-Wendte');
+assert.match(colSeparate.rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='1.650,00 €')?.[3],/Eingang \(\+\)/);
+assert.match(colSeparate.rows.find(r=>String(r[3]).includes('Kaution')&&r[5]==='940,00 €')?.[6],/Zurückgezahlt/);
 assert.match(colModule('eur').paragraphs.join(' '),/1\.650,00 € eingegangen, 940,00 € ausbezahlt; Netto-Bewegung 710,00 €/);
-assert.equal(colModule('journal').tables[0].rows.find(r=>r[0]==='2025-01-03')?.[2],'Cansu Kurt');
+assert.equal(colModule('journal').tables[0].rows.find(r=>r[1]==='2025-01-03')?.[3],'Cansu Kurt');
 assert.equal(colModule('adjustments').tables[1].rows[0][1],'Cansu Kurt');
 assert.deepEqual(colModule('tenants').tables[0].rows.map(row=>[row[2],row[3],row[4]]),[
   ['Cansu Kurt','2025-01-01','2025-07-30'],

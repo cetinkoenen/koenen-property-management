@@ -33,6 +33,15 @@ export function prepareTaxAdvisorPdf(modules: ReportModule[]): PreparedReportPdf
 
   const validation = modules.find(module => module.id === 'validation');
   const validationMetric = (label: string) => validation?.metrics?.find(metric => metric.label === label)?.value ?? '—';
+  const openIssues = validation?.tables?.flatMap(table => table.rows)
+    .filter(row => ['BLOCKIERT', 'PRÜFEN'].includes(String(row[0] ?? '').toLocaleUpperCase('de-DE'))) ?? [];
+  const blockerCount = validationMetric('Blocker');
+  const reviewCount = validationMetric('Prüffälle');
+  const nextAction = Number(blockerCount) > 0
+    ? 'Blocker vor Übergabe korrigieren'
+    : Number(reviewCount) > 0
+      ? 'Prüffälle fachlich bestätigen'
+      : 'Direkte Übergabe möglich';
   const isFullPackage = modules.some(module => module.id === 'journal');
   const contents = modules
     .filter(module => !['validation', 'cover'].includes(module.id))
@@ -46,6 +55,7 @@ export function prepareTaxAdvisorPdf(modules: ReportModule[]): PreparedReportPdf
       { label: 'Exportstatus', value: validationMetric('Exportstatus') },
       { label: 'Blocker', value: validationMetric('Blocker') },
       { label: 'Prüffälle', value: validationMetric('Prüffälle') },
+      { label: 'Nächste Aktion', value: nextAction },
       { label: 'Ausgabe', value: isFullPackage ? 'Vollakte mit Anlagen' : 'Kurzakte' },
     ],
     tables: [
@@ -54,22 +64,31 @@ export function prepareTaxAdvisorPdf(modules: ReportModule[]): PreparedReportPdf
         title: 'Datenquellen und Prüfumfang',
         headers: ['Bereich', 'Verbindliche Hauptquelle'],
         rows: [
-          ['Buchungen und Belegnachweise', 'Buchungsjournal / finance_entry'],
+          ['Buchungen und Belegnachweise', 'Zentrales Buchungsjournal'],
           ['Mietverträge und Sollmieten', 'Mietkonto, Mietverträge und Mietanpassungen'],
-          ['Zinsen und Tilgung', 'property_loan_ledger und Tilgungsplan'],
-          ['Flächen und Objektstammdaten', 'Immobilienvermögen / property_extra_info'],
+          ['Zinsen und Tilgung', 'Darlehens-Ledger und Tilgungsplan'],
+          ['Flächen und Objektstammdaten', 'Immobilienvermögen und Objektakte'],
         ],
+      },
+      {
+        title: 'Prüfliste vor Abgabe',
+        headers: ['Priorität', 'Prüfung', 'Nächster Schritt'],
+        rows: openIssues.length
+          ? openIssues.map(row => [String(row[0] ?? 'PRÜFEN'), String(row[2] ?? 'Prüfung'), String(row[3] ?? 'Bitte prüfen')])
+          : [['OK', 'Keine offenen Abweichungen', 'Übergabe an die Steuerberatung möglich']],
       },
     ],
     paragraphs: [isFullPackage
-      ? 'Die Vollakte enthält die vollständigen Nachweise. Jede Buchung wird ausschließlich im Buchungsjournal als Belegreferenz geführt; Kernkapitel zeigen nur die fachlich notwendige Zusammenfassung.'
-      : 'Die Kurzakte enthält die steuerlich entscheidungsrelevanten Kernkapitel. Für Einzelbelege und vollständige Nachweise ist die Vollakte zu verwenden.'],
+      ? 'Die Vollakte enthält die vollständigen Nachweise. Jede Buchung wird ausschließlich im zentralen Belegverzeichnis mit einer eindeutigen Belegreferenz geführt; Kernkapitel zeigen nur die steuerlich notwendige Einordnung.'
+      : 'Die Kurzakte enthält die steuerlich entscheidungsrelevanten Kernkapitel, den Summenabgleich und die Prüfliste. Für Einzelbelege und vollständige Nachweise ist die Vollakte zu verwenden.'],
   }];
 
   const sections = modules.flatMap((module) => {
     // Die wichtigsten Kennzahlen erscheinen direkt auf dem echten Deckblatt.
     // Das bisherige zweite Kennzahlen-Deckblatt wird dadurch vermieden.
-    if (module.id === 'cover') return [];
+    // Das Deckblatt und die Prüfliste sind im Übergabe- und Freigabeblatt
+    // zusammengeführt. So steht jede offene Ausnahme genau einmal am Anfang.
+    if (module.id === 'cover' || module.id === 'validation') return [];
     const paragraphs = (module.paragraphs ?? []).filter((paragraph) => {
       const key = normalizeText(paragraph);
       if (!key || seenParagraphs.has(key)) return false;
@@ -79,13 +98,13 @@ export function prepareTaxAdvisorPdf(modules: ReportModule[]): PreparedReportPdf
     const tables = module.tables?.flatMap((table) => {
       if (!table.rows.length) return [];
       const uniqueRows = table.rows.filter((row, index, rows) => rows.findIndex(candidate => JSON.stringify(candidate) === JSON.stringify(row)) === index);
-      const isJournal = module.id === 'journal' && table.title === 'Alle Geldbewegungen';
+      const isJournal = module.id === 'journal' && /buchungsjournal/i.test(table.title);
       const normalizedTable = isJournal
         ? {
             ...table,
             title: 'Belegverzeichnis · Buchungsnachweis',
-            headers: ['Belegreferenz', ...table.headers],
-            rows: uniqueRows.map((row, index) => [`B-${String(index + 1).padStart(5, '0')}`, ...row]),
+            headers: table.headers.includes('Belegreferenz') ? table.headers : ['Belegreferenz', ...table.headers],
+            rows: table.headers.includes('Belegreferenz') ? uniqueRows : uniqueRows.map((row, index) => [`B-${String(index + 1).padStart(5, '0')}`, ...row]),
           }
         : { ...table, rows: uniqueRows };
       const fingerprint = JSON.stringify([normalizedTable.headers, normalizedTable.rows]);

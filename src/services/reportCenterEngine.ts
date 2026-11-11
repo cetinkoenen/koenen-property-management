@@ -14,11 +14,11 @@ export type ReportRecord = Record<string, unknown>;
 export type ReportSources = Record<string, ReportRecord[]>;
 export type ReportModule = PdfReportSection & { id: string };
 export const reportNames = [
-  ['validation', 'Datenprüfung vor Steuerexport'],
+  ['validation', 'Prüfliste mit Ausnahmen vor Steuerexport'],
   ['cover', 'Steuerberater-Report · Deckblatt & Kennzahlen'],
   ['eur', 'Einnahmen-Überschuss-Rechnung (EÜR)'],
   ['tenants', 'Mieterübersicht & Zahlungsmatrix'],
-  ['journal', 'Buchungsjournal Detail'],
+  ['journal', 'Belegverzeichnis & Buchungsjournal'],
   ['objects', 'Objektübersicht & Eckdaten'],
   ['adjustments', 'Mietentwicklung & Mietanpassungen'],
   ['mileage', 'Fahrtkosten Einzelnachweis'],
@@ -211,6 +211,13 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
       }];
     })
     .sort((a,b) => text(a.booking_date).localeCompare(text(b.booking_date)) || text(a.id).localeCompare(text(b.id)));
+  // Eine stabile Belegreferenz ist ausschließlich eine Darstellungskennung.
+  // Die Buchung selbst bleibt der einzige Datensatz in finance_entry.
+  const journalEntries = [...entries];
+  const evidenceReferences = new Map<FinanceEntry, string>(
+    journalEntries.map((entry, index) => [entry, `B-${String(index + 1).padStart(5, '0')}`]),
+  );
+  const evidenceReference = (entry: FinanceEntry) => evidenceReferences.get(entry) ?? 'B-—';
   const incomes = entries.filter(e => e.entry_type === 'income');
   const expenses = entries.filter(e => e.entry_type === 'expense');
   const adjustments = (s.rent_adjustments ?? []).filter(r => scoped(r) && unitScoped(r) && !isOwnerOccupiedRecord(r)).sort((a,b) => text(b.effective_date).localeCompare(text(a.effective_date)));
@@ -522,7 +529,15 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const depositEntries = separatelyReported.filter(isDepositEntry);
   const depositIncome = depositEntries.filter(entry => entry.entry_type === 'income').reduce((sum,entry) => sum+Math.abs(n(entry.amount)),0);
   const depositPayout = depositEntries.filter(entry => entry.entry_type === 'expense').reduce((sum,entry) => sum+Math.abs(n(entry.amount)),0);
-  const eur = module('eur',[table('Einnahmen und Ausgaben',['Kategorie','Netto','Steuer','Brutto'],eurRows),table(ownerOccupiedScope ? 'Kontobewegungen Eigennutzung · nicht Anlage V' : 'Weitere separat abzugrenzende Geldbewegungen',['Datum','Objekt','Mieter / Bezug','Vorgang','Beschreibung','Betrag','Einordnung'],separatelyReported
+  const excludedIncome = total(excluded.filter(entry => entry.entry_type === 'income'));
+  const excludedExpense = total(excluded.filter(entry => entry.entry_type === 'expense'));
+  const reconciliationRows = [
+    ['Buchungsjournal · alle Bewegungen', euro(total(incomes)), euro(total(expenses)), euro(total(incomes) - total(expenses)), 'Lückenloser Zahlungsnachweis'],
+    ['Steuerlich vorbereitete EÜR', euro(revenue), euro(deductible), euro(revenue - deductible), 'Grundlage für die steuerliche Bearbeitung'],
+    ['Separat abgegrenzt · nicht EÜR', euro(excludedIncome), euro(excludedExpense), euro(excludedIncome - excludedExpense), 'Kautionen, Anschaffung, Umbuchungen, nicht steuerrelevante Vorgänge'],
+    ['Rechenprüfung EÜR', euro(revenue), euro(deductible), euro(roundMoney(revenue - deductible)), 'Einnahmen minus Ausgaben = vorbereitetes Ergebnis'],
+  ];
+  const eur = module('eur',[table('Einnahmen und Ausgaben',['Kategorie','Netto','Steuer','Brutto'],eurRows),table('Abstimmung Buchungsjournal → EÜR',['Bereich','Einnahmen','Ausgaben','Saldo','Einordnung'],reconciliationRows,'Die Zeilen sind getrennte Berichtssichten und werden nicht untereinander addiert. Entscheidend für die Anlage V ist die Zeile „Steuerlich vorbereitete EÜR“.') ,table(ownerOccupiedScope ? 'Kontobewegungen Eigennutzung · nicht Anlage V' : 'Weitere separat abzugrenzende Geldbewegungen',['Datum','Objekt','Mieter / Bezug','Vorgang','Beschreibung','Betrag','Einordnung'],separatelyReported
     .slice()
     .sort((a,b) => text(a.booking_date).localeCompare(text(b.booking_date)) || text(a.id).localeCompare(text(b.id)))
     .map(e => [
@@ -591,13 +606,13 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     })]);
   });
   const matrix = table('Zahlungsmatrix · Ist / Soll',['Objekt','Einheit','Mieter',...Array.from({length:12},(_,i) => new Date(2025,i,1).toLocaleDateString('de-DE',{month:'short'}))],matrixRows);
-  const tenants = module('tenants',[table(ownerOccupiedScope ? 'Mietverhältnis' : 'Vertragsdaten',['Objekt','Einheit','Mieter','Von','Bis','Kaltmiete','NK','Sonstiges','Gesamtmiete','Fläche m²','€/m²','Kaution (vereinbart)'],contractRows),matrix],[ownerOccupiedScope ? ownerOccupancyNote : rentNote, ...(ownerOccupiedScope ? ['Für dieses Objekt werden bewusst keine Vertrags-, Kautions- oder Sollmietdaten erzeugt.'] : ['Die vereinbarte Kaution wird ausschließlich aus dem für den Berichtszeitraum gültigen Mietvertrag übernommen. Ein Zahlungseingang wird daraus nicht abgeleitet.'])]);
+  const tenants = module('tenants',[table(ownerOccupiedScope ? 'Mietverhältnis' : 'Mieter- und Vertragszeitleiste',['Objekt','Einheit','Mieter','Von','Bis','Kaltmiete','NK','Sonstiges','Gesamtmiete','Fläche m²','€/m²','Kaution (vereinbart)'],contractRows,'Chronologisch nach Einheit und Vertragsbeginn. Jeder Zeitraum erscheint genau einmal; für die Zahlungsmonate gilt die nachfolgende Soll-/Ist-Matrix.'),matrix],[ownerOccupiedScope ? ownerOccupancyNote : rentNote, ...(ownerOccupiedScope ? ['Für dieses Objekt werden bewusst keine Vertrags-, Kautions- oder Sollmietdaten erzeugt.'] : ['Die vereinbarte Kaution wird ausschließlich aus dem für den Berichtszeitraum gültigen Mietvertrag übernommen. Ein Zahlungseingang wird daraus nicht abgeleitet.'])]);
   if (billingPeriods.length && !input.compact) tenants.tables?.splice(1,0,table('Vermietungszeiträume aus gespeicherten Abrechnungen',['Objekt','Einheit','Mieter','Von','Bis','Fläche m²','NK-Vorauszahlungen','Monate','Quelle'],billingPeriods.map(p=>[p.object?.label ?? 'Nicht zugeordnet',p.unit,p.tenant,p.from,p.to,str(p.area),euro(p.advancePayments),p.occupancyMonths ?? '—',p.source])));
   let balance = 0;
-  const journal = module('journal',[table('Alle Geldbewegungen',['Datum','Einheit / Objekt','Mieter','Typ','Kategorie','Beschreibung','Eingang (+)','Ausgaben (-)','Saldo'],[...entries].sort((a,b) => text(a.booking_date).localeCompare(text(b.booking_date)) || text(a.id).localeCompare(text(b.id))).map(e => {
+  const journal = module('journal',[table('Belegverzeichnis & Buchungsjournal',['Belegreferenz','Datum','Einheit / Objekt','Mieter','Typ','Kategorie','Beschreibung','Eingang (+)','Ausgaben (-)','Saldo'],journalEntries.map(e => {
     balance += e.entry_type === 'income' ? Math.abs(e.amount) : e.entry_type === 'expense' ? -Math.abs(e.amount) : 0;
-    return [e.booking_date,label(e),tenantForEntry(e),e.entry_type,e.category,e.note,e.entry_type==='income'?euro(Math.abs(e.amount)):'',e.entry_type==='expense'?euro(Math.abs(e.amount)):'',euro(balance)];
-  }))],['Saldo = kumulierte Bewegung im gewählten Zeitraum, Anfangswert 0; kein Bankkontostand.']);
+    return [evidenceReference(e),e.booking_date,label(e),tenantForEntry(e),e.entry_type,e.category,e.note,e.entry_type==='income'?euro(Math.abs(e.amount)):'',e.entry_type==='expense'?euro(Math.abs(e.amount)):'',euro(balance)];
+  }))],['Jede Buchung erscheint genau einmal mit einer stabilen Belegreferenz. Saldo = kumulierte Bewegung im gewählten Zeitraum, Anfangswert 0; kein Bankkontostand.']);
   const rentValueForObject = (o: AppObject, field: 'cold_rent' | 'operating_costs'): number | null => {
     const objectContracts = active.filter(c => objectFor(c)?.id === o.id);
     if (objectContracts.length && objectContracts.every(c => currentRent(c,field) != null)) {
@@ -852,11 +867,12 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   const acquisitionEntries = expenses.filter(isAcquisitionEntry);
   const acquisition = module('acquisition',[
     table(`Anschaffungskosten & AfA-Basis ${from.slice(0,4)}`,['Objekt / Einheit','Kaufdatum','Kaufpreis','Gebäudeanteil','Grund/Boden','Stellplatzanteil','Nutzen-/Lastenübergang'],objects.map(o=>{const p=profiles(o);return[input.rosensteinUnit?rosensteinTaxUnitLabel(input.rosensteinUnit):o.label,str(p.purchaseDate),euro(acquisitionValue(p.purchasePrice)),euro(acquisitionValue(p.buildingPurchasePrice)),euro(acquisitionValue(p.landPurchasePrice)),euro(acquisitionValue(p.parkingPurchasePrice)),str(p.transferBenefitsDate)];})),
-    table('Erwerbs- und Anschaffungsbelege im Zeitraum',['Datum','Objekt / Einheit','Rechnung / Belegnummer','Kategorie','Gesamtbeleg','Anteil im Einzelreport','Zuordnung'],acquisitionEntries.map(e=>[
+    table('Erwerbs- und Anschaffungsbelege im Zeitraum',['Belegreferenz','Datum','Objekt / Einheit','Kategorie','Belegbezeichnung','Gesamtbeleg','Anteil im Einzelreport','Zuordnung'],acquisitionEntries.map(e=>[
+      evidenceReference(e),
       e.booking_date,
       input.rosensteinUnit?rosensteinTaxUnitLabel(input.rosensteinUnit):label(e),
-      e.note || 'Nicht gepflegt',
       e.category,
+      e.note || 'Nicht gepflegt',
       euro(record(e)._report_original_amount ?? e.amount),
       euro(e.amount),
       str(record(e)._report_allocation ?? (recordUnit(e)?'Direkte Einheitenzuordnung':'Gesamtobjekt')),

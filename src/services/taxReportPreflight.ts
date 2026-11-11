@@ -284,7 +284,7 @@ export function taxPreflightModule(result: TaxPreflightResult): ReportModule {
   const label = (severity: TaxPreflightSeverity) => severity === "blocker" ? "BLOCKIERT" : severity === "review" ? "PRÜFEN" : "BERECHNET";
   return {
     id: "validation",
-    title: "Datenprüfung vor Steuerexport",
+    title: "Prüfliste mit Ausnahmen vor Steuerexport",
     metrics: [
       { label: "Exportstatus", value: result.ready ? "FREIGABEFÄHIG" : "GESPERRT", hint: result.ready ? "Keine blockierenden Datenfehler" : "Blockierende Punkte zuerst korrigieren" },
       { label: "Blocker", value: String(result.blockers) },
@@ -293,11 +293,11 @@ export function taxPreflightModule(result: TaxPreflightResult): ReportModule {
       { label: "Berechnete Werte", value: String(result.calculatedValues), hint: "Nachvollziehbar aus Stammdaten/Historie" },
     ],
     paragraphs: [
-      "Die Vorprüfung arbeitet ausschließlich mit den zentral gepflegten Mietverträgen, Mietanpassungen, Immobilien-Stammdaten und dem Buchungsjournal. Sie ändert keine unsicheren Werte verdeckt.",
-      "Automatisch berücksichtigt werden nur eindeutige Berechnungen und der Schutz vor exakten Importdublettten. Unsichere Zuordnungen bleiben bis zur Bestätigung gesperrt.",
+      "Diese Prüfliste enthält ausschließlich offene Abweichungen und den jeweils erforderlichen nächsten Schritt. Sie arbeitet nur mit zentral gepflegten Mietverträgen, Mietanpassungen, Immobilien-Stammdaten und dem Buchungsjournal.",
+      "Automatisch berücksichtigt werden nur eindeutige Berechnungen und der Schutz vor exakten Importdublettten. Unsichere Zuordnungen bleiben bis zur Bestätigung gesperrt; der Report verändert sie nicht verdeckt.",
     ],
     tables: [{
-      title: "Prüfprotokoll",
+      title: "Offene Prüfungen und notwendige Aktionen",
       headers: ["Status", "Objekt", "Prüfung", "Ergebnis / nächster Schritt"],
       rows: result.issues.length
         ? result.issues.map((issue) => [label(issue.severity), issue.objectLabel, issue.title, issue.detail])

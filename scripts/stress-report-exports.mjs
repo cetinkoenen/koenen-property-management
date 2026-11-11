@@ -97,7 +97,7 @@ assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'objects'[\s\S]*'acqu
 assert.match(reportCenter, /const separatelyReported = excluded\.filter\(entry => !isAcquisitionEntry\(entry\) && !isLoanRateEntry\(entry\)\)/, "Anschaffungsbelege und Kreditraten dürfen nicht zusätzlich in der allgemeinen EÜR-Abgrenzung wiederholt werden");
 assert.match(reportCenter, /Erwerbs- und Anschaffungsbelege werden ausschließlich im Kapitel „Anschaffungskosten & AfA-Basis“[\s\S]*Kreditraten[\s\S]*ausschließlich im Kapitel „Tilgung & Zinsen“/, "Der Steuerreport muss die eindeutige fachliche Kapitelzuordnung dokumentieren");
 assert.match(reportCenterPage, /taxPreflightBlocked[\s\S]*Export gesperrt: Die Datenprüfung enthält blockierende Punkte/, "Blockierende Datenfehler müssen den Export sichtbar verhindern");
-assert.match(reportCenterPdf, /if \(module\.id === 'cover'\) return \[\]/, "Das Kennzahlenmodul darf nicht als zweites Deckblatt gedruckt werden");
+assert.match(reportCenterPdf, /module\.id === 'cover' \|\| module\.id === 'validation'/, "Deckblatt und Prüfliste dürfen nicht zusätzlich nach dem Übergabeblatt gedruckt werden");
 assert.match(reportCenterPdf, /if \(!table\.rows\.length\) return \[\]/, "Leere Nachweistabellen dürfen keine unnötigen PDF-Seiten erzeugen");
 assert.match(reportCenterPdf, /wantedMetrics[\s\S]*Steuerlich vorbereitetes Ergebnis/, "Die wichtigsten Steuerkennzahlen müssen auf dem eigentlichen Deckblatt erscheinen");
 assert.match(professionalPdfReport, /\.hero::after \{ display: none !important; \}/, "Das dekorative Deckblattraster darf in der Druckansicht nicht über Kennzahlen laufen");
@@ -113,6 +113,9 @@ assert.match(reportCenterPage, /landscape:false/, "Der Steuerberater-Report muss
 assert.match(reportCenterPdf, /const columnsPerPart = 3;/, "Breite Steuerberichtstabellen müssen für Hochformat in lesbare Spaltenblöcke geteilt werden");
 assert.match(reportCenterPdf, /Übergabe- und Freigabeblatt[\s\S]*Datenquellen und Prüfumfang/, "Der tatsächlich verwendete Steuerberater-Export muss ein Übergabeblatt mit Quellenübersicht erhalten");
 assert.match(reportCenterPdf, /Belegverzeichnis · Buchungsnachweis[\s\S]*Belegreferenz/, "Das vollständige Buchungsjournal muss eindeutige Belegreferenzen ausweisen");
+assert.match(reportCenter, /Rechenprüfung EÜR[\s\S]*Abstimmung Buchungsjournal → EÜR/, "Der Steuerberater-Report muss Buchungsjournal und EÜR sichtbar abstimmen");
+assert.match(reportCenter, /Mieter- und Vertragszeitleiste[\s\S]*Chronologisch nach Einheit und Vertragsbeginn/, "Mieterwechsel müssen als eindeutige Vertragszeitleiste dargestellt werden");
+assert.match(reportCenterPdf, /Nächste Aktion[\s\S]*Prüfliste vor Abgabe/, "Das Übergabeblatt muss offene Prüfungen und die nächste Aktion sichtbar machen");
 assert.match(reportCenterPage, /Steuerberater-Kurzakte[\s\S]*Steuerberater-Vollakte/, "Der tatsächliche Export muss Kurzakte und Vollakte klar benennen");
 assert.match(reportCenterPage, /Vorschau anzeigen[\s\S]*showPreview[\s\S]*chosen\.map/, "Große Berichtstabellen dürfen erst auf ausdrücklichen Wunsch als Bildschirmvorschau aufgebaut werden");
 assert.match(reportCenterPage, /headlessAnnualReport/, "Das Reportcenter muss die Mietkonto-Quelle ohne eine zweite sichtbare Jahresmatrix laden");
