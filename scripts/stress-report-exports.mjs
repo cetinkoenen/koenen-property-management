@@ -94,6 +94,9 @@ assert.match(reportCenter, /Verwahrt · steuerneutral[\s\S]*Zurückgezahlt · st
 assert.match(reportCenter, /Anlage NK-\$\{utilityAttachmentIndex\}[\s\S]*Gehört ausschließlich zu/, "Jede Nebenkostenanlage muss Mieter und Zeitraum eindeutig nennen");
 assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'validation'[\s\S]*'cover'/, "Datenprüfung und Management Summary müssen den Steuerberater-Report eröffnen");
 assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'objects'[\s\S]*'acquisition'[\s\S]*'tenants'/, "Anschaffungskosten müssen im Steuerberater-Report verbindlich nach den Objektdaten folgen");
+assert.match(reportCenter, /taxAdvisorReportIds = \[[\s\S]*'eur'[\s\S]*'loan-summary'[\s\S]*'loan-exceptions'/, "Die steuerliche EÜR muss vor der kompakten Finanzierungsübersicht und ihren Prüffällen erscheinen");
+assert.match(reportCenter, /loanSummary = module\('loan-summary'[\s\S]*Restschuld-Nachweis/, "Die Finanzierungsübersicht muss Zinsen, Tilgung, Restschuld und Überleitung aus einer Quelle ausweisen");
+assert.match(reportCenter, /loanExceptions = module\('loan-exceptions'[\s\S]*nur Abweichungen/, "Der Hauptteil darf ausschließlich echte Finanzierungs-Prüffälle zeigen");
 assert.match(reportCenter, /const separatelyReported = excluded\.filter\(entry => !isAcquisitionEntry\(entry\) && !isLoanRateEntry\(entry\)\)/, "Anschaffungsbelege und Kreditraten dürfen nicht zusätzlich in der allgemeinen EÜR-Abgrenzung wiederholt werden");
 assert.match(reportCenter, /Erwerbs- und Anschaffungsbelege werden ausschließlich im Kapitel „Anschaffungskosten & AfA-Basis“[\s\S]*Kreditraten[\s\S]*ausschließlich im Kapitel „Tilgung & Zinsen“/, "Der Steuerreport muss die eindeutige fachliche Kapitelzuordnung dokumentieren");
 assert.match(reportCenterPage, /taxPreflightBlocked[\s\S]*Export gesperrt: Die Datenprüfung enthält blockierende Punkte/, "Blockierende Datenfehler müssen den Export sichtbar verhindern");

@@ -34,6 +34,8 @@ export const reportNames = [
   ['loans', 'Immobilien-Eigenschaften & Darlehen'],
   ['arrears', 'Mietkonto-Check & Offene Zahlungen'],
   ['cashflow', 'Vermögen Cashflow Report'],
+  ['loan-summary', 'Finanzierungsübersicht & Schuldzinsen'],
+  ['loan-exceptions', 'Finanzierungs-Prüffälle'],
   ['loan-interest', 'Tilgung & Zins · Laufzeit- und Monatsreport'],
 ] as const;
 export const taxAdvisorReportIds = [
@@ -47,15 +49,17 @@ export const taxAdvisorReportIds = [
   'tenants',
   'adjustments',
   'eur',
-  'loan-interest',
+  'loan-summary',
+  'loan-exceptions',
   'utilities',
   'mileage',
   'vacancy',
   'proofs',
   'journal',
+  'loan-interest',
 ] as const;
 /** Schlanke Standardakte: Steuerberater sieht zuerst nur entscheidungsrelevante Kapitel. */
-export const taxAdvisorCompactReportIds = ['validation','cover','completeness','owner-occupancy','objects','tenants','eur','acquisition','rosenstein-allocation','loan-interest','utilities'] as const;
+export const taxAdvisorCompactReportIds = ['validation','cover','completeness','owner-occupancy','objects','tenants','eur','loan-summary','loan-exceptions','acquisition','rosenstein-allocation','utilities'] as const;
 export const portfolioReportIds = ['wealth-statement', 'register', 'acquisition', 'loans', 'arrears', 'cashflow', 'loan-interest'] as const;
 export const euro = (v: unknown) => v == null || v === '' ? 'Nicht gepflegt' : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(parseLocaleNumber(v, 0));
 const percent = (v: number, digits = 1) => `${new Intl.NumberFormat('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v)} %`;
@@ -446,7 +450,7 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     paragraphs,
     variant: id === 'validation' || id === 'cover'
       ? 'summary'
-      : ['journal','mileage','vacancy','utilities','proofs'].includes(id)
+      : ['journal','mileage','vacancy','utilities','proofs','loan-interest'].includes(id)
         ? 'appendix'
         : 'core',
   });
@@ -1029,12 +1033,92 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
     const rows=loanYears.filter(r=>objectFor(r)?.id===o.id);
     return rows.length?[rows.at(-1)!]:[];
   });
+  const reportYear = Number(to.slice(0,4));
+  const loanReferenceFor = (object: AppObject) => {
+    const profile = profiles(object);
+    return text(profile.loanNumber || profile.loan_number || profile.loanReference || profile.lender_reference) || 'Darlehen laut Darlehens-Ledger';
+  };
+  const loanSummaryRows = objects.map(object => {
+    const objectEntries = loanEntries.filter(entry=>objectFor(entry)?.id===object.id);
+    const objectRates = roundMoney(objectEntries.reduce((sum, entry)=>sum+Math.abs(n(entry.amount)),0));
+    const objectInterest = roundMoney(objectEntries.reduce((sum, entry)=>sum+(splitForEntry(entry).interest ?? 0),0));
+    const objectPrincipal = roundMoney(objectEntries.reduce((sum, entry)=>sum+(splitForEntry(entry).principal ?? 0),0));
+    const ledger = loanYears.filter(row=>objectFor(row)?.id===object.id && Number(row.year)<=reportYear);
+    const closing = ledger.at(-1);
+    const balance = closing?.balance;
+    return [
+      input.rosensteinUnit ? rosensteinTaxUnitLabel(input.rosensteinUnit) : object.label,
+      loanReferenceFor(object),
+      euro(objectRates),
+      isOwnerOccupied(object) ? `${euro(objectInterest)} · informativ` : euro(objectInterest),
+      euro(objectPrincipal),
+      balance == null || balance === '' ? 'Nicht gepflegt' : euro(balance),
+    ];
+  });
+  const debtBridgeRows = objects.map(object => {
+    const ledger = loanYears.filter(row=>objectFor(row)?.id===object.id && Number(row.year)<=reportYear);
+    const closing = ledger.at(-1);
+    const opening = ledger.filter(row=>Number(row.year)<reportYear).at(-1);
+    const objectPrincipal = roundMoney(loanEntries.filter(entry=>objectFor(entry)?.id===object.id).reduce((sum, entry)=>sum+(splitForEntry(entry).principal ?? 0),0));
+    if (!closing || opening?.balance == null || opening.balance === '') return [
+      input.rosensteinUnit ? rosensteinTaxUnitLabel(input.rosensteinUnit) : object.label,
+      opening?.balance == null ? 'Startstand nicht gepflegt' : euro(opening.balance),
+      euro(objectPrincipal),
+      closing?.balance == null ? 'Endstand nicht gepflegt' : euro(closing.balance),
+      'GELB · prüfen',
+    ];
+    const calculated = roundMoney(n(opening.balance)-objectPrincipal);
+    const special = roundMoney(n(closing.balance)-calculated);
+    return [
+      input.rosensteinUnit ? rosensteinTaxUnitLabel(input.rosensteinUnit) : object.label,
+      euro(opening.balance),
+      euro(objectPrincipal),
+      `${euro(closing.balance)} / ${Math.abs(special)<=0.02 ? '—' : euro(special)}`,
+      Math.abs(special)<=0.02 ? 'GRÜN · plausibel' : 'GELB · Sonderfall prüfen',
+    ];
+  });
+  const loanSummary = module('loan-summary',[
+    table('Finanzierungsübersicht · Steuerlich relevante Schuldzinsen',[
+      'Immobilie / Einheit','Darlehen','Gebuchte Kreditraten','Zinsen','Tilgung (nur Information)','Restschuld 31.12.',
+    ],loanSummaryRows,'Zinsen vermieteter Objekte sind als Werbungskosten vorbereitet. Tilgungen, Restschuld und Kreditraten dienen ausschließlich als Finanzierungsnachweis.'),
+    table('Restschuld-Nachweis · Überleitung zum Jahresende',[
+      'Immobilie / Einheit','Anfangsrestschuld','Tilgung laut Buchungen','Endschuld / Sonder','Prüfstatus',
+    ],debtBridgeRows,'Überleitung: Anfangsrestschuld minus Tilgung ± dokumentierte Sondervorgänge = Endrestschuld. Die vierte Spalte zeigt Endschuld / Sonderbetrag. Eine Abweichung wird als Prüffall ausgewiesen und niemals automatisch korrigiert. Quelle je Objekt: zentraler Darlehens-Ledger.'),
+  ],[
+    ownerOccupiedScope ? `${ownerOccupancyNote} Die Übersicht dient dort ausschließlich dem Finanzierungsnachweis.` : 'Steuerliche Abgrenzung: Bei vermieteten Objekten werden ausschließlich Schuldzinsen als Werbungskosten vorbereitet. Tilgung und Restschuld sind keine Werbungskosten. Steuerstatus: vermietet = Zinsen Anlage V prüfen; teilvermietet = Aufteilung prüfen.',
+    'Datenquelle: zentrale Kreditraten-Buchungen, Tilgungsplan und Darlehens-Ledger. Je Betrag wird die gebuchte Aufteilung bevorzugt; nur ohne Buchungsaufteilung ergänzt der passende Tilgungsplan den Nachweis.',
+  ]);
+  const loanExceptionRows: PdfReportTable['rows'] = [];
+  for (const entry of loanEntries) {
+    const split = splitForEntry(entry);
+    const plan = split.plan;
+    const actual = Math.abs(n(entry.amount));
+    const planned = plan ? Math.abs(n(plan.payment_amount)) : null;
+    const object = objectFor(entry);
+    const period = text(entry.booking_date).slice(0,7);
+    if (split.interest == null || split.principal == null) {
+      loanExceptionRows.push([loanReportLabel(entry),period,'ROT · Aufteilung fehlt',evidenceReference(entry),`${euro(actual)} / —`,'Zins-/Tilgungsaufteilung fehlt · Buchung oder Tilgungsplan ergänzen']);
+      continue;
+    }
+    if (planned != null && Math.abs(actual-planned)>0.02) {
+      const isChfLoan = /lilienthaler|elsasser/i.test(object?.label ?? '');
+      loanExceptionRows.push([loanReportLabel(entry),period,isChfLoan ? 'GELB · CHF-Abweichung prüfen' : 'GELB · Plan-Ist prüfen',evidenceReference(entry),`${euro(actual)} / ${euro(planned)}`,isChfLoan ? 'Abweichung bei CHF-Darlehen · Wechselkurs-/Planstand fachlich prüfen' : 'Gebuchte Rate weicht vom Tilgungsplan ab · Buchung oder Tilgungsplan fachlich prüfen']);
+    }
+  }
+  for (const plan of plannedFallback.filter(row=>text(row.plan_date).slice(0,10)<=today)) {
+    loanExceptionRows.push([loanReportLabel(plan),text(plan.plan_date).slice(0,7),'GELB · Rate prüfen','—',`— / ${euro(plan.payment_amount)}`,'Planrate ohne zugehörige Buchung · Buchung, Fälligkeit oder Planstand prüfen']);
+  }
+  const loanExceptions = module('loan-exceptions',[table('Finanzierungs-Prüffälle · nur Abweichungen',[
+    'Immobilie / Einheit','Monat','Status','Belegreferenz','Ist / Planrate','Prüfgrund / Nächste Aktion',
+  ],loanExceptionRows.length ? loanExceptionRows : [['—','—','GRÜN · keine Abweichung','—','—','Im gewählten Zeitraum keine offenen Finanzierungs-Prüffälle · Kein Handlungsbedarf']], 'Vollständige Monatsdetails und Belegketten folgen in der Anlage „Tilgung & Zins“.')],[
+    'Diese Seite zeigt ausschließlich echte Prüffälle. Sie ersetzt keine fachliche Prüfung durch den Steuerberater und ändert keine Buchungen automatisch.',
+  ]);
   const loanInterest = module('loan-interest',[
     table('Jahresübersicht Tilgungsplan je Immobilie',['Immobilie / Einheit','Jahr',ownerOccupiedScope ? 'Zinsen (informativ · nicht Anlage V)' : 'Zinsen (steuerlich relevant / Werbungskosten)','Tilgung (steuerlich nicht relevant)','Kapitaldienst Plan','Restschuld Jahresende','Quelle'],loanYears.map(r=>[loanReportLabel(r),Number(r.year),euro(r.interest),euro(r.principal),euro(n(r.interest)+n(r.principal)),euro(r.balance),str(r.source)]),'Nach Immobilie und innerhalb der Immobilie chronologisch nach Jahr sortiert.'),
     table('Gebuchte Tilgung & Zinsen je Jahr',['Immobilie','Jahr','Gebuchte Raten',ownerOccupiedScope ? 'Zinsen Ist (informativ · nicht Anlage V)' : 'Zinsen Ist (steuerlich relevant / Werbungskosten)','Tilgung Ist (steuerlich nicht relevant)','Buchungen'],bookedYears.map(r=>[r.object,r.year,euro(r.rates),euro(r.interest),euro(r.principal),r.count]),'Ist-Buchungen; bei fehlender Aufteilung wird ausschließlich der passende Monatswert aus dem hinterlegten Tilgungsplan verwendet.'),
-    table(`Monatsdetails · ${from} bis ${to}`,['Immobilie','Buchungsmonat','Status','Kreditrate',ownerOccupiedScope ? 'Zinsen (informativ · nicht Anlage V)' : 'Zinsen (steuerlich relevant / Werbungskosten)','Tilgung (steuerlich nicht relevant)','Gebühren','Restschuld','Quelle'],[
-      ...loanEntries.map(entry=>{const split=splitForEntry(entry);const fee=split.interest==null||split.principal==null?null:Math.max(0,roundMoney(Math.abs(n(entry.amount))-split.interest-split.principal));return[loanReportLabel(entry),text(entry.booking_date).slice(0,7),'Gebucht',euro(Math.abs(n(entry.amount))),euro(split.interest),euro(split.principal),euro(fee),split.plan?.closing_balance==null?'—':euro(split.plan.closing_balance),split.source];}),
-      ...plannedFallback.map(plan=>[loanReportLabel(plan),text(plan.plan_date).slice(0,7),text(plan.plan_date).slice(0,10)<=today?'Plan · nicht gebucht':'Plan',euro(plan.payment_amount),euro(plan.interest_amount),euro(plan.principal_amount),euro(plan.fee_amount),euro(plan.closing_balance),str(plan.source_file)]),
+    table(`Monatsdetails · ${from} bis ${to}`,['Immobilie','Buchungsmonat','Status','Belegreferenz','Darlehensreferenz','Kreditrate',ownerOccupiedScope ? 'Zinsen (informativ · nicht Anlage V)' : 'Zinsen (steuerlich relevant / Werbungskosten)','Tilgung (steuerlich nicht relevant)','Gebühren','Restschuld','Planquelle'],[
+      ...loanEntries.map(entry=>{const split=splitForEntry(entry);const fee=split.interest==null||split.principal==null?null:Math.max(0,roundMoney(Math.abs(n(entry.amount))-split.interest-split.principal));const object=objectFor(entry);return[loanReportLabel(entry),text(entry.booking_date).slice(0,7),'Gebucht',evidenceReference(entry),object?loanReferenceFor(object):'Darlehen prüfen',euro(Math.abs(n(entry.amount))),euro(split.interest),euro(split.principal),euro(fee),split.plan?.closing_balance==null?'—':euro(split.plan.closing_balance),split.source];}),
+      ...plannedFallback.map(plan=>{const object=objectFor(plan);return[loanReportLabel(plan),text(plan.plan_date).slice(0,7),text(plan.plan_date).slice(0,10)<=today?'Plan · nicht gebucht':'Plan','—',object?loanReferenceFor(object):'Darlehen prüfen',euro(plan.payment_amount),euro(plan.interest_amount),euro(plan.principal_amount),euro(plan.fee_amount),euro(plan.closing_balance),str(plan.source_file)];}),
     ].sort((a,b)=>String(a[0]).localeCompare(String(b[0]),'de')||String(a[1]).localeCompare(String(b[1]))),'Ist-Buchungen haben Vorrang. Ein importierter Monatsplan erscheint nur, wenn für dieselbe Immobilie und denselben Monat keine Kreditrate gebucht wurde.'),
   ],[ownerOccupiedScope ? `${ownerOccupancyNote} Zins- und Tilgungswerte sind ausschließlich ein Finanzierungsnachweis.` : 'Steuerliche Trennung: Nur der Zinsanteil vermieteter Immobilien wird als Werbungskosten vorbereitet. Die Tilgung bleibt informativ und wird nicht steuerlich abgezogen.','Datenherkunft: Gebuchte Kreditraten haben Vorrang. Fehlt dort die Zins-/Tilgungsaufteilung, wird ausschließlich der passende Monat des hinterlegten Tilgungsplans verwendet. Jahreswerte und Restschuld stammen aus dem zentralen Darlehensbestand; eine Doppelzählung ist ausgeschlossen.',...(input.rosensteinUnit? [`Einheitenfilter: ${rosensteinTaxUnitLabel(input.rosensteinUnit)}. Gemeinsame Darlehenswerte des Gesamtobjekts werden centgenau zu einem Drittel verteilt. Die Summe aus P250, P253 und P254 entspricht exakt dem Gesamtwert.`]:[])]);
   loanInterest.metrics=[
@@ -1054,5 +1138,5 @@ export function buildReportCenter(input: { objects: AppObject[]; entries: Financ
   }]:[];
   const validation = taxPreflightModule(preflight);
   validation.variant = 'summary';
-  return [validation,cover,completeness,...(ownerOccupiedScope ? [ownerOccupancy] : []),eur,tenants,journal,objectModule,changeModule,mileage,vacancy,utilities,proofs,wealthStatement,register,acquisition,...(objects.some(object => isRosensteinLabel(object.label)) ? [rosensteinAllocation] : []),loans,module('arrears',[table('Offene Zahlungen',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears),matrix],[rentNote]),cashflow,loanInterest];
+  return [validation,cover,completeness,...(ownerOccupiedScope ? [ownerOccupancy] : []),eur,tenants,journal,objectModule,changeModule,mileage,vacancy,utilities,proofs,wealthStatement,register,acquisition,...(objects.some(object => isRosensteinLabel(object.label)) ? [rosensteinAllocation] : []),loans,module('arrears',[table('Offene Zahlungen',['Objekt','Einheit','Mieter','Fälliger Rückstand'],arrears),matrix],[rentNote]),cashflow,loanSummary,loanExceptions,loanInterest];
 }
